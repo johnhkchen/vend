@@ -116,3 +116,41 @@ SteerProject(state, intent, budget)
 When this play runs, the human has finally become *the thing that designs the
 loop* — answering forks and reviewing captures, while the steering itself is
 dispensed. That is the whole vision, bought two hours at a time.
+
+---
+
+## Protocol learnings (the lisa seam) — earned, episode 1
+
+Hard-won facts about driving a **lisa-backed** project. These are the difference
+between "the loop said done" and "the work is actually durable and correct."
+
+1. **"Done" ≠ "committed" — and `lisa status` ≠ the truth.** lisa advances a
+   ticket's `phase` on *artifact detection*, not on commit. Twice now (E-001's
+   loop, the E-006 survey) the board read all-done while the code and artifacts sat
+   **uncommitted** in the working tree (`D-005`, recurred). **Steering move:** after
+   every loop, `git status` and the build checks — not `lisa status` — are the
+   source of truth; verify, then commit. The done label is a *claim*. The durable
+   fix is a gate that fails a ticket whose code is uncommitted (a natural home: the
+   E-002 CI backstop).
+
+2. **Verify before you report (genchi genbutsu on loop output).** Read the actual
+   artifacts, the run log, and the diff; run `check:test`/`check:typecheck`. The
+   loop over-reports — it marks `done` for work that may not compile, may not be
+   committed, or (for a planning ticket) produced a doc rather than code.
+
+3. **Author epic-scoped ids (`S-<epic>-<n>`, `T-<epic>-<n>`).** The flat sequential
+   scheme collides across epics: E-001 consumed *both* `S-001` and `S-002`, so
+   E-002's natural `S-002` was already taken (`F1`). Namespace story/ticket ids by
+   epic when hand-authoring — it is the by-hand version of exactly what **E-004**
+   automates for the machine, and it stops a hand-decomposition from clobbering the
+   live board.
+
+4. **Match the work-type to the executor.** RDSPI/lisa is built to implement code
+   *permanents*. A planning *sorcery* forced through it (E-006) leaves **RDSPI
+   artifacts and no `runs.jsonl` entry** — it never went through the dispense seam —
+   and the six phases fit a survey awkwardly (`F4`). Expect that friction, or route
+   one-shot planning through a dispense rather than a lisa ticket. (This friction is
+   precisely the input the casting-engine epic, E-007, exists to remove.)
+
+These learnings feed the steering-data-model loop (`steering-data-model.md`); their
+decision records are `D-005`, `D-007`, and the survey's `F1`/`F4`.
