@@ -5,6 +5,7 @@ import {
   type ChildLike,
   ClaudeTimeoutError,
   createLineBuffer,
+  extractModelId,
   makeStreamConsumer,
   parseStreamJsonLine,
   type StreamMessage,
@@ -147,6 +148,59 @@ test("makeStreamConsumer: no result line leaves state.result null", () => {
   const { buffer, state } = makeStreamConsumer();
   buffer.push('{"type":"system"}\n{"type":"assistant"}\n');
   expect(state.result).toBeNull();
+});
+
+// ── extractModelId + model capture (T-005-01) ────────────────────────────────
+
+test("extractModelId: assistant message.model is read", () => {
+  expect(extractModelId({ type: "assistant", message: { role: "assistant", model: "claude-opus-4-8[1m]" } })).toBe(
+    "claude-opus-4-8[1m]",
+  );
+});
+
+test("extractModelId: system top-level model is read", () => {
+  expect(extractModelId({ type: "system", subtype: "init", model: "claude-opus-4-8[1m]" })).toBe("claude-opus-4-8[1m]");
+});
+
+test("extractModelId: nested message.model wins over top-level model", () => {
+  expect(extractModelId({ type: "assistant", model: "top", message: { model: "nested" } })).toBe("nested");
+});
+
+test("extractModelId: no model anywhere → undefined", () => {
+  expect(extractModelId({ type: "assistant", message: { role: "assistant" } })).toBeUndefined();
+  expect(extractModelId({ type: "user" })).toBeUndefined();
+});
+
+test("extractModelId: empty-string model is ignored (not a real id)", () => {
+  expect(extractModelId({ type: "system", model: "" })).toBeUndefined();
+  expect(extractModelId({ type: "assistant", message: { model: "" } })).toBeUndefined();
+});
+
+const MODEL_LINES = [
+  '{"type":"system","subtype":"init","session_id":"s1"}',
+  '{"type":"assistant","message":{"role":"assistant","model":"claude-opus-4-8[1m]","usage":{"input_tokens":10}}}',
+  '{"type":"result","subtype":"success","result":"hi","usage":{"input_tokens":10,"output_tokens":3}}',
+];
+
+test("makeStreamConsumer: captures the real model id off the stream (not the terminal result)", () => {
+  const { buffer, state } = makeStreamConsumer();
+  buffer.push(MODEL_LINES.join("\n") + "\n");
+  expect(state.model).toBe("claude-opus-4-8[1m]");
+  expect(state.result).not.toBeNull();
+  expect(state.result?.model).toBeUndefined(); // the terminal result line carried none
+});
+
+test("makeStreamConsumer: last non-empty model wins (assistant after system)", () => {
+  const { buffer, state } = makeStreamConsumer();
+  buffer.push('{"type":"system","subtype":"init","model":"sys-model"}\n');
+  buffer.push('{"type":"assistant","message":{"model":"asst-model"}}\n');
+  expect(state.model).toBe("asst-model");
+});
+
+test("makeStreamConsumer: a model-less stream leaves state.model undefined", () => {
+  const { buffer, state } = makeStreamConsumer();
+  buffer.push(SAMPLE_LINES.join("\n") + "\n");
+  expect(state.model).toBeUndefined();
 });
 
 // ── awaitChildClose (fake child = ChildLike) ─────────────────────────────────

@@ -37,6 +37,13 @@ export type ResultMessage = StreamMessage & {
   result?: string;
   usage?: Record<string, unknown>;
   total_cost_usd?: number;
+  /**
+   * The REAL model id observed on the dispense stream (the assistant message's
+   * `message.model`, or the system/init message's top-level `model`) — NOT carried
+   * by the terminal `result` itself, so {@link dispense} attaches it here. Absent
+   * when the stream named no model (e.g. an early failure with no assistant turn).
+   */
+  model?: string;
 };
 
 /**
@@ -120,6 +127,26 @@ export function parseStreamJsonLine(line: string): StreamMessage | null {
 }
 
 /**
+ * Pull the REAL model id out of one stream message. PURE and TOTAL — never throws
+ * on an unknown/odd `type` (the stream is external JSON; tolerate noise). The id
+ * rides on the `assistant` message (nested `message.model` — the id that generated
+ * the reply, preferred) and on the `system`/init message (top-level `model`); this
+ * checks the nested shape first, then the top-level, and returns `undefined` for
+ * neither / a non-string / an empty string. The terminal `result` does NOT carry it,
+ * which is why the seam must harvest it off earlier messages.
+ */
+export function extractModelId(msg: StreamMessage): string | undefined {
+  const inner = (msg as { message?: unknown }).message;
+  if (inner && typeof inner === "object") {
+    const m = (inner as { model?: unknown }).model;
+    if (typeof m === "string" && m) return m;
+  }
+  const top = (msg as { model?: unknown }).model;
+  if (typeof top === "string" && top) return top;
+  return undefined;
+}
+
+/**
  * A newline splitter that tolerates chunk boundaries. PURE (closes over a buffer).
  * `push` appends a chunk and emits every complete `\n`-terminated line via `onLine`;
  * `flush` emits a final non-empty unterminated line (then clears the buffer).
@@ -145,19 +172,24 @@ export function createLineBuffer(onLine: (line: string) => void): { push(chunk: 
 /**
  * Compose {@link createLineBuffer} + {@link parseStreamJsonLine} into the canonical
  * routing the seam runs on every stdout chunk: parse each line, stream it to
- * `onMessage` IN ORDER, and capture the terminal `result` message into `state`.
- * PURE — this is exactly what {@link dispense} feeds bytes into, so testing it tests
- * the real parse/route/capture path without spawning.
+ * `onMessage` IN ORDER, capture the terminal `result` message into `state`, and
+ * capture the REAL model id ({@link extractModelId}) as it goes by — last non-empty
+ * wins, so a later assistant id overrides an earlier system-init id and an absent
+ * later id never clobbers an earlier capture. PURE — this is exactly what
+ * {@link dispense} feeds bytes into, so testing it tests the real
+ * parse/route/capture path without spawning.
  */
 export function makeStreamConsumer(onMessage?: (msg: StreamMessage) => void): {
   buffer: ReturnType<typeof createLineBuffer>;
-  state: { result: ResultMessage | null };
+  state: { result: ResultMessage | null; model?: string };
 } {
-  const state: { result: ResultMessage | null } = { result: null };
+  const state: { result: ResultMessage | null; model?: string } = { result: null };
   const buffer = createLineBuffer((line) => {
     const msg = parseStreamJsonLine(line);
     if (!msg) return;
     onMessage?.(msg);
+    const id = extractModelId(msg);
+    if (id) state.model = id;
     if (msg.type === "result") state.result = msg as ResultMessage;
   });
   return { buffer, state };
@@ -233,6 +265,13 @@ export async function dispense({ prompt, model, effort, system, onMessage, timeo
       `\`${CLAUDE_CLI} -p\` produced no result message (exit ${exitCode})` +
         (stderr.trim() ? `:\n${stderr.trim()}` : ""),
     );
+  }
+  // Surface the real model id observed on the stream (system/assistant) on the
+  // returned result — a fresh object so the by-reference message handed to
+  // `onMessage` is never mutated. Only when the result didn't already carry one,
+  // so a future CLI that stamps `model` on the terminal result wins untouched.
+  if (state.result.model === undefined && state.model !== undefined) {
+    state.result = { ...state.result, model: state.model };
   }
   return state.result;
 }
