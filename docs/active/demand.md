@@ -57,16 +57,16 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | Signal | Value | Budget (envelope) | Status |
 |---|---|---|---|
 | **Dispense slice** — the single metered lever (`DecomposeEpic` via `claude -p`), gated · budgeted · streamed · countably logged | **Keystone** (unblocks all) | multi-session | **done → E-001** (converged + committed, `4a1d632`; verified green + 4/4 live paths) |
-| **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **blocked on E-001**. **Spec staged → E-003** (`docs/active/epic/E-003.md`), ready to decompose the instant E-001 lands. Candidate next pull. |
-| **CI/CD structural backstop** (Dagger, Node-orchestrator) — independent structural inspection only; the same `bun run check:*` scripts the play invokes as andon gates | **High** (enabler — de-risks every parallel-fleet build; though the *weakest check type* by our own lens) | ~1 feature block (≈2h; one gate end-to-end per `ci-strategy.md`) | **blocked on E-001** (needs scaffold + check surface). Steering: `ci-strategy.md`. → E-002. **Tooling:** dagger CLI `v0.21.4` ✓ (pin in `/ci/dagger.json`); Docker daemon must be up. |
+| **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **ready** — E-001 done. **Spec staged → E-003** (`docs/active/epic/E-003.md`). The fork's *core-feature* side; composes best after E-004. |
+| **CI/CD structural backstop** (Dagger, Node-orchestrator) — independent structural inspection only; the same `bun run check:*` scripts the play invokes as andon gates | **High** (enabler — de-risks every parallel-fleet build; though the *weakest check type* by our own lens) | ~1 feature block (≈2h; one gate end-to-end per `ci-strategy.md`) | **ready** — E-001 scaffold + `check:*` surface exist. Card: `epic/E-002.md` (steering: `ci-strategy.md`). The fork's *enabler* side. **Tooling:** dagger CLI `v0.21.4` ✓ (pin in `/ci/dagger.json`); Docker daemon must be up. |
 
-**Next-pull call (after E-001):** the `vend` shelf and the CI backstop are both
-**High** but pull in opposite directions — the shelf advances the *core feature*
-(a usable counter now), CI is the *enabler* that de-risks the parallel-fleet
-builds that come after. Decide on which risk you'd rather carry first; the board
-surfaces the trade, it doesn't resolve it. **Cheap prerequisite either way:** if you
-want the *machine* to decompose the next epic (vs. by hand), pull the id-collision
-guard below first — without it `DecomposeEpic` can clobber the live board.
+**Next-pull call (E-001 done; per the E-006 survey — `work/T-006-01/roadmap-plan.md`):**
+recommended spine **E-004 (id-guard) → E-005 (model-id) → ⟂fork⟂ → E-007 (casting-engine)**.
+The **fork** is **E-003 shelf vs E-002 CI** — both **High**, opposite directions (core
+feature vs. fleet-enabler). The survey recommends **E-003 first** (E-004 unlocks safe
+in-place dispense for it) but **escalates the call** — `decisions.jsonl` D-007
+`humanVerdict: pending`. **E-004 is the cheap prerequisite either way** — without it
+`DecomposeEpic` clobbers the live board (F1 confirmed the collision bites even by hand).
 
 ## Kaizen signals — from E-001's first live runs
 
@@ -97,3 +97,23 @@ Surfaced demand, deliberately un-elaborated until pulled:
   envelopes. Standard; needs run-log data + a shelf to land on.
 - (friction from `go-and-see.md` and gaps against `charter.md` accrue here as
   one-liners when surfaced)
+
+### Efficiency — Vend structures the demand, not the author (see `mana-economics.md`)
+
+The north star: *you shouldn't have to be a prompt-structuring expert.* These let
+the casting engine spend mana well on the author's behalf; improve over time.
+
+- **Stable→variable prompt ordering in the dispense** — render the play prompt as
+  `[play + charter + KB]` (stable) then `[the target epic]` (variable), so casting
+  the same spell on different targets reads the shared prefix at ~0.1× instead of
+  re-writing it. Free upside through `claude -p` (order only); full payoff needs
+  Vend-owned cache breakpoints (Agent SDK / Messages API). Standard.
+- **Per-function model routing in BAML** — assign a cheap client (Haiku/Sonnet) to
+  easy functions (screening, classification) and Opus to the hard decomposition;
+  keep deterministic gates in code (free). Route at sub-play granularity — caches
+  are model-scoped, so never bounce models mid-prompt. Standard; a "build BAML
+  harder" payoff.
+- *(rolls up to)* **auto-structure demands for efficiency** — the engine applies
+  ordering + routing + bounding without the author seeing them; the consistency
+  layer measures cache-hit ratio + per-model cost and tunes it (kaizen). The
+  product-level goal these two signals serve.
