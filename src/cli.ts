@@ -18,7 +18,14 @@ export const USAGE = "usage: vend run decompose-epic <epic.md> --budget <ms>,<to
 export type ParsedCommand =
   | { readonly cmd: "run"; readonly play: "decompose-epic"; readonly epicPath: string; readonly budget: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
+  | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | { readonly cmd: "usage"; readonly error?: string };
+
+/** A selection token's shape: digits, commas, ranges, whitespace — nothing else. The
+ *  cheap gate that routes `1,2,4-6` to `select` while leaving `frobnicate` an unknown
+ *  command. Full validation (range/order/malformed) is `parseSelection`'s, downstream
+ *  against the persisted menu's length — this only decides "is this a selection at all". */
+const SELECTION_SHAPE = /^[\d\s,-]+$/;
 
 /**
  * Parse the `--budget <ms>,<tokens>` value into a {@link Budget}. PURE. Requires
@@ -52,12 +59,16 @@ export function parseBudgetArg(s: string): Budget {
  * resolves to a `usage` result with an error string for the shell to print.
  */
 export function parseArgs(argv: readonly string[]): ParsedCommand {
-  // Bare `vend` (no args) is the browse surface (T-003-02); `vend --all` reveals the
-  // hidden blocked/leaf rows. A selection like `1,2` is dispatch (T-003-04) — it falls
-  // through to the existing usage path here until that ticket extends this parser.
+  // Bare `vend` (no args) is the browse surface (T-003-02). `vend run …` is the static
+  // decompose path (T-002-03). Everything else — `vend --all`, `vend 1,2`,
+  // `vend 1 --budget …` — is the browse/press tail (T-003-04).
   if (argv.length === 0) return { cmd: "browse", all: false };
-  if (argv.every((a) => a === "--all")) return { cmd: "browse", all: true };
-  if (argv[0] !== "run") return { cmd: "usage", error: argv.length ? `unknown command: ${argv[0]}` : undefined };
+  if (argv[0] === "run") return parseRunArgs(argv);
+  return parseSelectOrBrowse(argv);
+}
+
+/** Parse the `run decompose-epic <epic.md> --budget <v>` static path. PURE. */
+function parseRunArgs(argv: readonly string[]): ParsedCommand {
   if (argv[1] !== "decompose-epic") return { cmd: "usage", error: `unknown play: ${argv[1] ?? "(none)"}` };
   const epicPath = argv[2];
   if (!epicPath || epicPath.startsWith("--")) return { cmd: "usage", error: "missing <epic.md>" };
@@ -73,6 +84,53 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
     return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
   }
   return { cmd: "run", play: "decompose-epic", epicPath, budget };
+}
+
+/**
+ * Parse the non-`run` tail: `--all` (a flag) plus optional `--budget <v>`, with any
+ * remaining tokens forming the selection. PURE. No positional tokens ⇒ `browse` (bare
+ * `--all` reveals hidden rows). Positional tokens that are all selection-shaped ⇒
+ * `select` (joined with `,` so both `1,2,4-6` and the shell-split `1 2 4-6` round-trip
+ * through `parseSelection`); a non-selection token ⇒ `usage` (`unknown command`).
+ * `--budget` is OPTIONAL here (the press defaults to the action's warranted envelope),
+ * unlike the required `run --budget`.
+ */
+function parseSelectOrBrowse(argv: readonly string[]): ParsedCommand {
+  let all = false;
+  let budgetVal: string | undefined;
+  let sawBudgetFlag = false;
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--all") {
+      all = true;
+    } else if (a === "--budget") {
+      sawBudgetFlag = true;
+      budgetVal = argv[++i];
+    } else {
+      positional.push(a);
+    }
+  }
+
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
+  } else if (sawBudgetFlag) {
+    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  }
+
+  if (positional.length === 0) {
+    return all ? { cmd: "browse", all: true } : { cmd: "usage", error: "missing selection" };
+  }
+  if (!positional.every((t) => SELECTION_SHAPE.test(t))) {
+    return { cmd: "usage", error: `unknown command: ${positional[0]}` };
+  }
+  const selection = positional.join(",");
+  return budget ? { cmd: "select", selection, all, budget } : { cmd: "select", selection, all };
 }
 
 // The impure dispatch shell — only runs when executed directly (not when imported by
@@ -92,6 +150,35 @@ if (import.meta.main) {
     const { menu } = await browseShelf({ all: parsed.all });
     process.stdout.write(`${menu}\n`);
     process.exit(0);
+  }
+  if (parsed.cmd === "select") {
+    // The press: resolve the selection against the persisted `.vend/menu.json` and
+    // dispatch each pick's playbook in order. Lazy import keeps the runner (and its BAML
+    // addon) off the pure-parse path, exactly as the browse arm keeps gather lazy.
+    const { pressShelf } = await import("./shelf/press.ts");
+    const result = await pressShelf({ selection: parsed.selection, all: parsed.all, budget: parsed.budget });
+    switch (result.kind) {
+      case "no-menu":
+        process.stderr.write(`no menu at ${result.cachePath} — run \`vend\` first\n`);
+        process.exit(1);
+        break;
+      case "stale":
+        process.stderr.write(
+          `menu is stale (board changed since \`vend\`) — re-run \`vend${parsed.all ? " --all" : ""}\`\n`,
+        );
+        process.exit(1);
+        break;
+      case "bad-selection":
+        process.stderr.write(`${result.error.message}\n`);
+        process.exit(2);
+        break;
+      case "dispatched": {
+        for (const s of result.runs) {
+          process.stdout.write(`run ${s.runId}: ${s.outcome} (materialized: ${s.materialized})\n`);
+        }
+        process.exit(result.runs.every((s) => s.outcome === "success") ? 0 : 1);
+      }
+    }
   }
   const { runDecomposeEpic } = await import("./play/decompose-epic.ts");
   const summary = await runDecomposeEpic({ epicPath: parsed.epicPath, budget: parsed.budget });

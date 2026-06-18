@@ -41,10 +41,32 @@ describe("parseArgs", () => {
   test("`vend --all` browses with hidden rows revealed", () => {
     expect(parseArgs(["--all"])).toEqual({ cmd: "browse", all: true });
   });
-  test("a bare selection is not browse — falls through to usage until T-003-04", () => {
-    // `--all` only triggers browse when it is the WHOLE argv; a selection token is not.
-    expect(parseArgs(["1,2"]).cmd).toBe("usage");
-    expect(parseArgs(["1", "--all"]).cmd).toBe("usage");
+  test("a selection token is the press (T-003-04)", () => {
+    expect(parseArgs(["1,2,4-6"])).toEqual({ cmd: "select", selection: "1,2,4-6", all: false });
+    expect(parseArgs(["1,2"])).toEqual({ cmd: "select", selection: "1,2", all: false });
+  });
+  test("shell-split selection tokens join with commas", () => {
+    expect(parseArgs(["1", "2", "4-6"])).toEqual({ cmd: "select", selection: "1,2,4-6", all: false });
+  });
+  test("`vend <sel> --all` presses with hidden rows revealed", () => {
+    expect(parseArgs(["1", "--all"])).toEqual({ cmd: "select", selection: "1", all: true });
+  });
+  test("`vend <sel> --budget` overrides the warranted envelope", () => {
+    expect(parseArgs(["1,2", "--budget", "100,200"])).toEqual({
+      cmd: "select",
+      selection: "1,2",
+      all: false,
+      budget: { timeMs: 100, tokens: 200 },
+    });
+  });
+  test("a non-selection token is still an unknown command, not a press", () => {
+    expect(parseArgs(["frobnicate"])).toEqual({ cmd: "usage", error: "unknown command: frobnicate" });
+  });
+  test("a malformed press --budget surfaces as usage", () => {
+    expect(parseArgs(["1,2", "--budget", "nope"]).cmd).toBe("usage");
+  });
+  test("`--budget` with no selection is usage, not a press", () => {
+    expect(parseArgs(["--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing selection" });
   });
   test("missing epic path → usage", () => {
     expect(parseArgs(["run", "decompose-epic", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing <epic.md>" });
