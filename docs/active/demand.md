@@ -57,16 +57,15 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | Signal | Value | Budget (envelope) | Status |
 |---|---|---|---|
 | **Dispense slice** — the single metered lever (`DecomposeEpic` via `claude -p`), gated · budgeted · streamed · countably logged | **Keystone** (unblocks all) | multi-session | **done → E-001** (converged + committed, `4a1d632`; verified green + 4/4 live paths) |
-| **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **ready** — E-001 done. **Spec staged → E-003** (`docs/active/epic/E-003.md`). The fork's *core-feature* side; composes best after E-004. |
+| **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **done → E-003** — shelf live: bare `vend` renders a ranked menu, persisted to `.vend/menu.json`; 229 tests. |
 | **CI/CD structural backstop** (Dagger, Node-orchestrator) — independent structural inspection only; the same `bun run check:*` scripts the play invokes as andon gates | **High** (enabler — de-risks every parallel-fleet build; though the *weakest check type* by our own lens) | ~1 feature block (≈2h; one gate end-to-end per `ci-strategy.md`) | **ready** — E-001 scaffold + `check:*` surface exist. Card: `epic/E-002.md` (steering: `ci-strategy.md`). The fork's *enabler* side. **Tooling:** dagger CLI `v0.21.4` ✓ (pin in `/ci/dagger.json`); Docker daemon must be up. |
 
-**Next-pull call (E-001 done; per the E-006 survey — `work/T-006-01/roadmap-plan.md`):**
-recommended spine **E-004 (id-guard) → E-005 (model-id) → ⟂fork⟂ → E-007 (casting-engine)**.
-The **fork** is **E-003 shelf vs E-002 CI** — both **High**, opposite directions (core
-feature vs. fleet-enabler). The survey recommends **E-003 first** (E-004 unlocks safe
-in-place dispense for it) but **escalates the call** — `decisions.jsonl` D-007
-`humanVerdict: pending`. **E-004 is the cheap prerequisite either way** — without it
-`DecomposeEpic` clobbers the live board (F1 confirmed the collision bites even by hand).
+**Next-pull call (E-003 shelf shipped — the fork is resolved).** E-001 · E-003 · E-004
+· E-005 are all **done**; the survey's fork (`D-007`) was decided by pulling **E-003**
+(`D-008`). **Read the shelf, not this note:** bare `vend` now ranks the live actions
+deterministically. Remaining staged work: **E-002 (CI backstop)** — ready, top of the
+menu — then **E-007 (casting-engine)**, readiness-gated on the E-006 friction and still
+needing an epic card. `vend` is the pull-board now.
 
 ## Kaizen signals — from E-001's first live runs
 
@@ -75,9 +74,9 @@ Surfaced by the live proof (`docs/active/work/T-002-04/proof.md`,
 
 | Signal | Value | Budget | Status |
 |---|---|---|---|
-| **Cross-board id-collision guard** — `DecomposeEpic` reuses ids (`S-001`, `T-001-01`…); against a *populated* board it would clobber existing work (A1 was safe only by materializing into a sandbox). Add a cross-board uniqueness check / id-namespace. | **High** (enabler — gates pointing the play at the *live* board; prerequisite to machine-decomposing E-002/E-003) | small (~1h) | **ready — pull before reusing the play** |
+| **Cross-board id-collision guard** — `DecomposeEpic` reuses ids (`S-001`, `T-001-01`…); against a *populated* board it would clobber existing work (A1 was safe only by materializing into a sandbox). Add a cross-board uniqueness check / id-namespace. | **High** (enabler — gates pointing the play at the *live* board; prerequisite to machine-decomposing E-002/E-003) | small (~1h) | **done → E-004** (refuse-materialize-on-collision in code) |
 | **Bound dispense exploration** — `claude -p` is the full agent; A2's tiny fixture burned 119k tokens (> A1's full E-001 at 78k) — the budget fat-tail is *agentic wandering*, not input size. Add `--max-turns` / a system-prompt constraint on the seam. | **Standard** (budget calibration; cost predictability) | small (~1h) | ready |
-| **Thread the real model id** — `runs.jsonl` logs `claude-cli-default`; the true id (`claude-opus-4-8[1m]`) lives on the terminal `result`. Thread it through the runner so the consistency layer reads truth. | **Standard** (data fidelity) | tiny (mins) | ready |
+| **Thread the real model id** — `runs.jsonl` logs `claude-cli-default`; the true id (`claude-opus-4-8[1m]`) lives on the terminal `result`. Thread it through the runner so the consistency layer reads truth. | **Standard** (data fidelity) | tiny (mins) | **done → E-005** |
 
 *Noted, not yet a signal:* the token budget is **detect-after** (an accountability
 andon, post-completion); only the wall-clock budget halts mid-flight. Both honor
