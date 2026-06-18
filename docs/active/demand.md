@@ -56,7 +56,7 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 
 | Signal | Value | Budget (envelope) | Status |
 |---|---|---|---|
-| **Dispense slice** — the single metered lever (`DecomposeEpic` via `claude -p`), gated · budgeted · streamed · countably logged | **Keystone** (unblocks all) | multi-session (under lisa now) | **active → E-001** |
+| **Dispense slice** — the single metered lever (`DecomposeEpic` via `claude -p`), gated · budgeted · streamed · countably logged | **Keystone** (unblocks all) | multi-session | **done → E-001** (converged + committed, `4a1d632`; verified green + 4/4 live paths) |
 | **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **blocked on E-001**. **Spec staged → E-003** (`docs/active/epic/E-003.md`), ready to decompose the instant E-001 lands. Candidate next pull. |
 | **CI/CD structural backstop** (Dagger, Node-orchestrator) — independent structural inspection only; the same `bun run check:*` scripts the play invokes as andon gates | **High** (enabler — de-risks every parallel-fleet build; though the *weakest check type* by our own lens) | ~1 feature block (≈2h; one gate end-to-end per `ci-strategy.md`) | **blocked on E-001** (needs scaffold + check surface). Steering: `ci-strategy.md`. → E-002. **Tooling:** dagger CLI `v0.21.4` ✓ (pin in `/ci/dagger.json`); Docker daemon must be up. |
 
@@ -64,7 +64,25 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 **High** but pull in opposite directions — the shelf advances the *core feature*
 (a usable counter now), CI is the *enabler* that de-risks the parallel-fleet
 builds that come after. Decide on which risk you'd rather carry first; the board
-surfaces the trade, it doesn't resolve it.
+surfaces the trade, it doesn't resolve it. **Cheap prerequisite either way:** if you
+want the *machine* to decompose the next epic (vs. by hand), pull the id-collision
+guard below first — without it `DecomposeEpic` can clobber the live board.
+
+## Kaizen signals — from E-001's first live runs
+
+Surfaced by the live proof (`docs/active/work/T-002-04/proof.md`,
+`.vend/runs.jsonl`). All **ready** (E-001 is done); ranked by leverage.
+
+| Signal | Value | Budget | Status |
+|---|---|---|---|
+| **Cross-board id-collision guard** — `DecomposeEpic` reuses ids (`S-001`, `T-001-01`…); against a *populated* board it would clobber existing work (A1 was safe only by materializing into a sandbox). Add a cross-board uniqueness check / id-namespace. | **High** (enabler — gates pointing the play at the *live* board; prerequisite to machine-decomposing E-002/E-003) | small (~1h) | **ready — pull before reusing the play** |
+| **Bound dispense exploration** — `claude -p` is the full agent; A2's tiny fixture burned 119k tokens (> A1's full E-001 at 78k) — the budget fat-tail is *agentic wandering*, not input size. Add `--max-turns` / a system-prompt constraint on the seam. | **Standard** (budget calibration; cost predictability) | small (~1h) | ready |
+| **Thread the real model id** — `runs.jsonl` logs `claude-cli-default`; the true id (`claude-opus-4-8[1m]`) lives on the terminal `result`. Thread it through the runner so the consistency layer reads truth. | **Standard** (data fidelity) | tiny (mins) | ready |
+
+*Noted, not yet a signal:* the token budget is **detect-after** (an accountability
+andon, post-completion); only the wall-clock budget halts mid-flight. Both honor
+P7's "no partial materialization," differently. Document in the budget notes;
+revisit only if a hard token cap is ever needed.
 
 ## Not yet pulled
 
