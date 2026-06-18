@@ -72,6 +72,60 @@ In priority of *value*, not of format:
 A failed gate **stops the line and says why** — it does not emit half-cleared
 work. Stopping at authoring is cheap; bad work in nonstop execution is not.
 
+## The decomposition rule-set (the *build* spec)
+
+The gates above are the **verify** spec — what the output must satisfy. These are
+the **build** spec — the rules the play applies to *produce* the `WorkPlan`. They
+are **extracted from the by-hand decompositions** of E-001, E-004, E-005 and the
+E-006 survey, not invented (`playbooks/project-steering.md`: hand-drafting is
+authoring the play by demonstration). Each rule pairs with the gate that checks it.
+
+**Shape**
+- **R1 — Pure core before integration.** Split a unit into a pure, addon-free,
+  fully-tested core (the testable heart) and a thin integration that wires it in.
+  *(E-001 seam/budget/log; E-004 `detectCollisions` → `materialize`.)* → allocation gate.
+- **R2 — One ticket = one atomically committable change.** Bounded scope,
+  independently verifiable; no "and also" sprawl. → allocation gate.
+- **R3 — Foundation first.** Types / scaffold / shared modules are early DAG roots
+  that dependents build on. *(E-001 `T-001-01` scaffold gates all.)* → allocation gate.
+
+**Dependencies**
+- **R4 — File ownership → an edge.** Two units that edit the same file get a
+  `depends_on` (the critical lisa rule); the commit lock is a safety net, not a
+  substitute. *(E-005 `T-005-01` ↔ `T-004-02`, both on `decompose-epic.ts`.)*
+  → structural + allocation gate.
+- **R5 — Otherwise maximize concurrency.** Disjoint files + satisfied deps run in
+  parallel; add no spurious edges. *(E-001 wave-1: seam/budget/log/baml.)* → allocation gate.
+
+**Identity**
+- **R6 — Epic-scoped ids (`S-<epic>-<n>`, `T-<epic>-<n>`).** Namespace by epic;
+  generated ids must be disjoint from the live board. *(F1 — the very rule E-004
+  now enforces in code.)* → structural gate + the E-004 materialize guard.
+
+**Value & justification**
+- **R7 — Value-link every unit.** Each names what it `advances` (a charter
+  invariant or the epic outcome); advances nothing nameable → refuse. → value gate.
+- **R8 — A verifiable done-signal.** Acceptance criteria distinguish *done* from
+  *done right* — a check, a test, an observable. → value gate.
+
+**Harness-readiness**
+- **R9 — Cite sources; carry runnable context.** Point at the real files / docs /
+  reference implementations a unit needs (e.g. `mc-design-eval/sdk-binding` for the
+  seam); it must run without the author in the loop. *(E-001 tickets cited the
+  reference.)* → no machine gate yet; the harness-readiness / human-amplifier check.
+
+**Process-fit (upstream of decomposition)**
+- **R10 — Match work-type to executor.** Code-*permanents* → lisa RDSPI tickets; a
+  one-shot planning *sorcery* → a dispense, not a lisa ticket (else RDSPI friction +
+  no run-log). *(F4.)* → a steering-layer routing choice, not a gate.
+
+**This list is the spec, and it's nearly closed.** Each new hand-decomposition has
+either *confirmed* a rule or *added* one; when it stops changing, the play is
+spec-complete — the TPS "standard stabilized → ready to systematize" signal. Two
+rules have **already graduated from doc to code** (R6 → E-004's id-guard; R4 → the
+file-overlap edge we modeled by hand), which is the bridge from "we keep doing this
+by hand" to "the play does it."
+
 ## Budget as a hard contract
 
 The run is allocated time/tokens up front and is accountable to them (P7). The
