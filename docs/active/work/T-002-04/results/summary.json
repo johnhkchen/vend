@@ -1,0 +1,153 @@
+{
+  "note": "T-002-04 live-dispense-proof; ledger at .vend/runs.jsonl (gitignored)",
+  "ledger": ".vend/runs.jsonl",
+  "runs": [
+    {
+      "id": "A1",
+      "ac": "AC1+AC4",
+      "expect": "success",
+      "outcome": "success",
+      "matchedExpectation": true,
+      "materialized": true,
+      "wallMs": 76071,
+      "model": "claude-opus-4-8[1m]",
+      "tokensCounted": 78341,
+      "usage": {
+        "input_tokens": 10923,
+        "cache_creation_input_tokens": 22262,
+        "cache_read_input_tokens": 39436,
+        "output_tokens": 5720,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 22262,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2552,
+            "cache_read_input_tokens": 23775,
+            "cache_creation_input_tokens": 14148,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 14148
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "costUsd": 0.4399529999999999,
+      "runId": "A1",
+      "sandbox": ".vend/live-proof/A1"
+    },
+    {
+      "id": "A2",
+      "ac": "AC2-tokens",
+      "expect": "budget-exhausted",
+      "outcome": "budget-exhausted",
+      "matchedExpectation": true,
+      "materialized": false,
+      "wallMs": 55572,
+      "model": "claude-opus-4-8[1m]",
+      "tokensCounted": 119393,
+      "usage": {
+        "input_tokens": 12758,
+        "cache_creation_input_tokens": 25778,
+        "cache_read_input_tokens": 77494,
+        "output_tokens": 3363,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 25778,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 1832,
+            "output_tokens": 2749,
+            "cache_read_input_tokens": 39006,
+            "cache_creation_input_tokens": 2433,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2433
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "costUsd": 0.444392,
+      "runId": "A2",
+      "sandbox": ".vend/live-proof/A2"
+    },
+    {
+      "id": "A3",
+      "ac": "AC3",
+      "expect": "gate-failed",
+      "outcome": "gate-failed",
+      "matchedExpectation": true,
+      "materialized": false,
+      "wallMs": 20323,
+      "model": "claude-opus-4-8[1m]",
+      "tokensCounted": 35468,
+      "usage": {
+        "input_tokens": 11738,
+        "cache_creation_input_tokens": 6728,
+        "cache_read_input_tokens": 15661,
+        "output_tokens": 1341,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 6728,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 11738,
+            "output_tokens": 1341,
+            "cache_read_input_tokens": 15661,
+            "cache_creation_input_tokens": 6728,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 6728
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "costUsd": 0.1673255,
+      "runId": "A3",
+      "sandbox": ".vend/live-proof/A3"
+    },
+    {
+      "id": "A4",
+      "ac": "AC2-time",
+      "expect": "timed-out",
+      "outcome": "timed-out",
+      "matchedExpectation": true,
+      "materialized": false,
+      "wallMs": 3,
+      "model": "(no transcript)",
+      "tokensCounted": 0,
+      "usage": {},
+      "costUsd": 0,
+      "runId": "A4",
+      "sandbox": ".vend/live-proof/A4"
+    }
+  ]
+}

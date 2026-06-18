@@ -1,0 +1,238 @@
+// The single metered seam (T-001-02): dispense a prompt to Claude via the
+// `claude -p` headless CLI, authenticated by the SUBSCRIPTION (not a metered API
+// key). Spawns `claude -p --output-format stream-json --verbose`, writes the prompt
+// to stdin, parses the newline-delimited stream-json messages, calls a caller hook
+// per message in order (so a runner can log the transcript + per-turn usage), and
+// returns the terminal `result` message (carrying `usage`, `total_cost_usd`,
+// `subtype`).
+//
+// Ported from the proven pattern in mc-design-eval/src/sdk-binding.mjs — the
+// spawn → stream → capture spine plus the wall-clock timeout latch
+// (`awaitChildClose` / `ClaudeTimeoutError`). TEXT PATH ONLY: no image/multimodal,
+// no schema-enforced output, no artifact re-validation (those are out of scope for
+// this slice). The seam is BUDGET-AGNOSTIC (T-001-02 AC #4): it accepts `timeoutMs`
+// as its one wall-clock guard but owns no token/cost budget — the runner (T-001-03)
+// composes that and meters on the returned `result.usage` / `result.total_cost_usd`.
+//
+// Most of this module is PURE (arg building, stream-json line parsing, line
+// buffering, message routing, the timeout latch) and is unit-tested with sample
+// lines and a fake child — no live `claude` spawn. Only `dispense` spawns a process;
+// it is the single untested function (mirrors the reference's test rule).
+
+import { spawn } from "node:child_process";
+
+/** The Claude headless CLI binary; overridable for tests / non-standard installs. */
+export const CLAUDE_CLI = process.env.CLAUDE_CLI || "claude";
+
+/** One parsed stream-json message. External JSON: a known `type` discriminant over an open record. */
+export type StreamMessage = { type: string } & Record<string, unknown>;
+
+/**
+ * The terminal `result` message the CLI emits last. Carries the fields the runner
+ * meters on. Other fields ride along in the open record (it extends StreamMessage).
+ */
+export type ResultMessage = StreamMessage & {
+  type: "result";
+  subtype: string;
+  result?: string;
+  usage?: Record<string, unknown>;
+  total_cost_usd?: number;
+};
+
+/**
+ * The minimal child-process surface {@link awaitChildClose} needs. A real
+ * `node:child_process` ChildProcess satisfies it structurally, and so does a tiny
+ * fake child (a callback registry + a `kill` spy) — which is what makes the timeout
+ * latch unit-testable without spawning anything.
+ */
+export interface ChildLike {
+  on(event: "error", cb: (err: Error) => void): unknown;
+  on(event: "close", cb: (code: number | null) => void): unknown;
+  // Widened to `string | number` so a real node `ChildProcess` (`NodeJS.Signals |
+  // number`) is structurally assignable, while `"SIGKILL"` and a fake child's spy
+  // both still satisfy it.
+  kill(signal?: string | number): unknown;
+}
+
+/** Options for {@link dispense}. Text path only. */
+export interface DispenseOptions {
+  /** The prompt, written to the CLI's stdin. */
+  prompt: string;
+  /** Pinned model id → `--model`. Omitted ⇒ no flag ⇒ CLI default. */
+  model?: string;
+  /** Reasoning-effort level → `--effort`. Omitted ⇒ no flag. */
+  effort?: string;
+  /** Grounding/persona system prompt → `--system-prompt`. Omitted ⇒ no flag. */
+  system?: string;
+  /**
+   * Called once per stream-json message in order, before any throw, so the runner
+   * can capture the transcript and per-turn usage. Must not mutate the message.
+   */
+  onMessage?: (msg: StreamMessage) => void;
+  /**
+   * Wall-clock budget in ms. A non-returning child is SIGKILLed at this deadline and
+   * the call rejects with {@link ClaudeTimeoutError}. Undefined / ≤ 0 ⇒ no timer.
+   */
+  timeoutMs?: number;
+}
+
+/**
+ * Typed error raised when a `claude -p` child exceeds its wall-clock budget and is
+ * killed. A CLASS (not a string sniff) so a caller can branch its degrade path
+ * cleanly — `e.code === "ETIMEDOUT_CLAUDE"` distinguishes an infra hang from any
+ * other failure. Carries the budget that was exceeded.
+ */
+export class ClaudeTimeoutError extends Error {
+  readonly code = "ETIMEDOUT_CLAUDE";
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number, cli: string) {
+    super(`\`${cli} -p\` exceeded ${timeoutMs}ms wall-clock and was killed (non-returning subprocess)`);
+    this.name = "ClaudeTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
+ * Build the `claude -p` argv for the text path. PURE. Base flags always present;
+ * `--model`/`--effort`/`--system-prompt` are appended only when supplied (omitting a
+ * flag leaves the CLI default path unchanged).
+ */
+export function buildArgs({ model, effort, system }: { model?: string; effort?: string; system?: string } = {}): string[] {
+  const args = ["-p", "--output-format", "stream-json", "--verbose"];
+  if (model) args.push("--model", model);
+  if (effort) args.push("--effort", String(effort));
+  if (system) args.push("--system-prompt", system);
+  return args;
+}
+
+/**
+ * Parse one stream-json line into a message. PURE. Trims, JSON-parses, and returns
+ * `null` for a blank line or any non-JSON noise on the stream (tolerated, skipped).
+ */
+export function parseStreamJsonLine(line: string): StreamMessage | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as StreamMessage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A newline splitter that tolerates chunk boundaries. PURE (closes over a buffer).
+ * `push` appends a chunk and emits every complete `\n`-terminated line via `onLine`;
+ * `flush` emits a final non-empty unterminated line (then clears the buffer).
+ */
+export function createLineBuffer(onLine: (line: string) => void): { push(chunk: string): void; flush(): void } {
+  let buf = "";
+  return {
+    push(chunk: string): void {
+      buf += chunk;
+      let idx: number;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        onLine(buf.slice(0, idx));
+        buf = buf.slice(idx + 1);
+      }
+    },
+    flush(): void {
+      if (buf.trim()) onLine(buf);
+      buf = "";
+    },
+  };
+}
+
+/**
+ * Compose {@link createLineBuffer} + {@link parseStreamJsonLine} into the canonical
+ * routing the seam runs on every stdout chunk: parse each line, stream it to
+ * `onMessage` IN ORDER, and capture the terminal `result` message into `state`.
+ * PURE — this is exactly what {@link dispense} feeds bytes into, so testing it tests
+ * the real parse/route/capture path without spawning.
+ */
+export function makeStreamConsumer(onMessage?: (msg: StreamMessage) => void): {
+  buffer: ReturnType<typeof createLineBuffer>;
+  state: { result: ResultMessage | null };
+} {
+  const state: { result: ResultMessage | null } = { result: null };
+  const buffer = createLineBuffer((line) => {
+    const msg = parseStreamJsonLine(line);
+    if (!msg) return;
+    onMessage?.(msg);
+    if (msg.type === "result") state.result = msg as ResultMessage;
+  });
+  return { buffer, state };
+}
+
+/**
+ * Await a spawned child's terminal event with an optional WALL-CLOCK timeout. The
+ * latch: exactly one of {timeout, close, error} settles the promise, and the timer
+ * is cleared on settle so it never dangles past the call. On timeout the child is
+ * SIGKILLed and the promise rejects with {@link ClaudeTimeoutError}; `timeoutMs`
+ * undefined / ≤ 0 ⇒ no timer ⇒ behaviour identical to an un-guarded spawn.
+ * Dependency-free and typed against {@link ChildLike}, so it is UNIT-TESTABLE with a
+ * fake child (no `claude` spawn, no live hang).
+ */
+export function awaitChildClose(
+  child: ChildLike,
+  { cli = CLAUDE_CLI, timeoutMs }: { cli?: string; timeoutMs?: number } = {},
+): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settle = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      action();
+    };
+    if (timeoutMs && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // a child that already exited / can't be signalled — the reject below still surfaces the timeout
+        }
+        settle(() => reject(new ClaudeTimeoutError(timeoutMs, cli)));
+      }, timeoutMs);
+    }
+    child.on("error", (err) =>
+      settle(() => reject(new Error(`failed to launch \`${cli} -p\` (${err.message}) — is it installed/logged in?`))),
+    );
+    child.on("close", (code) => settle(() => resolve(code)));
+  });
+}
+
+/**
+ * Dispense one prompt to Claude via the `claude -p` subscription shim and return the
+ * terminal `result` message. LIVE and METERED (subscription credits). Not
+ * unit-tested — the byte-handling it relies on lives in the PURE helpers above.
+ *
+ * Spawns the CLI (no shell), writes the prompt to stdin and closes it, streams every
+ * stream-json message to `onMessage` in order, and returns the terminal `result`
+ * (carrying `usage` / `total_cost_usd` / `subtype`). The result is returned for ANY
+ * `subtype` — including error subtypes — so the caller can meter and branch on it;
+ * only a genuinely absent terminal result (the process emitted none) throws.
+ */
+export async function dispense({ prompt, model, effort, system, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
+  const args = buildArgs({ model, effort, system });
+  const child = spawn(CLAUDE_CLI, args, { stdio: ["pipe", "pipe", "pipe"] });
+  child.stdin?.end(prompt);
+
+  const { buffer, state } = makeStreamConsumer(onMessage);
+  let stderr = "";
+  child.stdout?.on("data", (chunk) => buffer.push(chunk.toString()));
+  child.stderr?.on("data", (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  const exitCode = await awaitChildClose(child, { timeoutMs });
+  buffer.flush(); // flush a final unterminated line, if any
+
+  if (state.result === null) {
+    throw new Error(
+      `\`${CLAUDE_CLI} -p\` produced no result message (exit ${exitCode})` +
+        (stderr.trim() ? `:\n${stderr.trim()}` : ""),
+    );
+  }
+  return state.result;
+}
