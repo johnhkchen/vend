@@ -18,6 +18,24 @@ import type { BudgetOutcome } from "../budget/budget.ts";
 import { isStop, type GateResult } from "../gate/gates.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 
+/**
+ * Logged when no real model id was observed on the stream and the caller pinned
+ * none; the seam omits `--model` in that case. Lives in the pure core (not the
+ * impure orchestrator) so the fallback resolver below is testable without loading
+ * the BAML addon; re-exported from decompose-epic.ts via its `export *`.
+ */
+export const DEFAULT_MODEL = "claude-cli-default";
+
+/**
+ * Pick the model id to stamp on the run log: the REAL id observed on the dispense
+ * stream, else the caller's pinned id (`opts.model`), else the {@link DEFAULT_MODEL}
+ * sentinel (T-005-01). PURE — the sentinel tail guarantees the non-empty string the
+ * run log requires even on a timed-out run that returned no result.
+ */
+export function resolveLoggedModel(real: string | undefined, opt: string | undefined): string {
+  return real ?? opt ?? DEFAULT_MODEL;
+}
+
 /** The inputs to the pure outcome decision. */
 export interface ClassifyInput {
   /** The seam threw `ClaudeTimeoutError` (no result, nothing parsed/gated). */

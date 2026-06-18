@@ -30,7 +30,7 @@ import { clear, isStop, type GateResult } from "../gate/gates.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import { assembleInputs } from "./project-context.ts";
 import { materialize, IdCollisionError } from "./materialize.ts";
-import { classify, makeStreamSink } from "./decompose-epic-core.ts";
+import { classify, makeStreamSink, resolveLoggedModel } from "./decompose-epic-core.ts";
 
 // The runner's PURE decision core lives in ./decompose-epic-core.ts (classify,
 // gateRowsFor, formatMessage, makeStreamSink) — split out so its test never loads the
@@ -39,8 +39,8 @@ export * from "./decompose-epic-core.ts";
 
 /** The play name stamped on every run-log record. */
 export const PLAY = "decompose-epic";
-/** Logged when the caller pins no model id; the seam omits `--model` in that case. */
-export const DEFAULT_MODEL = "claude-cli-default";
+// DEFAULT_MODEL moved to ./decompose-epic-core.ts (re-exported via `export *` above)
+// so the run-log model fallback is resolvable + testable without the BAML addon.
 
 /** Options for {@link runDecomposeEpic}. */
 export interface RunOptions {
@@ -105,7 +105,6 @@ function epicIdOf(epic: string, epicPath: string): string {
  */
 export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
   const root = opts.projectRoot ?? process.cwd();
-  const model = opts.model ?? DEFAULT_MODEL;
   const startedAt = new Date().toISOString();
   const runId = opts.runId ?? `run-${startedAt.replace(/[:.]/g, "-")}`;
 
@@ -187,11 +186,16 @@ export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
     process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateResult, budgetOutcome)}\n`);
   }
 
+  // Resolve the logged model id DOWNSTREAM of dispense, so the real id the stream
+  // reported (on `result.model`) is in scope: real id → pinned `opts.model` →
+  // sentinel (T-005-01). On timeout `result` is null and this falls back cleanly.
+  const loggedModel = resolveLoggedModel(result?.model, opts.model);
+
   await appendRunLog({
     runId,
     play: PLAY,
     epic: epicId,
-    model,
+    model: loggedModel,
     outcome,
     usage: (result?.usage ?? {}) as Usage,
     costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,

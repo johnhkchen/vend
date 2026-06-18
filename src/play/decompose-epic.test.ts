@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import type { BudgetOutcome } from "../budget/budget.ts";
 import type { GateResult } from "../gate/gates.ts";
 import type { StreamMessage } from "../executor/claude.ts";
-import { classify, formatMessage, gateRowsFor, makeStreamSink } from "./decompose-epic-core.ts";
+import {
+  classify,
+  DEFAULT_MODEL,
+  formatMessage,
+  gateRowsFor,
+  makeStreamSink,
+  resolveLoggedModel,
+} from "./decompose-epic-core.ts";
 
 // T-002-03 runner: the PURE decision core. We import ./decompose-epic-core.ts (NOT
 // ./decompose-epic.ts) so this `bun test` process never value-imports `b` from
@@ -81,5 +88,17 @@ describe("makeStreamSink — fans each message to both surfaces in order", () =>
     for (const m of msgs) onMessage(m);
     expect(lines).toEqual(["· system (init)", "· assistant", "· result (success)"]);
     expect(raws.map((r) => JSON.parse(r).type)).toEqual(["system", "assistant", "result"]);
+  });
+});
+
+describe("resolveLoggedModel — real id → pinned → sentinel (T-005-01)", () => {
+  test("the real stream id wins when present (even over a pin)", () => {
+    expect(resolveLoggedModel("claude-opus-4-8[1m]", "claude-opus-4-8")).toBe("claude-opus-4-8[1m]");
+  });
+  test("falls back to the caller's pinned id when no real id was observed", () => {
+    expect(resolveLoggedModel(undefined, "claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
+  });
+  test("falls back to the DEFAULT_MODEL sentinel when neither is present (e.g. a timed-out run)", () => {
+    expect(resolveLoggedModel(undefined, undefined)).toBe(DEFAULT_MODEL);
   });
 });
