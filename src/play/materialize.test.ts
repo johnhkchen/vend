@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   DraftPhase,
   DraftPriority,
@@ -6,8 +9,11 @@ import type {
   DraftType,
   StoryDraft,
   TicketDraft,
+  WorkPlan,
 } from "../../baml_client/index.ts";
 import {
+  IdCollisionError,
+  materialize,
   PHASE_ALIAS,
   PRIORITY_ALIAS,
   renderStoryFile,
@@ -111,5 +117,67 @@ describe("alias maps cover every BAML enum member", () => {
     expect(STATUS_ALIAS.InProgress).toBe("in-progress");
     expect(PRIORITY_ALIAS.Critical).toBe("critical");
     expect(PHASE_ALIAS.Structure).toBe("structure");
+  });
+});
+
+// T-004-02 collision guard: a REAL-FS fixture test (no BAML addon — the WorkPlan is a
+// plain object cast to the erased type, exactly as the draft fixtures above are). The
+// guard lives inside `materialize`, so we exercise `materialize` directly: gather →
+// detectCollisions → refuse-before-write. fs is addon-safe; only the BAML native addon
+// is forbidden in `bun test`. Each test gets its own mkdtemp dir, removed in afterEach.
+
+/** A plain-object WorkPlan from id-only stories/tickets, reusing the draft fixtures for
+ *  the rest of the required fields. Cast to the (runtime-erased) WorkPlan type. */
+const workPlan = (over: { storyIds?: string[]; ticketIds?: string[] } = {}): WorkPlan =>
+  ({
+    stories: (over.storyIds ?? []).map((id) => story({ id, tickets: [] })),
+    tickets: (over.ticketIds ?? []).map((id) => ticket({ id })),
+  }) as unknown as WorkPlan;
+
+describe("materialize — cross-board collision guard (T-004-02)", () => {
+  const dirs: string[] = [];
+  async function targets(): Promise<{ storiesDir: string; ticketsDir: string; root: string }> {
+    const root = await mkdtemp(join(tmpdir(), "vend-materialize-"));
+    dirs.push(root);
+    return { root, storiesDir: join(root, "stories"), ticketsDir: join(root, "tickets") };
+  }
+  afterEach(async () => {
+    while (dirs.length) await rm(dirs.pop() as string, { recursive: true, force: true });
+  });
+
+  test("populated board → refuses (names the reused id) and writes nothing", async () => {
+    const { storiesDir, ticketsDir } = await targets();
+    // Seed a hand-authored ticket the plan is about to re-mint.
+    await mkdir(ticketsDir, { recursive: true });
+    const sentinelPath = join(ticketsDir, "T-001-01.md");
+    const sentinelBody = "hand-authored — must not be clobbered\n";
+    await writeFile(sentinelPath, sentinelBody, "utf8");
+
+    const plan = workPlan({ ticketIds: ["T-001-01", "T-009-02"] });
+
+    let caught: unknown;
+    await materialize(plan, { storiesDir, ticketsDir }).catch((e) => {
+      caught = e;
+    });
+    expect(caught).toBeInstanceOf(IdCollisionError);
+    expect((caught as IdCollisionError).collisions).toEqual(["T-001-01"]);
+
+    // Verified on disk, not just a flag: no NEW files; sentinel untouched.
+    expect((await readdir(ticketsDir)).sort()).toEqual(["T-001-01.md"]);
+    expect(await readFile(sentinelPath, "utf8")).toBe(sentinelBody);
+    // The stories dir was never created (the throw preceded every mkdir).
+    expect(await readdir(storiesDir).catch(() => "ENOENT")).toBe("ENOENT");
+  });
+
+  test("fresh/disjoint board → materializes normally", async () => {
+    const { storiesDir, ticketsDir } = await targets();
+    const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01"] });
+
+    const result = await materialize(plan, { storiesDir, ticketsDir });
+
+    expect((await readdir(storiesDir)).sort()).toEqual(["S-009.md"]);
+    expect((await readdir(ticketsDir)).sort()).toEqual(["T-009-01.md"]);
+    expect(result.storyFiles).toHaveLength(1);
+    expect(result.ticketFiles).toHaveLength(1);
   });
 });

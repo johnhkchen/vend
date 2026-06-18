@@ -34,9 +34,11 @@ export const DEFAULT_RUN_LOG_PATH = ".vend/runs.jsonl";
  * a literal union a `switch` can check exhaustively. Each maps to a state the other
  * modules already produce: `timed-out` ← seam's `ClaudeTimeoutError`;
  * `budget-exhausted` ← budget's `check` returning `exhausted`; `gate-failed` ← a
- * gate verdict; `success` ← none tripped. The runner classifies; the log records.
+ * gate verdict; `id-collision` ← `materialize`'s cross-board guard refusing a plan
+ * whose ids already live on the board (T-004-02); `success` ← none tripped. The
+ * runner classifies; the log records.
  */
-export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted"] as const;
+export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "id-collision"] as const;
 
 /** The schema version stamped on every record. An append-only ledger is forever;
  *  this one integer is the cheapest insurance against an unversioned migration. */

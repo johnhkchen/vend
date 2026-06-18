@@ -83,14 +83,25 @@ async function listFilesRel(root: string, dir: string): Promise<string[]> {
   return out;
 }
 
-/** List the `*.md` ids (basename without extension) directly under a docs dir. */
-async function listIds(root: string, dir: string): Promise<string[]> {
+/**
+ * List the `*.md` ids (basename without extension) directly under `dir`. Tolerates a
+ * missing dir (a fresh board) → `[]`, never throws. EXPORTED so the materialize
+ * cross-board collision guard (T-004-02) reuses the exact listing the snapshot uses,
+ * pointed at its own full target dirs.
+ */
+export async function listIdsIn(dir: string): Promise<string[]> {
   try {
-    const entries: string[] = await readdir(join(root, dir));
+    const entries: string[] = await readdir(dir);
     return entries.filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3));
   } catch {
     return [];
   }
+}
+
+/** List the `*.md` ids directly under a docs dir, relative to `root`. Delegates to
+ *  {@link listIdsIn} so the snapshot and the materialize guard share one listing. */
+async function listIds(root: string, dir: string): Promise<string[]> {
+  return listIdsIn(join(root, dir));
 }
 
 /**

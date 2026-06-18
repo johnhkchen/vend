@@ -12,12 +12,18 @@
 // clock, no native addon — so materialize.test.ts is an ordinary pure-function test.
 // The baml import is TYPE-ONLY (erased under verbatimModuleSyntax), so it never loads
 // the BAML native addon into the test process (the T-002-02 precedent). `materialize`
-// is the single IMPURE verb (mkdir -p + writeFile), untested here exactly as
-// `appendRunLog`/`dispense` are — its logic is the tested pure render pair.
+// is the single IMPURE verb — now read-then-write: it first GATHERS the board ids
+// (listIdsIn) and runs the pure cross-board collision guard (detectCollisions,
+// T-004-01), refusing with a typed `IdCollisionError` BEFORE any mkdir/writeFile, then
+// does mkdir -p + writeFile. The verb itself is untested here exactly as
+// `appendRunLog`/`dispense` are; its guard is covered by a real-fs fixture test
+// (materialize.test.ts) and its pure judgment by id-guard.test.ts.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
+import { detectCollisions } from "./id-guard.ts";
+import { listIdsIn } from "./project-context.ts";
 
 /** Enum MEMBER → lisa frontmatter ALIAS. Keyed by the member string `b.parse`
  *  returns; values are the `@alias` tokens from decompose.baml. */
@@ -65,6 +71,26 @@ export interface MaterializeTargets {
 export interface MaterializeResult {
   readonly storyFiles: string[];
   readonly ticketFiles: string[];
+}
+
+/**
+ * Thrown by {@link materialize} when the plan's ids collide with ids already on the
+ * board — the cross-board andon (T-004-02). Carries the colliding ids (deduped and
+ * plan-ordered, straight from `detectCollisions`) so the runner names them in its
+ * stdout andon and maps the refusal to the `id-collision` run-log outcome. An EXPECTED
+ * refusal the runner catches — a sibling of the `RangeError` this module throws on
+ * enum/alias drift, distinguished by type so a genuine fs failure is not misread as a
+ * clean andon. Thrown BEFORE any write, so a collision leaves zero partial output (P7).
+ */
+export class IdCollisionError extends Error {
+  readonly collisions: readonly string[];
+  constructor(collisions: readonly string[]) {
+    super(
+      `materialize: refusing to write — ${collisions.length} id(s) already on the board: ${collisions.join(", ")}`,
+    );
+    this.name = "IdCollisionError";
+    this.collisions = collisions;
+  }
 }
 
 /** One rendered file: a `{id}.md` name + its full contents. */
@@ -151,8 +177,23 @@ export function renderStoryFile(s: StoryDraft): RenderedFile {
  * Write a cleared WorkPlan to disk. The single IMPURE verb — composes the pure render
  * pair with `mkdir -p` + `writeFile`. Not unit-tested (its logic is the tested render
  * pair). Only called on a CLEAR verdict; the runner never reaches here on a STOP.
+ *
+ * Cross-board collision guard FIRST (T-004-02): gather the ids already living under the
+ * target dirs and run the pure `detectCollisions`; if the plan re-mints any, refuse
+ * with {@link IdCollisionError} BEFORE the first `mkdir`/`writeFile`. The throw precedes
+ * every write, so a refused plan materializes nothing — "no partial materialization"
+ * (P7) is structural, not a cleanup. A fresh/disjoint board gathers `[]` and writes
+ * normally.
  */
 export async function materialize(plan: WorkPlan, targets: MaterializeTargets): Promise<MaterializeResult> {
+  const existing = [
+    ...(await listIdsIn(targets.storiesDir)),
+    ...(await listIdsIn(targets.ticketsDir)),
+  ];
+  const generated = [...plan.stories.map((s) => s.id), ...plan.tickets.map((t) => t.id)];
+  const collisions = detectCollisions(generated, existing);
+  if (collisions.length > 0) throw new IdCollisionError(collisions);
+
   await mkdir(targets.storiesDir, { recursive: true });
   await mkdir(targets.ticketsDir, { recursive: true });
 

@@ -29,7 +29,7 @@ import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from
 import { clear, isStop, type GateResult } from "../gate/gates.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import { assembleInputs } from "./project-context.ts";
-import { materialize } from "./materialize.ts";
+import { materialize, IdCollisionError } from "./materialize.ts";
 import { classify, makeStreamSink } from "./decompose-epic-core.ts";
 
 // The runner's PURE decision core lives in ./decompose-epic-core.ts (classify,
@@ -157,16 +157,32 @@ export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
   const verdict = classify({ timedOut, budgetOutcome, gateResult });
 
   let materialized = false;
+  // The collision guard lives inside `materialize` (T-004-02) and refuses by throwing
+  // BEFORE any write, so a re-minted id never reaches here as a CLEAR-then-clobber. A
+  // refusal relabels an otherwise-`success` verdict to `id-collision` for the one
+  // run-log record; the gates still genuinely passed, so `verdict.gateLog` is logged
+  // unchanged. Any non-collision throw is a genuine fs failure, not a clean outcome —
+  // re-raised, mirroring the seam's non-timeout handling above.
+  let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && plan) {
-    await materialize(plan, {
-      storiesDir: join(root, "docs", "active", "stories"),
-      ticketsDir: join(root, "docs", "active", "tickets"),
-    });
-    const validated = await lisaValidate(root);
-    materialized = validated.ok;
-    process.stdout.write(
-      validated.ok ? "· lisa validate ✓\n" : `· lisa validate ✗\n${validated.output}\n`,
-    );
+    try {
+      await materialize(plan, {
+        storiesDir: join(root, "docs", "active", "stories"),
+        ticketsDir: join(root, "docs", "active", "tickets"),
+      });
+      const validated = await lisaValidate(root);
+      materialized = validated.ok;
+      process.stdout.write(
+        validated.ok ? "· lisa validate ✓\n" : `· lisa validate ✗\n${validated.output}\n`,
+      );
+    } catch (e) {
+      if (e instanceof IdCollisionError) {
+        outcome = "id-collision";
+        process.stdout.write(`· andon: id-collision — reused board id(s): ${e.collisions.join(", ")}\n`);
+      } else {
+        throw e;
+      }
+    }
   } else if (verdict.outcome !== "success") {
     process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateResult, budgetOutcome)}\n`);
   }
@@ -176,7 +192,7 @@ export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
     play: PLAY,
     epic: epicId,
     model,
-    outcome: verdict.outcome,
+    outcome,
     usage: (result?.usage ?? {}) as Usage,
     costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
     gateResults: verdict.gateLog,
@@ -184,7 +200,7 @@ export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
     endedAt: new Date().toISOString(),
   });
 
-  return { runId, outcome: verdict.outcome, materialized };
+  return { runId, outcome, materialized };
 }
 
 /** A short andon suffix for stdout — names the gate/budget reason when there is one. */
