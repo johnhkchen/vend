@@ -34,7 +34,17 @@ describe("parseArgs", () => {
   test("unknown command / play → usage", () => {
     expect(parseArgs(["frobnicate"])).toEqual({ cmd: "usage", error: "unknown command: frobnicate" } as never);
     expect(parseArgs(["run", "summon"]).cmd).toBe("usage");
-    expect(parseArgs([])).toEqual({ cmd: "usage" });
+  });
+  test("bare `vend` is the browse surface (T-003-02)", () => {
+    expect(parseArgs([])).toEqual({ cmd: "browse", all: false });
+  });
+  test("`vend --all` browses with hidden rows revealed", () => {
+    expect(parseArgs(["--all"])).toEqual({ cmd: "browse", all: true });
+  });
+  test("a bare selection is not browse — falls through to usage until T-003-04", () => {
+    // `--all` only triggers browse when it is the WHOLE argv; a selection token is not.
+    expect(parseArgs(["1,2"]).cmd).toBe("usage");
+    expect(parseArgs(["1", "--all"]).cmd).toBe("usage");
   });
   test("missing epic path → usage", () => {
     expect(parseArgs(["run", "decompose-epic", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing <epic.md>" });

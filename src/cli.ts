@@ -17,6 +17,7 @@ export const USAGE = "usage: vend run decompose-epic <epic.md> --budget <ms>,<to
 /** A successfully parsed command, or a usage request carrying the reason. */
 export type ParsedCommand =
   | { readonly cmd: "run"; readonly play: "decompose-epic"; readonly epicPath: string; readonly budget: Budget }
+  | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "usage"; readonly error?: string };
 
 /**
@@ -51,6 +52,11 @@ export function parseBudgetArg(s: string): Budget {
  * resolves to a `usage` result with an error string for the shell to print.
  */
 export function parseArgs(argv: readonly string[]): ParsedCommand {
+  // Bare `vend` (no args) is the browse surface (T-003-02); `vend --all` reveals the
+  // hidden blocked/leaf rows. A selection like `1,2` is dispatch (T-003-04) — it falls
+  // through to the existing usage path here until that ticket extends this parser.
+  if (argv.length === 0) return { cmd: "browse", all: false };
+  if (argv.every((a) => a === "--all")) return { cmd: "browse", all: true };
   if (argv[0] !== "run") return { cmd: "usage", error: argv.length ? `unknown command: ${argv[0]}` : undefined };
   if (argv[1] !== "decompose-epic") return { cmd: "usage", error: `unknown play: ${argv[1] ?? "(none)"}` };
   const epicPath = argv[2];
@@ -78,6 +84,14 @@ if (import.meta.main) {
     if (parsed.error) process.stderr.write(`${parsed.error}\n`);
     process.stderr.write(`${USAGE}\n`);
     process.exit(2);
+  }
+  if (parsed.cmd === "browse") {
+    // Bare `vend`: gather → rank → render → persist `.vend/menu.json` → print. Instant,
+    // deterministic, no LLM. Lazy import keeps the browse deps off the pure-parse path.
+    const { browseShelf } = await import("./shelf/gather.ts");
+    const { menu } = await browseShelf({ all: parsed.all });
+    process.stdout.write(`${menu}\n`);
+    process.exit(0);
   }
   const { runDecomposeEpic } = await import("./play/decompose-epic.ts");
   const summary = await runDecomposeEpic({ epicPath: parsed.epicPath, budget: parsed.budget });
