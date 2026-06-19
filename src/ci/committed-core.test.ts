@@ -47,6 +47,14 @@ describe("classifyPorcelain", () => {
   test("ci/ source is in scope", () => {
     expect(classifyPorcelain(" M ci/src/index.ts\n")).toEqual(["ci/src/index.ts"]);
   });
+  test(".lisa/hooks/ source is in scope (the gate's own trigger is policed — T-012-01)", () => {
+    // A dirty/untracked hook script must ANDON: the scripts that fire the gate are not self-exempt.
+    expect(classifyPorcelain("?? .lisa/hooks/on-stop.sh\n")).toEqual([".lisa/hooks/on-stop.sh"]);
+  });
+  test("non-hook .lisa/ paths stay out of scope (signals/layout are legit gitignored runtime)", () => {
+    // Scope is `.lisa/hooks/` ONLY — broadening to `.lisa/` would flag legitimately-uncommitted state.
+    expect(classifyPorcelain(" M .lisa/signals/x.json\n M .lisa-layout.kdl\n")).toEqual([]);
+  });
   test("gitignored runtime never appears in porcelain → empty (belt: even if it did, not source-prefixed)", () => {
     // git omits ignored paths from --porcelain (no --ignored); this just documents the intent.
     expect(classifyPorcelain(" M node_modules/x.js\n M baml_client/index.ts\n")).toEqual([]);
@@ -71,6 +79,6 @@ describe("classifyPorcelain", () => {
 
 describe("SOURCE_PREFIXES (R12 shared contract)", () => {
   test("is the exact scoped set", () => {
-    expect(SOURCE_PREFIXES).toEqual(["src/", "baml_src/", "ci/"]);
+    expect(SOURCE_PREFIXES).toEqual(["src/", "baml_src/", "ci/", ".lisa/hooks/"]);
   });
 });

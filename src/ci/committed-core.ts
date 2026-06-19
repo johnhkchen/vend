@@ -24,8 +24,14 @@
  * derives scope from THIS export and never re-lists it. `baml_client/` is generated (gitignored)
  * and so is NOT here; `baml_src/` is the authored source and IS. Widening the contract later is
  * a one-line edit here.
+ *
+ * `.lisa/hooks/` is in scope (T-012-01, E-012): those shell scripts are the trigger that FIRES this
+ * gate, so leaving them unpoliced would let the gate self-exempt its own source — the blind spot
+ * E-012 closes. Scope is `.lisa/hooks/` ONLY, not `.lisa/`: other `.lisa/` paths (`signals/`, the
+ * layout file) are legitimately-uncommitted runtime state and are gitignored, so they never appear
+ * in porcelain and must not be flagged.
  */
-export const SOURCE_PREFIXES = ["src/", "baml_src/", "ci/"] as const;
+export const SOURCE_PREFIXES = ["src/", "baml_src/", "ci/", ".lisa/hooks/"] as const;
 
 /**
  * Extract the path field from ONE `git status --porcelain` v1 line. PURE/TOTAL.
