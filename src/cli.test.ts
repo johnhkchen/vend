@@ -145,6 +145,32 @@ describe("parseArgs", () => {
     expect(parseArgs(["chain", "sig", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
   });
 
+  // T-016-02: the expand-fragment demand-extraction gesture (mirrors chain's parse shape).
+  test("expand <fragment> (no budget) → an expand command, no budget", () => {
+    expect(parseArgs(["expand", "this-is-rough"])).toEqual({ cmd: "expand", fragment: "this-is-rough" });
+  });
+  test("expand joins multi-token and single-token fragments to the same string", () => {
+    const multi = parseArgs(["expand", "this", "feels", "rough"]);
+    const single = parseArgs(["expand", "this feels rough"]);
+    expect(multi).toEqual({ cmd: "expand", fragment: "this feels rough" });
+    expect(single).toEqual({ cmd: "expand", fragment: "this feels rough" });
+  });
+  test("expand <fragment> --budget carries the override", () => {
+    expect(parseArgs(["expand", "a rough TODO", "--budget", "100,200"])).toEqual({
+      cmd: "expand",
+      fragment: "a rough TODO",
+      budget: { timeMs: 100, tokens: 200 },
+    });
+  });
+  test("expand with no fragment → usage", () => {
+    expect(parseArgs(["expand"])).toEqual({ cmd: "usage", error: "missing <fragment>" });
+    expect(parseArgs(["expand", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing <fragment>" });
+  });
+  test("expand <fragment> --budget malformed → usage", () => {
+    expect(parseArgs(["expand", "frag", "--budget", "nope"]).cmd).toBe("usage");
+    expect(parseArgs(["expand", "frag", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
+  });
+
   // T-013-02: the read-only Ledger envelope readout.
   test("envelope <play> (no tier) → default tier standard", () => {
     expect(parseArgs(["envelope", "decompose-epic"])).toEqual({

@@ -16,6 +16,7 @@ import type { ValueTier } from "./shelf/menu.ts";
 export const USAGE =
   "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened]\n" +
   "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
+  "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -41,6 +42,7 @@ export type ParsedCommand =
       readonly intervened?: boolean;
     }
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
+  | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -105,6 +107,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length === 0) return { cmd: "browse", all: false };
   if (argv[0] === "run") return parseRunArgs(argv);
   if (argv[0] === "chain") return parseChainArgs(argv);
+  if (argv[0] === "expand") return parseExpandArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -229,6 +232,45 @@ function parseChainArgs(argv: readonly string[]): ParsedCommand {
 
   const signal = positional.join(" ");
   return budget ? { cmd: "chain", signal, budget } : { cmd: "chain", signal };
+}
+
+/**
+ * Parse the `expand <fragment> [--budget <v>]` path — the demand-extraction gesture (T-016-02). PURE.
+ * A copy of {@link parseChainArgs}'s shape: the fragment is every non-flag token after `expand`,
+ * joined with a space (so an unquoted multi-word fragment and a quoted single-token one both
+ * round-trip); `--budget` is OPTIONAL (the gesture defaults to the play's warranted envelope). PE-1:
+ * exactly one explicitly typed fragment, never a TODO-file drain — that is why `expand` is its own
+ * command, like `chain`.
+ */
+function parseExpandArgs(argv: readonly string[]): ParsedCommand {
+  const positional: string[] = [];
+  let budgetVal: string | undefined;
+  let sawBudgetFlag = false;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--budget") {
+      sawBudgetFlag = true;
+      budgetVal = argv[++i];
+    } else {
+      positional.push(a);
+    }
+  }
+
+  if (positional.length === 0) return { cmd: "usage", error: "missing <fragment>" };
+
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
+  } else if (sawBudgetFlag) {
+    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  }
+
+  const fragment = positional.join(" ");
+  return budget ? { cmd: "expand", fragment, budget } : { cmd: "expand", fragment };
 }
 
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
@@ -374,6 +416,19 @@ if (import.meta.main) {
     }
     if (result.halted) process.stderr.write(`chain halted: ${result.haltReason}\n`);
     process.exit(result.outcome === "success" && !result.halted ? 0 : 1);
+  }
+
+  if (parsed.cmd === "expand") {
+    // The demand-extraction gesture (T-016-02): cast ExpandFragment on ONE explicitly typed fragment
+    // (PE-1). On success it STAGES a structured signal under `docs/active/pm/staged/` for a human
+    // pull; an honest-empty / read-never-invent refusal halts as a `gate-failed` andon with nothing
+    // staged. `--budget` defaults to the play's warranted envelope. Lazy import keeps the shell (and
+    // its BAML addon) off the pure-parse path, exactly as the chain/run arms do.
+    const { castExpandFragment, expandFragmentPlay } = await import("./play/expand-fragment.ts");
+    const budget = parsed.budget ?? expandFragmentPlay.budget;
+    const summary = await castExpandFragment({ fragment: parsed.fragment, budget });
+    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.exit(summary.outcome === "success" ? 0 : 1);
   }
 
   if (parsed.cmd === "envelope") {
