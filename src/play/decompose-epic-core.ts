@@ -27,6 +27,26 @@ import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 export const DEFAULT_MODEL = "claude-cli-default";
 
 /**
+ * DecomposeEpic's WARRANTED DEFAULT agentic turn cap (T-015-02), set on
+ * `decomposeEpicPlay.maxTurns` and resolved by the cast loop as
+ * `resolveMaxTurns(opts.maxTurns, play.maxTurns)` (the per-cast override still wins).
+ * Lives in the addon-free core so its value is unit-testable without loading BAML.
+ *
+ * JUDGMENT, not a frozen guess:
+ *  - clean decompose runs land at 1–7 turns (live transcripts; `num_turns` 1,2,2,3,4,7);
+ *  - the ~85–95k token tail (E-014's E2 probe, 2026-06-19) is agentic WANDERING, not input
+ *    size — `claude -p` is the full agent (A2's tiny fixture once burned 119k);
+ *  - 15 ≈ 2× the observed clean-run ceiling — generous enough that no legitimate run is cut
+ *    off (a false andon is worse than one tail through — the ticket's tie-breaker; AC4),
+ *    tight enough to bound the unbounded wander behind the tail (AC3).
+ *
+ * It is a SEED, not a constant frozen forever: `turnsUsed` is now logged on every run
+ * (T-015-02 AC2), so a later iteration replaces 15 with a p95-of-clean number read from the
+ * ledger (the E-014 / IA-14 measure-then-tighten discipline). See work/T-015-02/design.md D2.
+ */
+export const DECOMPOSE_MAX_TURNS = 15;
+
+/**
  * Pick the model id to stamp on the run log: the REAL id observed on the dispense
  * stream, else the caller's pinned id (`opts.model`), else the {@link DEFAULT_MODEL}
  * sentinel (T-005-01). PURE — the sentinel tail guarantees the non-empty string the

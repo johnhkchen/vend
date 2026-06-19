@@ -137,6 +137,15 @@ export interface Play<I, O> {
   readonly effect: (out: O, ctx: CastContext<I>) => Promise<EffectResult>;
   /** The default mana cost — the warranted budget envelope (overridable at the counter). */
   readonly budget: Budget;
+  /**
+   * The warranted DEFAULT agentic turn cap (the mid-flight bound, IA-8) — the per-play
+   * sibling of {@link budget}, overridable per cast via `CastOptions.maxTurns` (T-015-01).
+   * Threaded to the seam as `--max-turns`. Omitted ⇒ no default ⇒ turns bounded only by the
+   * wall-clock latch + the token budget (so every play without one is unchanged). The number
+   * is a judgment calibrated from the play's measured turn distribution, not a frozen guess
+   * (T-015-02). The cast loop resolves it via `resolveMaxTurns(opts.maxTurns, play.maxTurns)`.
+   */
+  readonly maxTurns?: number;
   /** Classification metadata (color / type / rarity). */
   readonly card: Card;
 }

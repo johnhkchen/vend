@@ -40,6 +40,7 @@ import {
   type Play,
 } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
+import { DECOMPOSE_MAX_TURNS } from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
 import { assembleInputs, type DecomposeInputs } from "./project-context.ts";
 import { materialize, IdCollisionError } from "./materialize.ts";
@@ -169,6 +170,10 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,
   budget: { timeMs: 7_200_000, tokens: 50_000 },
+  // The warranted DEFAULT turn cap (T-015-02) — the mid-flight bound on the agentic wandering
+  // behind decompose's ~85–95k token tail (E-014 E2). Generous over the 1–7-turn clean band;
+  // the per-cast override (CastOptions.maxTurns) still wins. Justified at DECOMPOSE_MAX_TURNS.
+  maxTurns: DECOMPOSE_MAX_TURNS,
   card: { color: ["blue", "white"], type: "permanent", rarity: "mythic" } satisfies Card,
 };
 

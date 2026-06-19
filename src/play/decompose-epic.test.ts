@@ -4,6 +4,7 @@ import type { GateResult } from "../gate/gates.ts";
 import type { StreamMessage } from "../executor/claude.ts";
 import {
   classify,
+  DECOMPOSE_MAX_TURNS,
   DEFAULT_MODEL,
   formatMessage,
   gateRowsFor,
@@ -100,5 +101,15 @@ describe("resolveLoggedModel — real id → pinned → sentinel (T-005-01)", ()
   });
   test("falls back to the DEFAULT_MODEL sentinel when neither is present (e.g. a timed-out run)", () => {
     expect(resolveLoggedModel(undefined, undefined)).toBe(DEFAULT_MODEL);
+  });
+});
+
+describe("DECOMPOSE_MAX_TURNS — the warranted default turn cap (T-015-02 AC #1)", () => {
+  test("is 15 — the documented judgment (≈2× the 1–7-turn clean band; pinned against drift)", () => {
+    expect(DECOMPOSE_MAX_TURNS).toBe(15);
+  });
+  test("is a positive integer (a usable --max-turns value the seam can stringify)", () => {
+    expect(Number.isInteger(DECOMPOSE_MAX_TURNS)).toBe(true);
+    expect(DECOMPOSE_MAX_TURNS).toBeGreaterThan(0);
   });
 });
