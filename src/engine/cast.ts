@@ -46,6 +46,9 @@ export interface CastOptions {
   readonly project?: string;
   /** Pinned model id; omitted ⇒ CLI default (and {@link DEFAULT_MODEL} logged). */
   readonly model?: string;
+  /** Agentic turn cap (IA-8, the mid-flight bound) → threaded to the seam as `--max-turns`.
+   *  Omitted ⇒ no flag ⇒ a run bounded only by the wall-clock latch + token/cost budget. */
+  readonly maxTurns?: number;
   /** Stable run id; derived from `startedAt` if omitted. */
   readonly runId?: string;
   /** Override the transcript dir (default `<root>/.vend/transcripts`). */
@@ -120,6 +123,7 @@ export async function castPlay<I, O>(
     result = await dispense({
       prompt,
       model: opts.model, // undefined ⇒ no --model flag ⇒ CLI default
+      maxTurns: opts.maxTurns, // undefined ⇒ no --max-turns flag ⇒ unbounded turns
       onMessage,
       timeoutMs: timeoutMsFor(budget),
     });
