@@ -172,7 +172,7 @@ export function humanizeTitle(title: string): string {
 /** Collapse a node's raw status/phase into one of the label keys (`open`/`in_progress`/`done`). A
  *  ticket whose phase is `done` reads as done even if its status is still `open` (the §1c "✅ Done"
  *  case). Hyphenated `in-progress` is normalized to the `in_progress` label key. */
-function stateKey(node: AnyNode): string {
+export function stateKey(node: AnyNode): string {
   const done = node.status === "done" || (node.kind === "ticket" && node.phase === "done");
   if (done) return "done";
   if (node.status === "in-progress" || node.status === "review") return "in_progress";
