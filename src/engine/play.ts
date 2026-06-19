@@ -101,6 +101,14 @@ export interface EffectResult {
   readonly outcome?: RunOutcome;
   readonly detail?: string;
   readonly artifacts?: readonly string[];
+  /**
+   * The single canonical reference a downstream play threads on — the chain primitive
+   * (T-011-01). DISTINCT from `artifacts` (ALL files written, for provenance): `produced` is
+   * the ONE handle the next play consumes (e.g. ProposeEpic's minted epic path → DecomposeEpic's
+   * `epicPath`, wired in T-011-02). Optional + backward-compatible; an effect that surfaces
+   * nothing threadable omits it, and `castChain` then halts rather than thread `undefined`.
+   */
+  readonly produced?: string;
 }
 
 // ── The Play contract ─────────────────────────────────────────────────────────────────

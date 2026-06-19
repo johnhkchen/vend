@@ -115,5 +115,7 @@ export async function captureNoteEffect(note: Note, ctx: CastContext<NoteInputs>
   const path = join(dir, name);
   await mkdir(dir, { recursive: true });
   await writeFile(path, body, "utf8");
-  return { ok: true, detail: `wrote ${path}`, artifacts: [path] };
+  // `produced` (the written path) makes a note threadable by the chain primitive (T-011-01),
+  // for consistency with proposeEpicEffect — the same explicit downstream handle as `artifacts[0]`.
+  return { ok: true, detail: `wrote ${path}`, artifacts: [path], produced: path };
 }

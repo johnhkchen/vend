@@ -83,5 +83,8 @@ export async function proposeEpicEffect(
   const path = join(dir, `${minted}.md`);
   await mkdir(dir, { recursive: true });
   await writeFile(path, body, "utf8");
-  return { ok: true, detail: `minted ${minted} → ${path}`, artifacts: [path] };
+  // `produced` is the minted epic path the chain primitive (T-011-01) threads into the next
+  // play — DecomposeEpic's `epicPath` (wired in T-011-02). The same path as `artifacts[0]`, but
+  // declared explicitly: a deliberate downstream handle, not an accident of write order.
+  return { ok: true, detail: `minted ${minted} → ${path}`, artifacts: [path], produced: path };
 }

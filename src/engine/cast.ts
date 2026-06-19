@@ -56,6 +56,13 @@ export interface RunSummary {
   readonly outcome: RunOutcome;
   /** Did the effect land (the play-generic analogue of the welded runner's `materialized`). */
   readonly materialized: boolean;
+  /**
+   * The artifact reference this cast produced (lifted off `EffectResult.produced`), surfaced so
+   * a chain (T-011-01) can thread it into the next play's input. Present ONLY on a materialized
+   * cast whose effect set it; `undefined` otherwise (a STOP never runs the effect; an effect may
+   * surface nothing threadable). A `castChain` halts rather than thread an `undefined`.
+   */
+  readonly produced?: string;
 }
 
 /**
@@ -125,10 +132,14 @@ export async function castPlay<I, O>(
   // (a genuine fs failure, not the expected relabel) propagates — it is a real bug, not a
   // clean outcome, mirroring the seam's non-timeout handling above.
   let materialized = false;
+  let produced: string | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
     const eff = await play.effect(output, ctx);
     materialized = eff.ok;
+    // Surface the produced reference ONLY when the effect actually landed — a chain threads it
+    // into the next play (T-011-01); a failed (e.g. id-collision) effect surfaces nothing.
+    produced = eff.ok ? eff.produced : undefined;
     if (eff.outcome) outcome = eff.outcome;
     process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
   } else if (verdict.outcome !== "success") {
@@ -156,7 +167,7 @@ export async function castPlay<I, O>(
     opts.runLogPath ? { path: opts.runLogPath } : {},
   );
 
-  return { runId, outcome, materialized };
+  return { runId, outcome, materialized, produced };
 }
 
 /** A short andon suffix for stdout — names the gate/budget reason when there is one. Pure;

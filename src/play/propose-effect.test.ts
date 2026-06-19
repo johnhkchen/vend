@@ -77,6 +77,10 @@ describe("proposeEpicEffect — mints the authoritative disjoint id and writes a
 
       const expected = join(root, EPIC_DIR, "E-010.md");
       expect(res.artifacts).toEqual([expected]);
+      // T-011-01: the effect surfaces the minted path as `produced` — the handle the chain
+      // primitive threads into the next play. The explicit downstream handle == artifacts[0].
+      expect(res.produced).toBe(expected);
+      expect(res.produced).toBe(res.artifacts?.[0]);
 
       const written = await readFile(expected, "utf8");
       // the MINTED id (E-010), NOT the model's card.id (E-999) — proves the re-mint (D2).
