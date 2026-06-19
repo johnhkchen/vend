@@ -99,7 +99,10 @@ export const proposeEpicPlay: Play<ProposeEpicInputs, EpicCard> = {
   parse: parseProposeEpic,
   gates: (card, ctx) => clear(card, { charter: ctx.inputs.charter, existingEpicIds: ctx.inputs.existingEpicIds }),
   effect: proposeEpicEffect,
-  budget: { timeMs: 1_800_000, tokens: 16_000 },
+  // Recalibrated 2026-06-19 from MEASURED use (E-018 consolidation): the 16k cold-start guess
+  // under-shot — a live chain cast spent ~109k (budget-exhausted at 60k). 150k clears the
+  // observed spend with headroom. (E-013's loop sets this from the real log once it warms.)
+  budget: { timeMs: 1_800_000, tokens: 150_000 },
   card: { color: ["blue"], type: "permanent", rarity: "rare" } satisfies Card,
 };
 

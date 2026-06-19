@@ -93,7 +93,11 @@ export const expandFragmentPlay: Play<ExpandFragmentInputs, Signal> = {
   parse: parseExpandFragment,
   gates: (signal, ctx) => clear(signal, { charter: ctx.inputs.charter }),
   effect: expandFragmentEffect,
-  budget: { timeMs: 1_200_000, tokens: 12_000 },
+  // Recalibrated 2026-06-19 from MEASURED use (E-018 consolidation): the 12k cold-start guess
+  // was absurd — a live cast spent 211k (a 5-turn wander) and even a 100k override under-shot.
+  // 250k clears the observed tail with headroom. (E-013's loop sets this from the real log once
+  // it warms; by hand until then — N=1, but far better than the guess.)
+  budget: { timeMs: 1_200_000, tokens: 250_000 },
   card: { color: ["blue", "green"], type: "permanent", rarity: "rare" } satisfies Card,
 };
 
