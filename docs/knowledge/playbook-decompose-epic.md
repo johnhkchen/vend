@@ -145,6 +145,45 @@ The run is allocated time/tokens up front and is accountable to them (P7). The
 wall-clock guard kills a non-returning dispense; `result.usage` meters tokens.
 Exhaustion is a hard stop with a clear andon, not a silent overrun.
 
+**The envelope is measured, not guessed** *(learned 2026-06-19)*. The up-front
+allocation is only honest if it reflects the play's *actual* cost. Decompose's first
+envelope (50k tokens) was a cold-start **guess**; the E-014/E-015 probes measured its use
+as **bimodal — lean runs <50k, real-work runs ~85–94k** — so it was recalibrated
+**50k→120k** to clear the upper tail with headroom. *A guessed-too-thin envelope
+false-andons legitimate work* (8/10 probe runs budget-exhausted at 50k while finishing
+fine). The discipline (E-013 / IA-12): set the envelope from the run-log's **measured
+tails at the value-tier percentile**, not a number someone picked. And separate the two
+fat-tail *causes* — **genuine cost** → recalibrate the envelope up; **agentic wandering**
+→ cap it with `--max-turns` (E-015). A `--max-turns` cap that *doesn't move the tail*
+proves the cost is genuine, not sprawl — **measurement, not assumption, picks the lever.**
+
+## The clearing cycle — where this play feeds back *(learned 2026-06-19)*
+
+Decompose-Epic is one **stage of a self-improving loop**, not a terminal step. Its
+run-log actuals flow back into the system that sized and steered it:
+
+```
+demand → propose → DECOMPOSE → lisa builds → run-log (actuals) ─┐
+   ▲                  ▲                                          │
+   │                  └──── recalibrated envelope (E-013/IA-12) ◄┘   (guess → measured)
+   └──── evidence gate (E-014): do the gates actually deliver? ◄──── ledger
+```
+
+- **The envelope recalibrates from the play's own history** (E-013/IA-12): actuals →
+  measured percentile → the next cast's pre-filled budget. The guess→measured graduation
+  is the budget-side sibling of the rule-set's doc→code graduation.
+- **An evidence gate can hold the line *above* the play** (E-014): the gates here
+  *produce* gated work; the ledger measures whether they *deliver*. Gate-driven
+  output-variance reduction measured at **~21%** (real, modest); walk-away trust returned
+  **HOLD**, parking downstream autonomy (the macro-wallet) until measured. The gate doesn't
+  only stop a bad *unit* — it can stop a bad *roadmap*.
+- **The rule-set has stabilized.** Three further hand-decompositions this round
+  (E-013/E-014/E-015) **confirmed R1–R12 and added none** — the TPS *standard-stabilized →
+  ready-to-systematize* signal. With the build rules stable **and** the envelope now
+  measured, the play is close to the **automated cycle**: steer → propose → decompose →
+  build → measure → recalibrate, with the human at the **forks** (assent), not the keyboard
+  (articulation) — the `clearing-dynamics.md` collapse to *author + assent*.
+
 ## v0 scope — and where it stops
 
 In: **one hardcoded epic-decompose play**, real `claude -p` dispense wired to the

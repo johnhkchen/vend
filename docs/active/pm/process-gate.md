@@ -26,6 +26,9 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
+_(Processed 2026-06-19 — synthesized directly into `proposed-batch.md`: 6 ranked signals,
+recommended pull **`expand-fragment`**. The steering below produced it; gate stays down.)_
+
 Synthesize **this cycle's articulation-cost discovery** into a ranked, pull-disciplined
 batch (≤6, leverage-ranked, signals **un-elaborated** per PE-6, each naming the charter
 invariant it advances, plus one recommended next pull). Desk source: `brainstorm-lower-
