@@ -143,15 +143,42 @@ it turns "I don't know where to start" into "review a ranked list."
 
 ---
 
-## 8. Toward the skill (what gets distilled)
+## 8. Toward the skill — authoring spec (per Anthropic's skill best practices)
 
-This blueprint compresses into a bundled `SKILL.md`:
-- **Frontmatter `description`** — *when* to invoke (a project with `lisa`+`vend` present; a
-  request to "build/clear/pull/steer this project").
-- **Body** — §3 (the operating loop) as the procedure; §4 (gestures) as the command surface;
-  §5 (the discipline) as the guardrails; §6 (cold start) as the entry.
+This blueprint is the **"Claude A" operating manual**; the bundled skill is the lean version a
+fresh Claude Code (**"Claude B"**) loads in a `lisa init` + `vend init` project. Authoring
+constraints (from Anthropic's *Skill authoring best practices*):
 
-**Still to fill (v0 → v1):** the full plays catalog + each play's gates; the budget /
-recalibration model in operating terms; a troubleshooting section (andon types and the right
-response to each); the exact `vend init` distribution mechanics; worked examples of a full
-loop turn.
+**Frontmatter**
+- `name` — ≤64 chars, lowercase / numbers / hyphens only, no reserved words (`anthropic`,
+  `claude`); **gerund form** preferred. Draft: `driving-lisa-vend-projects`.
+- `description` — ≤1024 chars, **third person**, *what + when* (the trigger), a little **pushy**
+  (Claude under-triggers; the description alone decides selection). Draft:
+  > *"Drives a pull-based lisa+vend project: pulls demand from `docs/active/demand.md`, clears
+  > it into gated tickets via vend's plays (`vend chain`/`expand`/`survey`/`steer`), builds with
+  > `lisa loop`, verifies live (not `lisa status`), and sweeps. Use whenever working in a
+  > project that has `lisa init` + `vend init` (a `demand.md` board and `vend`/`lisa` commands),
+  > or when asked to build / clear / pull / steer / decompose / ship project work or to run the
+  > clearing loop on a feature or signal."*
+
+**Structure (progressive disclosure)** — keep `SKILL.md` **lean (< 500 lines)**; references
+**one level deep** from it; a table-of-contents atop any reference file > 100 lines:
+- `SKILL.md` — the premise + §3 the operating loop (with a **copyable checklist**) + §4 the
+  gesture table + pointers.
+- `discipline.md` (§5 guardrails) · `architecture.md` (§1–2 engines + pull model) ·
+  `troubleshooting.md` (andon types → the right response to each) · `cold-start.md` (§6).
+
+**Instruction style** — state each rule **and why** (so Claude generalizes to unanticipated
+cases); avoid bare all-caps `MUST/ALWAYS/NEVER` strings (a yellow flag: rigid letter, missed
+edge cases). vend/lisa are the **pre-made utility scripts** — say "**run** `vend chain …`"
+(execute, don't generate). Forward slashes; consistent terms; no time-sensitive info.
+
+**Build it evaluation-first** — write three real scenarios as the source of truth *before*
+fleshing the skill, e.g. (1) fresh project + a signal → cleared + built + verified; (2) a vague
+ask → `vend survey` → pull → build; (3) a loop left HEAD non-building → caught by `check:head`
++ fixed. Then author with one Claude, test with a *fresh* Claude on real tasks, and iterate
+from observed behavior (not assumptions). Test across the models it'll run on.
+
+**Still to fill (v0 → v1):** the full plays catalog + per-play gates; the budget/recalibration
+model in operating terms; the `troubleshooting.md` andon catalog; the `vend init` distribution
+mechanics; worked examples of a full loop turn.
