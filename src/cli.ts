@@ -16,7 +16,7 @@ import type { ValueTier } from "./shelf/menu.ts";
 export const USAGE =
   "usage: vend run <play> <epic.md> --budget <ms>,<tokens>\n" +
   "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
-  "       vend envelope <play> [--tier <keystone|high|standard|leaf>]";
+  "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]";
 
 /** The four leverage tiers (mirrors {@link ValueTier} in shelf/menu.ts), as a value tuple
  *  so `parseEnvelopeArgs` can membership-check a `--tier` word without importing the
@@ -29,7 +29,13 @@ export type ParsedCommand =
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
-  | { readonly cmd: "envelope"; readonly play: string; readonly tier: ValueTier }
+  | {
+      readonly cmd: "envelope";
+      readonly play: string;
+      readonly tier: ValueTier;
+      readonly estimate?: Budget;
+      readonly project?: string;
+    }
   | { readonly cmd: "usage"; readonly error?: string };
 
 /** A selection token's shape: digits, commas, ranges, whitespace — nothing else. The
@@ -83,26 +89,48 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
 }
 
 /**
- * Parse the read-only `envelope <play> [--tier <t>]` path — the Ledger readout that shows
- * a play's measured envelope proposed from its history (T-013-02, IA-12/13). PURE. The
- * play name is taken verbatim (any non-flag token); `--tier` is OPTIONAL, defaulting to
- * `standard` (p90 — the neutral middle), and is validated against the four leverage tiers
- * (an unknown tier is a usage error). This command never dispatches a cast — it only
- * displays — so it takes no `--budget`.
+ * Parse the read-only `envelope <play> [--tier <t>] [--estimate <ms>,<tokens>] [--project <id>]`
+ * path — the Ledger readout that shows a play's measured envelope proposed from its history
+ * (T-013-02, IA-12/13) and, bias-corrected against its {play, project} ratio history
+ * (T-013-03, IA-16). PURE. The play name is taken verbatim (any non-flag token); `--tier` is
+ * OPTIONAL, defaulting to `standard` (p90 — the neutral middle), validated against the four
+ * leverage tiers. `--estimate` is the OPTIONAL raw envelope to bias-correct (absent ⇒ the
+ * measured default feeds through, AC #4), parsed by {@link parseBudgetArg}; `--project` is the
+ * OPTIONAL project to correct against (absent ⇒ the dispatch shell defaults to the cwd
+ * basename). This command never dispatches a cast — it only displays — so it takes no
+ * `--budget`.
  */
 function parseEnvelopeArgs(argv: readonly string[]): ParsedCommand {
   const play = argv[1];
   if (!play || play.startsWith("--")) return { cmd: "usage", error: "missing <play>" };
 
   let tier: ValueTier = "standard";
-  const flagIdx = argv.indexOf("--tier", 2);
-  if (flagIdx >= 0) {
-    const word = argv[flagIdx + 1];
-    const match = VALUE_TIERS.find((t) => t === word);
-    if (!match) return { cmd: "usage", error: `--tier must be one of ${VALUE_TIERS.join(" | ")}, got ${JSON.stringify(word)}` };
-    tier = match;
+  let estimate: Budget | undefined;
+  let project: string | undefined;
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--tier") {
+      const word = argv[++i];
+      const match = VALUE_TIERS.find((t) => t === word);
+      if (!match) return { cmd: "usage", error: `--tier must be one of ${VALUE_TIERS.join(" | ")}, got ${JSON.stringify(word)}` };
+      tier = match;
+    } else if (a === "--estimate") {
+      const word = argv[++i];
+      if (word === undefined) return { cmd: "usage", error: "missing --estimate <ms>,<tokens>" };
+      try {
+        estimate = parseBudgetArg(word);
+      } catch (e) {
+        return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+      }
+    } else if (a === "--project") {
+      const word = argv[++i];
+      if (!word || word.startsWith("--")) return { cmd: "usage", error: "missing --project <id>" };
+      project = word;
+    } else {
+      return { cmd: "usage", error: `unknown envelope flag: ${a}` };
+    }
   }
-  return { cmd: "envelope", play, tier };
+  return { cmd: "envelope", play, tier, ...(estimate ? { estimate } : {}), ...(project ? { project } : {}) };
 }
 
 /**
@@ -280,13 +308,29 @@ if (import.meta.main) {
     // confidence label. Read-only — it DISPLAYS the measured default, it does not actuate
     // it into a dispatch (IA-14 — auto-widen/slow-tighten — is a later rung), so it always
     // exits 0. Lazy imports keep the ledger/shelf deps off the pure-parse path.
-    const { loadRunLog } = await import("./log/run-log.ts");
-    const { recalibrate, formatEnvelopeLabel } = await import("./ledger/recalibrate.ts");
+    const { loadRunLog, forPlay } = await import("./log/run-log.ts");
+    const { recalibrate, formatEnvelopeLabel, calibrate, learnBiasFactor, formatCorrectionLabel } = await import(
+      "./ledger/recalibrate.ts"
+    );
     const { budgetForTier } = await import("./shelf/gather.ts");
+    const { basename } = await import("node:path");
     const { records } = await loadRunLog();
     const result = recalibrate(parsed.play, records, parsed.tier, budgetForTier(parsed.tier));
     const { timeMs, tokens } = result.envelope;
     process.stdout.write(`${parsed.play} [${parsed.tier}]: ${tokens} tokens / ${timeMs} ms — ${formatEnvelopeLabel(result)}\n`);
+
+    // T-013-03: bias-correct a raw estimate against this {play, project}'s ratio history (IA-16).
+    // The estimate is the one supplied with --estimate, else the measured default feeds through
+    // (AC #4). The generic prior pools the play across ALL projects; the project level is this
+    // project's slice. Read-only — display, never actuation (IA-14 deferred), so still exit 0.
+    const project = parsed.project ?? basename(process.cwd());
+    const estimate = parsed.estimate ?? result.envelope;
+    const genericPrior = learnBiasFactor(forPlay(records, parsed.play));
+    const projectRecords = forPlay(records, parsed.play, { project });
+    const corr = calibrate(estimate, { play: parsed.play, project }, projectRecords, genericPrior);
+    process.stdout.write(
+      `  ↳ corrected [${project}]: ${corr.corrected.tokens} tokens / ${corr.corrected.timeMs} ms — ${formatCorrectionLabel(corr)}\n`,
+    );
     process.exit(0);
   }
 

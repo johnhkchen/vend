@@ -25,7 +25,7 @@
 // zero-coupling discipline (run-log ⊥ budget) holds: the Ledger is the consumer where
 // the two leaves meet, and nothing imports the Ledger back.
 
-import { forPlay, totalTokens, wallClockMs, type RunOutcome, type RunRecord } from "../log/run-log.ts";
+import { forPlay, projectOf, totalTokens, wallClockMs, type RunOutcome, type RunRecord } from "../log/run-log.ts";
 import type { Budget } from "../budget/budget.ts";
 import type { ValueTier } from "../shelf/menu.ts";
 
@@ -177,4 +177,165 @@ export function formatEnvelopeLabel(result: RecalibrateResult): string {
     return `measured · ${successes} casts · p${Math.round(p * 100)}${andon}`;
   }
   return successes === 0 ? "estimate (no data)" : `estimate (${successes} casts)`;
+}
+
+// ── Reference-class bias correction (T-013-03, IA-16) ───────────────────────────────────
+// The OUTSIDE view: "we usually overestimate by ~80%." Where `recalibrate` bounds a play's
+// cost from its OWN percentile history, `calibrate` learns the systematic ESTIMATE-vs-ACTUAL
+// bias — the actual/allocated ratio distribution — and corrects a RAW estimate by it. Two
+// levels (IA-16), combined by PARTIAL POOLING:
+//   project level  — this {play, project}'s deviation (big epics here decompose long);
+//   generic level  — the play's intrinsic bias pooled across projects (the outside view).
+// Empirical-Bayes shrinkage `w = N/(N+K)` leans on the generic prior when this project's data
+// is thin and shifts to project-specific as it accumulates — the two-level form of
+// `recalibrate`'s cold start (a soft, monotonic version of its hard `minSuccesses` cliff). The
+// hierarchy project → generic play prior → authored default falls out of the math, not a
+// branch ladder: an empty sample learns the IDENTITY factor (no correction = the authored
+// default), so both levels degrade gracefully to "leave the estimate alone."
+//
+// Same purity + same robust-statistics stance as the rest of this module: the (allocated,
+// actual) pair's `allocated` half is the LOGGED envelope (T-013-01); only SUCCESSFUL runs that
+// carry one contribute a ratio (censored runs are right-censored — IA-13 — and a run with no
+// envelope has no known allocation); the factor is the MEDIAN ratio (never the mean — the fat
+// tail is exactly what must not be averaged in). Tokens and wall-clock are biased
+// INDEPENDENTLY, mirroring `recalibrate`'s two dimensions.
+
+/** A learned estimate-vs-actual bias: the median actual/allocated ratio, per dimension.
+ *  `< 1` ⇒ systematic OVER-estimate (correct down); `> 1` ⇒ UNDER-estimate (correct up);
+ *  `1` ⇒ no learned bias. NOT a {@link Budget} — a ratio is not a positive-int dimension. */
+export interface BiasFactor {
+  readonly tokens: number;
+  readonly timeMs: number;
+}
+
+/** A learned factor plus the sample size backing it — what {@link learnBiasFactor} returns
+ *  and what {@link calibrate} takes as its generic (cross-project) prior, so the shrinkage
+ *  weight and the `genericN` confidence can both be computed without re-deriving anything. */
+export interface BiasPrior {
+  readonly factor: BiasFactor;
+  readonly n: number;
+}
+
+/** The corrected estimate plus the bias applied and how much data backed each level. */
+export interface CalibrateResult {
+  /** `estimate × pooledFactor`, per dimension, coerced to a positive integer (budget
+   *  contract) — ready to hand to a real run. */
+  readonly corrected: Budget;
+  /** The POOLED factor actually applied (the partial-pooled blend of project & generic). */
+  readonly factor: BiasFactor;
+  /** Sample sizes: project-level (this {play, project}) and generic-level (the prior). */
+  readonly confidence: { readonly projectN: number; readonly genericN: number };
+}
+
+/** Shrinkage strength `K` (the prior's equivalent sample size): the project must accrue
+ *  ~K (allocated, actual) pairs before it outweighs the generic prior. Overridable per call. */
+export const DEFAULT_SHRINKAGE = 5;
+
+/** The no-bias factor — what an empty sample learns, i.e. the authored default ("leave the
+ *  estimate alone"). The third fallback in the hierarchy, expressed as data, not a branch. */
+export const IDENTITY_FACTOR: BiasFactor = { tokens: 1, timeMs: 1 };
+
+/** Knobs for {@link learnBiasFactor} / {@link calibrate}. */
+export interface CalibrateOptions {
+  /** Recency window (mirrors {@link DEFAULT_WINDOW}); the factor is learned over at most the
+   *  last N records of the filtered set. */
+  readonly window?: number;
+  /** Shrinkage strength `K`; default {@link DEFAULT_SHRINKAGE}. */
+  readonly shrinkage?: number;
+}
+
+/** The TRUE median of an ASCENDING-SORTED, possibly-empty sample, or `null` when empty —
+ *  the average of the two central order statistics for even n. PURE. Unlike `recalibrate`'s
+ *  nearest-rank {@link percentile} (deliberately conservative on a fat TAIL), the bias factor
+ *  is a CENTRAL-tendency estimate, so the textbook median is the honest centre (and it is
+ *  still robust — one outlier ratio cannot drag it, IA-13). */
+function medianOrNull(sortedAsc: readonly number[]): number | null {
+  const n = sortedAsc.length;
+  if (n === 0) return null;
+  const mid = Math.floor(n / 2);
+  return n % 2 === 1 ? sortedAsc[mid]! : (sortedAsc[mid - 1]! + sortedAsc[mid]!) / 2;
+}
+
+/**
+ * Learn the estimate-vs-actual {@link BiasPrior} from a set of records. PURE. Considers only
+ * SUCCESSFUL runs that carry a logged `envelope` (the `allocated` half of the pair — a
+ * censored run is right-censored, IA-13; an envelope-less run has no known allocation), over
+ * at most the last `window`. Per dimension the factor is the MEDIAN of the per-run
+ * actual/allocated ratios (tokens always; wall-clock only when the duration parses AND the
+ * allocated time is positive); a dimension with no usable pair falls back to `1` (no bias).
+ * `n` is the TOKEN-pair count — the headline sample size (tokens are always present when an
+ * envelope is; the time sample may be smaller). An empty sample ⇒ {@link IDENTITY_FACTOR},
+ * `n: 0` — the authored default. The caller pools this at two levels: project-filtered for
+ * the project factor, play-wide (across projects) for the generic prior.
+ */
+export function learnBiasFactor(records: readonly RunRecord[], opts: CalibrateOptions = {}): BiasPrior {
+  const window = opts.window ?? DEFAULT_WINDOW;
+  const usable = records
+    .slice(-window)
+    .filter((r) => r.outcome === "success" && r.envelope !== undefined && r.envelope.tokens > 0);
+
+  const tokenRatios: number[] = [];
+  const timeRatios: number[] = [];
+  for (const r of usable) {
+    const env = r.envelope!;
+    tokenRatios.push(totalTokens(r) / env.tokens);
+    const ms = wallClockMs(r);
+    if (ms !== null && env.timeMs > 0) timeRatios.push(ms / env.timeMs);
+  }
+
+  const tokens = medianOrNull(tokenRatios.sort((a, b) => a - b)) ?? 1;
+  const timeMs = medianOrNull(timeRatios.sort((a, b) => a - b)) ?? 1;
+  return { factor: { tokens, timeMs }, n: tokenRatios.length };
+}
+
+/**
+ * Correct a raw `estimate` envelope by this {play, project}'s learned bias, partial-pooled
+ * toward the `genericPrior`. PURE. The project factor is learned from `projectRecords`
+ * (filtered to the key — robust to an unfiltered caller); the pooling weight is
+ * `w = projectN / (projectN + K)`, so per dimension `pooled = w·project + (1−w)·generic`.
+ * When `projectN = 0` the weight is 0 AND the project factor is identity, so pooled = the
+ * generic prior (pure outside view); when the generic prior is also empty its factor is
+ * identity, so `corrected = estimate` (the authored default). The corrected dimensions are
+ * positive integers (budget contract). Direction is data-driven — a factor `< 1` shrinks the
+ * estimate (overestimate corrected down), `> 1` grows it.
+ */
+export function calibrate(
+  estimate: Budget,
+  key: { readonly play: string; readonly project: string },
+  projectRecords: readonly RunRecord[],
+  genericPrior: BiasPrior,
+  opts: CalibrateOptions = {},
+): CalibrateResult {
+  const k = opts.shrinkage ?? DEFAULT_SHRINKAGE;
+  const projectScoped = projectRecords.filter((r) => r.play === key.play && projectOf(r) === key.project);
+  const project = learnBiasFactor(projectScoped, opts);
+  const projectN = project.n;
+  const genericN = genericPrior.n;
+
+  const w = projectN / (projectN + k);
+  const blend = (proj: number, gen: number): number => w * proj + (1 - w) * gen;
+  const factor: BiasFactor = {
+    tokens: blend(project.factor.tokens, genericPrior.factor.tokens),
+    timeMs: blend(project.factor.timeMs, genericPrior.factor.timeMs),
+  };
+
+  const corrected: Budget = {
+    tokens: positiveInt(estimate.tokens * factor.tokens),
+    timeMs: positiveInt(estimate.timeMs * factor.timeMs),
+  };
+  return { corrected, factor, confidence: { projectN, genericN } };
+}
+
+/**
+ * Render a {@link CalibrateResult} as an honest one-line correction label (IA-8 / IA-16). PURE.
+ * Reads "× t<f> / m<f> · N project / M generic" (the token & time factors to 2dp, then how much
+ * data backs each level); when neither level has data it reads "uncorrected (no data)" so the
+ * user can never mistake a pass-through estimate for an earned correction.
+ */
+export function formatCorrectionLabel(result: CalibrateResult): string {
+  const { projectN, genericN } = result.confidence;
+  if (projectN === 0 && genericN === 0) return "uncorrected (no data)";
+  const t = result.factor.tokens.toFixed(2);
+  const m = result.factor.timeMs.toFixed(2);
+  return `× t${t} / m${m} · ${projectN} project / ${genericN} generic`;
 }

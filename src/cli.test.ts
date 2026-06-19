@@ -144,4 +144,45 @@ describe("parseArgs", () => {
     expect(parseArgs(["envelope", "decompose-epic", "--tier", "bogus"]).cmd).toBe("usage");
     expect(parseArgs(["envelope", "decompose-epic", "--tier"]).cmd).toBe("usage");
   });
+
+  // T-013-03: the bias-correction flags on the envelope readout.
+  test("envelope --estimate parses the raw envelope to correct", () => {
+    expect(parseArgs(["envelope", "decompose-epic", "--estimate", "7200000,5000"])).toEqual({
+      cmd: "envelope",
+      play: "decompose-epic",
+      tier: "standard",
+      estimate: { timeMs: 7_200_000, tokens: 5000 },
+    });
+  });
+  test("envelope --project carries the project to correct against", () => {
+    expect(parseArgs(["envelope", "decompose-epic", "--project", "acme"])).toEqual({
+      cmd: "envelope",
+      play: "decompose-epic",
+      tier: "standard",
+      project: "acme",
+    });
+  });
+  test("envelope --tier + --estimate + --project compose", () => {
+    expect(parseArgs(["envelope", "p", "--tier", "keystone", "--estimate", "1000,2000", "--project", "x"])).toEqual({
+      cmd: "envelope",
+      play: "p",
+      tier: "keystone",
+      estimate: { timeMs: 1000, tokens: 2000 },
+      project: "x",
+    });
+  });
+  test("envelope --estimate with a malformed value → usage", () => {
+    expect(parseArgs(["envelope", "p", "--estimate", "nope"]).cmd).toBe("usage");
+    expect(parseArgs(["envelope", "p", "--estimate"]).cmd).toBe("usage");
+  });
+  test("envelope --project with no id → usage", () => {
+    expect(parseArgs(["envelope", "p", "--project"]).cmd).toBe("usage");
+  });
+  test("envelope with an unknown flag → usage", () => {
+    expect(parseArgs(["envelope", "p", "--bogus"]).cmd).toBe("usage");
+  });
+  test("the bare two-arg envelope form is unchanged (no estimate/project)", () => {
+    const parsed = parseArgs(["envelope", "decompose-epic"]);
+    expect(parsed).toEqual({ cmd: "envelope", play: "decompose-epic", tier: "standard" });
+  });
 });

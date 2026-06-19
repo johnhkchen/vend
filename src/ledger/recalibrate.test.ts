@@ -2,8 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { buildRunRecord, type RunOutcome, type RunRecord, type RunRecordInput } from "../log/run-log.ts";
 import type { Budget } from "../budget/budget.ts";
 import {
+  type BiasPrior,
+  calibrate,
   COLD_START_MIN_SUCCESSES,
+  DEFAULT_SHRINKAGE,
+  formatCorrectionLabel,
   formatEnvelopeLabel,
+  IDENTITY_FACTOR,
+  learnBiasFactor,
   percentile,
   recalibrate,
   TIER_PERCENTILE,
@@ -212,5 +218,184 @@ describe("formatEnvelopeLabel — honest confidence (AC #2)", () => {
   test("cold start with some-but-too-few casts names the count", () => {
     const label = formatEnvelopeLabel(recalibrate("p", [recordOf(), recordOf()], "standard", PRIOR));
     expect(label).toBe("estimate (2 casts)");
+  });
+});
+
+// ── T-013-03: reference-class bias correction (calibrate / learnBiasFactor) ──────────────
+// The (allocated, actual) pair: `allocated` is the logged envelope, `actual` is totalTokens /
+// wallClockMs. A `paired` fixture sets both so the ratio is exact. Ratio < 1 ⇒ overestimate.
+
+/** A SUCCESSFUL record with an explicit allocated envelope and actual cost, so the
+ *  actual/allocated ratio is exactly `actualTokens/allocTokens` (and the time ratio
+ *  `durationMs/allocMs`). Builds a real frozen record through the pure writer. */
+const paired = (over: {
+  allocTokens: number;
+  actualTokens: number;
+  allocMs?: number;
+  durationMs?: number;
+  project?: string;
+  play?: string;
+}): RunRecord => {
+  const { allocTokens, actualTokens, allocMs = 60_000, durationMs = 60_000, project, play = "p" } = over;
+  return recordOf({
+    tokens: actualTokens,
+    durationMs,
+    play,
+    envelope: { timeMs: allocMs, tokens: allocTokens },
+    ...(project ? { project } : {}),
+  });
+};
+
+describe("learnBiasFactor — median actual/allocated ratio per dim (AC #2)", () => {
+  test("token factor is the median per-run ratio; n counts the pairs", () => {
+    const recs = [
+      paired({ allocTokens: 1000, actualTokens: 200 }), // 0.2
+      paired({ allocTokens: 1000, actualTokens: 300 }), // 0.3
+      paired({ allocTokens: 1000, actualTokens: 400 }), // 0.4
+    ];
+    const { factor, n } = learnBiasFactor(recs);
+    expect(factor.tokens).toBeCloseTo(0.3, 10); // median of [0.2,0.3,0.4]
+    expect(n).toBe(3);
+  });
+
+  test("a success with NO envelope contributes no pair; a censored run is excluded", () => {
+    const recs = [
+      paired({ allocTokens: 1000, actualTokens: 200 }),
+      paired({ allocTokens: 1000, actualTokens: 400 }),
+      recordOf({ tokens: 999, outcome: "success" }), // no envelope → skipped
+      recordOf({ tokens: 999, outcome: "budget-exhausted", envelope: { timeMs: 1, tokens: 1 } }), // censored → skipped
+    ];
+    const { factor, n } = learnBiasFactor(recs);
+    expect(n).toBe(2);
+    expect(factor.tokens).toBeCloseTo(0.3, 10); // median of [0.2,0.4]
+  });
+
+  test("an unparseable duration drops from the TIME factor only; tokens intact", () => {
+    const recs = [
+      recordOf({ tokens: 200, play: "p", envelope: { timeMs: 1000, tokens: 1000 }, startedAt: "bad", endedAt: "bad" }),
+      recordOf({ tokens: 400, play: "p", envelope: { timeMs: 1000, tokens: 1000 }, startedAt: "bad", endedAt: "bad" }),
+    ];
+    const { factor, n } = learnBiasFactor(recs);
+    expect(n).toBe(2); // token pairs
+    expect(factor.tokens).toBeCloseTo(0.3, 10);
+    expect(factor.timeMs).toBe(1); // no parseable durations → no bias
+  });
+
+  test("an empty / all-envelope-less sample learns the identity factor, n=0", () => {
+    expect(learnBiasFactor([])).toEqual({ factor: IDENTITY_FACTOR, n: 0 });
+    expect(learnBiasFactor([recordOf(), recordOf()])).toEqual({ factor: IDENTITY_FACTOR, n: 0 });
+  });
+
+  test("direction is data-driven: ratios > 1 learn an UNDER-estimate factor > 1", () => {
+    const recs = [
+      paired({ allocTokens: 1000, actualTokens: 1500 }), // 1.5
+      paired({ allocTokens: 1000, actualTokens: 2000 }), // 2.0
+      paired({ allocTokens: 1000, actualTokens: 2500 }), // 2.5
+    ];
+    expect(learnBiasFactor(recs).factor.tokens).toBeCloseTo(2.0, 10);
+  });
+});
+
+describe("calibrate — partial pooling across three regimes (AC #3)", () => {
+  const ESTIMATE: Budget = { timeMs: 10_000, tokens: 10_000 };
+  const KEY = { play: "p", project: "alpha" };
+  // Generic prior: factor 0.5, well-backed (n=40). Project ratio (when present) is 0.2.
+  const GENERIC: BiasPrior = { factor: { tokens: 0.5, timeMs: 0.5 }, n: 40 };
+  const projectPairs = (count: number): RunRecord[] =>
+    Array.from({ length: count }, () => paired({ allocTokens: 1000, actualTokens: 200, project: "alpha" }));
+
+  test("N=0 project pairs → pure generic prior (w=0)", () => {
+    const r = calibrate(ESTIMATE, KEY, [], GENERIC);
+    expect(r.confidence).toEqual({ projectN: 0, genericN: 40 });
+    expect(r.factor.tokens).toBeCloseTo(0.5, 10);
+    expect(r.corrected.tokens).toBe(5000); // 10000 × 0.5
+  });
+
+  test("small-N → shrunk toward generic, between the two factors", () => {
+    const r = calibrate(ESTIMATE, KEY, projectPairs(2), GENERIC); // w = 2/(2+5) ≈ 0.286
+    expect(r.confidence.projectN).toBe(2);
+    // pooled = 0.286·0.2 + 0.714·0.5 ≈ 0.414 — strictly between project 0.2 and generic 0.5
+    expect(r.factor.tokens).toBeGreaterThan(0.2);
+    expect(r.factor.tokens).toBeLessThan(0.5);
+  });
+
+  test("large-N → project-dominant (pooled ≈ the project factor)", () => {
+    const r = calibrate(ESTIMATE, KEY, projectPairs(95), GENERIC); // w = 95/100 = 0.95
+    expect(r.factor.tokens).toBeCloseTo(0.95 * 0.2 + 0.05 * 0.5, 6); // ≈ 0.215
+    expect(r.corrected.tokens).toBeLessThan(2500); // close to project's 2000
+  });
+
+  test("the corrected estimate moves MONOTONICALLY from prior to project as N grows", () => {
+    // Fixed project ratio 0.2 (below generic 0.5): more project data ⇒ smaller correction.
+    const corrected = [0, 1, 5, 20, 100].map((n) => calibrate(ESTIMATE, KEY, projectPairs(n), GENERIC).corrected.tokens);
+    for (let i = 1; i < corrected.length; i++) {
+      expect(corrected[i]!).toBeLessThan(corrected[i - 1]!);
+    }
+    expect(corrected[0]).toBe(5000); // pure generic
+  });
+
+  test("shrinkage K is tunable — a larger K leans harder on the prior", () => {
+    const tight = calibrate(ESTIMATE, KEY, projectPairs(5), GENERIC, { shrinkage: 1 });
+    const loose = calibrate(ESTIMATE, KEY, projectPairs(5), GENERIC, { shrinkage: 50 });
+    expect(tight.factor.tokens).toBeLessThan(loose.factor.tokens); // tight → closer to project 0.2
+  });
+});
+
+describe("calibrate — authored default, direction, budget contract (AC #2/#4)", () => {
+  const ESTIMATE: Budget = { timeMs: 7_200_000, tokens: 5000 };
+  const KEY = { play: "p", project: "alpha" };
+  const EMPTY: BiasPrior = { factor: IDENTITY_FACTOR, n: 0 };
+
+  test("both levels empty → authored default: estimate passes through uncorrected", () => {
+    const r = calibrate(ESTIMATE, KEY, [], EMPTY);
+    expect(r.confidence).toEqual({ projectN: 0, genericN: 0 });
+    expect(r.corrected).toEqual(ESTIMATE);
+  });
+
+  test("an under-estimate factor grows the estimate (direction data-driven)", () => {
+    const under: BiasPrior = { factor: { tokens: 2, timeMs: 2 }, n: 30 };
+    const r = calibrate(ESTIMATE, KEY, [], under);
+    expect(r.corrected.tokens).toBe(10_000); // 5000 × 2
+    expect(r.corrected.timeMs).toBe(14_400_000);
+  });
+
+  test("only the requested {play, project}'s records feed the project factor", () => {
+    const recs = [
+      paired({ allocTokens: 1000, actualTokens: 900, project: "alpha", play: "p" }),
+      paired({ allocTokens: 1000, actualTokens: 100, project: "beta", play: "p" }), // other project
+      paired({ allocTokens: 1000, actualTokens: 100, project: "alpha", play: "other" }), // other play
+    ];
+    const r = calibrate(ESTIMATE, KEY, recs, EMPTY);
+    expect(r.confidence.projectN).toBe(1); // only the alpha/p pair (beta + other-play excluded)
+    // 1 pair (ratio 0.9) pooled with the empty/identity prior: w = 1/(1+5) ⇒ 0.1667·0.9 + 0.8333·1.0.
+    expect(r.factor.tokens).toBeCloseTo((0.9 + 5) / 6, 6); // ≈ 0.9833 — proves 0.9 entered, not beta's 0.1
+  });
+
+  test("corrected dimensions are positive integers (budget contract)", () => {
+    const tiny: BiasPrior = { factor: { tokens: 0.00001, timeMs: 0.00001 }, n: 10 };
+    const r = calibrate({ timeMs: 1, tokens: 1 }, KEY, [], tiny);
+    expect(Number.isInteger(r.corrected.tokens)).toBe(true);
+    expect(r.corrected.tokens).toBeGreaterThan(0);
+    expect(r.corrected.timeMs).toBeGreaterThan(0);
+  });
+
+  test("DEFAULT_SHRINKAGE is the documented handful", () => {
+    expect(DEFAULT_SHRINKAGE).toBe(5);
+  });
+});
+
+describe("formatCorrectionLabel — honest correction (AC #4)", () => {
+  const KEY = { play: "p", project: "alpha" };
+
+  test("a backed correction reads '× t.. / m.. · N project / M generic'", () => {
+    const generic: BiasPrior = { factor: { tokens: 0.5, timeMs: 0.5 }, n: 40 };
+    const recs = Array.from({ length: 8 }, () => paired({ allocTokens: 1000, actualTokens: 300, project: "alpha" }));
+    const label = formatCorrectionLabel(calibrate({ timeMs: 10_000, tokens: 10_000 }, KEY, recs, generic));
+    expect(label).toMatch(/^× t0\.\d{2} \/ m0\.\d{2} · 8 project \/ 40 generic$/);
+  });
+
+  test("no data at either level reads 'uncorrected (no data)'", () => {
+    const empty: BiasPrior = { factor: IDENTITY_FACTOR, n: 0 };
+    expect(formatCorrectionLabel(calibrate({ timeMs: 1, tokens: 1 }, KEY, [], empty))).toBe("uncorrected (no data)");
   });
 });

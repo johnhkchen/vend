@@ -20,7 +20,7 @@
 // lives in the pure core), proven live in T-007-03 when a real play is registered and cast.
 
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { ClaudeTimeoutError, dispense, type ResultMessage } from "../executor/claude.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
@@ -40,6 +40,10 @@ export interface CastOptions {
   readonly subject: string;
   /** Repo root the transcript + run log are written under, and the effect's `projectRoot`. */
   readonly projectRoot?: string;
+  /** Stable project identifier stamped on the run-log record (T-013-03), so the Ledger can
+   *  bias-correct per project (IA-16). Defaults to the repo-root basename — the local-first
+   *  project id (charter P5; a cross-project corpus is a documented follow-up). */
+  readonly project?: string;
   /** Pinned model id; omitted ⇒ CLI default (and {@link DEFAULT_MODEL} logged). */
   readonly model?: string;
   /** Stable run id; derived from `startedAt` if omitted. */
@@ -78,6 +82,8 @@ export async function castPlay<I, O>(
   opts: CastOptions,
 ): Promise<RunSummary> {
   const root = opts.projectRoot ?? process.cwd();
+  // The stable project id for the record — the repo-root basename unless overridden.
+  const project = opts.project ?? basename(root);
   const startedAt = new Date().toISOString();
   const runId = opts.runId ?? `run-${startedAt.replace(/[:.]/g, "-")}`;
 
@@ -161,6 +167,9 @@ export async function castPlay<I, O>(
       // recoverable from the ledger (T-013-01, IA-12/13). `Budget` duck-types onto the
       // log's local `Envelope` (no src/budget ↔ src/log import — the decoupling holds).
       envelope: budget,
+      // The project this cast ran against — groups the record for two-level bias correction
+      // (T-013-03, IA-16); the repo-root basename unless the caller overrode it.
+      project,
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,

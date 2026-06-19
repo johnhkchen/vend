@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildRunRecord,
+  DEFAULT_PROJECT,
   forPlay,
+  projectOf,
   readRuns,
   reviveRecord,
   RUN_LOG_SCHEMA_VERSION,
@@ -316,6 +318,72 @@ describe("forPlay — filter by play and (optionally) outcome", () => {
 
   test("an unknown play yields an empty list", () => {
     expect(forPlay(records, "no-such-play")).toEqual([]);
+  });
+});
+
+describe("project identifier — round-trip, default, malformed (T-013-03 AC #1)", () => {
+  test("a supplied project round-trips through build → serialize → revive", () => {
+    const rec = buildRunRecord(baseInput({ runId: "pr1", project: "vend" }));
+    expect(rec.project).toBe("vend");
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.project).toBe("vend");
+  });
+
+  test("an absent project is OMITTED from the record (byte-for-byte back-compat)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "pr2" }));
+    expect("project" in rec).toBe(false);
+    expect(projectOf(rec)).toBe(DEFAULT_PROJECT);
+  });
+
+  test("an empty / whitespace project is treated as absent (omitted, default on read)", () => {
+    const blank = buildRunRecord(baseInput({ runId: "pr3", project: "   " }));
+    expect("project" in blank).toBe(false);
+    expect(projectOf(blank)).toBe(DEFAULT_PROJECT);
+  });
+
+  test("a present project is trimmed", () => {
+    expect(buildRunRecord(baseInput({ project: "  acme  " })).project).toBe("acme");
+  });
+
+  test("a malformed project is dropped on revive, the record stays valid", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "pr4" })))),
+      project: 42,
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.project).toBeUndefined();
+    expect(projectOf(rec!)).toBe(DEFAULT_PROJECT);
+  });
+});
+
+describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
+  const { records } = readRuns(
+    ledgerOf(
+      baseInput({ runId: "a1", play: "decompose-epic", project: "alpha" }),
+      baseInput({ runId: "a2", play: "decompose-epic", project: "alpha" }),
+      baseInput({ runId: "b1", play: "decompose-epic", project: "beta" }),
+      baseInput({ runId: "leg", play: "decompose-epic" }), // no project → default bucket
+    ),
+  );
+
+  test("the project filter selects only that project's runs", () => {
+    expect(forPlay(records, "decompose-epic", { project: "alpha" }).map((r) => r.runId)).toEqual(["a1", "a2"]);
+    expect(forPlay(records, "decompose-epic", { project: "beta" }).map((r) => r.runId)).toEqual(["b1"]);
+  });
+
+  test("a legacy (project-less) record groups under DEFAULT_PROJECT", () => {
+    expect(forPlay(records, "decompose-epic", { project: DEFAULT_PROJECT }).map((r) => r.runId)).toEqual(["leg"]);
+  });
+
+  test("project composes with the outcome filter", () => {
+    const some = readRuns(
+      ledgerOf(
+        baseInput({ runId: "s1", play: "p", project: "x", outcome: "success" }),
+        baseInput({ runId: "s2", play: "p", project: "x", outcome: "budget-exhausted" }),
+        baseInput({ runId: "s3", play: "p", project: "y", outcome: "success" }),
+      ),
+    ).records;
+    expect(forPlay(some, "p", { project: "x", outcome: "success" }).map((r) => r.runId)).toEqual(["s1"]);
   });
 });
 

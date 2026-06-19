@@ -29,6 +29,11 @@ import { dirname } from "node:path";
 /** Default ledger location, relative to cwd. Overridable per call (AC #1). */
 export const DEFAULT_RUN_LOG_PATH = ".vend/runs.jsonl";
 
+/** The project bucket a record with no `project` field is grouped under (T-013-03). Every
+ *  pre-T-013-03 record (and any cast that recorded no project) falls here. A stable,
+ *  parenthesized sentinel so it never collides with a real project basename. */
+export const DEFAULT_PROJECT = "(default)";
+
 /**
  * The terminal states a run can reach, as a `const` tuple so {@link RunOutcome} is
  * a literal union a `switch` can check exhaustively. Each maps to a state the other
@@ -104,6 +109,11 @@ export interface RunRecordInput {
   /** The allocated {@link Envelope} this cast ran under; absent ⇒ field omitted (a
    *  cast that recorded no envelope, and every pre-T-013-01 record, look identical). */
   readonly envelope?: Envelope;
+  /** Stable project identifier this cast ran against (T-013-03) — the dataset-shape field
+   *  the two-level bias correction groups by (project deviation vs the generic play). The
+   *  runner stamps the repo-root basename; absent ⇒ field omitted (every pre-T-013-03
+   *  record), grouped under {@link DEFAULT_PROJECT} on read. */
+  readonly project?: string;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -124,6 +134,10 @@ export interface RunRecord {
    *  recorded), so it is omitted rather than zeroed (a zeroed envelope is an invalid
    *  budget the recalibrator could not distinguish from a real allocation). */
   readonly envelope?: Envelope;
+  /** Present ONLY when the cast supplied one — absence is meaningful (a pre-T-013-03
+   *  record), so it is omitted rather than written, and {@link projectOf} supplies the
+   *  default bucket on read. */
+  readonly project?: string;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -172,6 +186,16 @@ function normalizeEnvelope(e: Envelope | undefined): Envelope | undefined {
   return { timeMs: num(e.timeMs), tokens: num(e.tokens) };
 }
 
+/** Normalize the stable project id: absent / empty / non-string ⇒ `undefined` (the field
+ *  is then omitted — absence is meaningful, never written, exactly like the envelope); a
+ *  present non-empty string is trimmed and taken verbatim. Unlike the id fields, an absent
+ *  project is LEGAL (back-compat), so this coerces rather than asserting. */
+function normalizeProject(p: string | undefined): string | undefined {
+  if (typeof p !== "string") return undefined;
+  const trimmed = p.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -195,9 +219,11 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   assertNonEmpty(input.endedAt, "endedAt");
   assertOutcome(input.outcome);
 
-  // Spread the envelope only when present, so an envelope-less cast (and every
-  // pre-T-013-01 record) leaves the field OFF the record — same shape, byte for byte.
+  // Spread the envelope/project only when present, so an envelope-less cast (and every
+  // pre-T-013-01 / pre-T-013-03 record) leaves the field OFF the record — same shape, byte
+  // for byte.
   const envelope = normalizeEnvelope(input.envelope);
+  const project = normalizeProject(input.project);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -210,6 +236,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     costUsd: num(input.costUsd),
     gateResults: normalizeGates(input.gateResults),
     ...(envelope ? { envelope } : {}),
+    ...(project ? { project } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -290,6 +317,10 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     }
   }
 
+  // A project is kept only when it is a non-empty string; a malformed one is dropped
+  // (field omitted, grouped under the default) rather than admitted or used to reject.
+  const project = isNonEmptyString(r.project) ? r.project : undefined;
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -301,6 +332,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     costUsd: num(typeof r.costUsd === "number" ? r.costUsd : undefined),
     gateResults,
     ...(envelope ? { envelope } : {}),
+    ...(project ? { project } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });
@@ -337,18 +369,35 @@ export function readRuns(jsonl: string): ReadResult {
 }
 
 /**
- * Filter records to one play, optionally to one outcome. PURE. This is the seam the
- * recalibrator needs (IA-13): `forPlay(recs, p, { outcome: "success" })` is the
- * uncensored sample to bound the tail from; the censored set (`budget-exhausted` /
+ * The project a record is grouped under (T-013-03): its `project` field, or
+ * {@link DEFAULT_PROJECT} when absent (every pre-T-013-03 record). PURE — the read-side
+ * mirror of the write-side basename stamp, so the two-level bias correction can group
+ * runs by project as well as by play.
+ */
+export function projectOf(r: RunRecord): string {
+  return r.project ?? DEFAULT_PROJECT;
+}
+
+/**
+ * Filter records to one play, optionally to one outcome and/or one project. PURE. This is
+ * the seam the recalibrator needs (IA-13): `forPlay(recs, p, { outcome: "success" })` is
+ * the uncensored sample to bound the tail from; the censored set (`budget-exhausted` /
  * `timed-out`, treated as `≥ envelope` lower bounds) is the same call with the other
- * outcome. The split is enabled here; the percentile math is T-013-02.
+ * outcome. The `project` filter (T-013-03) is the seam the hierarchical bias correction
+ * needs — `forPlay(recs, p, { project })` per distinct {@link projectOf} groups a play's
+ * runs by project (legacy records fall under {@link DEFAULT_PROJECT}).
  */
 export function forPlay(
   records: readonly RunRecord[],
   play: string,
-  opts: { readonly outcome?: RunOutcome } = {},
+  opts: { readonly outcome?: RunOutcome; readonly project?: string } = {},
 ): readonly RunRecord[] {
-  return records.filter((r) => r.play === play && (opts.outcome === undefined || r.outcome === opts.outcome));
+  return records.filter(
+    (r) =>
+      r.play === play &&
+      (opts.outcome === undefined || r.outcome === opts.outcome) &&
+      (opts.project === undefined || projectOf(r) === opts.project),
+  );
 }
 
 /**
