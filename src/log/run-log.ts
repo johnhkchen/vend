@@ -119,6 +119,11 @@ export interface RunRecordInput {
    *  the only legal "we don't know" value, so this coerces (non-boolean ⇒ omitted) rather
    *  than asserting. The forward-looking E1 walk-away instrument. */
   readonly intervened?: boolean;
+  /** Agentic turns the cast took (T-015-02), harvested off the seam's `result.num_turns`.
+   *  Absent ⇒ field omitted (unknown) — back-compat, exactly like {@link intervened}. The
+   *  forward-looking signal the warranted turn cap is calibrated from (the cap is a judgment,
+   *  not a frozen guess; logging turns is what lets data refine it). */
+  readonly turnsUsed?: number;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -147,6 +152,10 @@ export interface RunRecord {
    *  omitted rather than written, exactly like {@link RunRecord.envelope}/`project`. `false`
    *  (a clean walk-away) is a real value and IS written; only absence reads as unknown. */
   readonly intervened?: boolean;
+  /** Present ONLY when the cast supplied one — absence is meaningful (unknown), so it is
+   *  omitted rather than written, exactly like {@link RunRecord.intervened}. The signal the
+   *  warranted turn cap (T-015-02) is calibrated from. */
+  readonly turnsUsed?: number;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -214,6 +223,14 @@ function normalizeIntervened(v: boolean | undefined): boolean | undefined {
   return typeof v === "boolean" ? v : undefined;
 }
 
+/** Normalize turns-used (T-015-02): a finite, non-negative integer is taken verbatim;
+ *  anything else (absent, non-finite, negative, or non-integer from a torn caller) ⇒
+ *  `undefined`, so the field is omitted and reads as unknown. Like {@link normalizeIntervened},
+ *  absence is LEGAL back-compat — coerce, don't assert. */
+function normalizeTurnsUsed(v: number | undefined): number | undefined {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -243,6 +260,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const envelope = normalizeEnvelope(input.envelope);
   const project = normalizeProject(input.project);
   const intervened = normalizeIntervened(input.intervened);
+  const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -257,6 +275,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(envelope ? { envelope } : {}),
     ...(project ? { project } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
+    ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -346,6 +365,11 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // as unknown) rather than admitted or used to reject the record. `false` is kept.
   const intervened = typeof r.intervened === "boolean" ? r.intervened : undefined;
 
+  // turns-used (T-015-02) is kept only when it is a finite non-negative integer; anything
+  // else (absent — a pre-T-015-02 record — or a malformed value) is dropped (field omitted,
+  // reads unknown) rather than admitted or used to reject the record. Mirrors `intervened`.
+  const turnsUsed = normalizeTurnsUsed(typeof r.turnsUsed === "number" ? r.turnsUsed : undefined);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -359,6 +383,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(envelope ? { envelope } : {}),
     ...(project ? { project } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
+    ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });

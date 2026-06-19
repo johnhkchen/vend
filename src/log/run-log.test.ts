@@ -405,6 +405,57 @@ describe("intervention bit — round-trip, absence, false-is-a-value, malformed 
   });
 });
 
+describe("turnsUsed — round-trip, absence, normalization, malformed (T-015-02 AC #2)", () => {
+  test("turnsUsed round-trips through build → serialize → revive", () => {
+    const rec = buildRunRecord(baseInput({ runId: "tu1", turnsUsed: 7 }));
+    expect(rec.turnsUsed).toBe(7);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.turnsUsed).toBe(7);
+  });
+
+  test("turnsUsed: 0 is a VALUE (a no-turn run), written and round-tripped — not absence", () => {
+    const rec = buildRunRecord(baseInput({ runId: "tu2", turnsUsed: 0 }));
+    expect("turnsUsed" in rec).toBe(true);
+    expect(rec.turnsUsed).toBe(0);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.turnsUsed).toBe(0);
+  });
+
+  test("an absent turnsUsed is OMITTED from the record (byte-for-byte back-compat)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "tu3" }));
+    expect("turnsUsed" in rec).toBe(false);
+    expect(rec.turnsUsed).toBeUndefined();
+    expect(serializeRunRecord(rec).includes("turnsUsed")).toBe(false);
+  });
+
+  test("a non-finite / negative / non-integer turnsUsed is coerced to absent on build", () => {
+    expect("turnsUsed" in buildRunRecord(baseInput({ runId: "tu4", turnsUsed: NaN }))).toBe(false);
+    expect("turnsUsed" in buildRunRecord(baseInput({ runId: "tu5", turnsUsed: -1 }))).toBe(false);
+    expect("turnsUsed" in buildRunRecord(baseInput({ runId: "tu6", turnsUsed: 2.5 }))).toBe(false);
+  });
+
+  test("a malformed turnsUsed is dropped on revive, the record stays valid", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "tu7" })))),
+      turnsUsed: "lots",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.turnsUsed).toBeUndefined();
+    expect(rec!.runId).toBe("tu7");
+  });
+
+  test("a pre-T-015-02 line (no turnsUsed field) parses, with turnsUsed === undefined", () => {
+    const legacyLine =
+      '{"v":1,"runId":"L2","play":"decompose-epic","epic":"E-001","model":"claude-cli-default",' +
+      '"outcome":"success","usage":{"input_tokens":1,"output_tokens":2,' +
+      '"cache_read_input_tokens":3,"cache_creation_input_tokens":4},"costUsd":0.1,"gateResults":[],' +
+      '"startedAt":"2026-06-18T20:49:24.679Z","endedAt":"2026-06-18T20:50:40.749Z"}';
+    const { records, skipped } = readRuns(legacyLine);
+    expect(skipped).toBe(0);
+    expect(records[0]!.turnsUsed).toBeUndefined();
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(
