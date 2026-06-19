@@ -45,11 +45,30 @@ interface TempProject {
 /** Seed a disposable project root from the live repo: copy the epic in, and the real charter to
  *  the path `assembleInputs` reads. The src/board snapshot is intentionally left empty — it is
  *  identical across all 10 runs (a fixed input), so it cannot bias the gated-vs-ungated read. */
+/** Run `lisa init` in the temp root so decompose-epic's effect-stage `lisa validate` has the
+ *  structure it requires (CLAUDE.md, `.lisa/hooks`, `docs/active/work`, rdspi-workflow.md, …).
+ *  Without this, every run failed validate identically and nothing materialized — the seeding
+ *  bug that confounded the first sweep (both arms swamped by the same environment failure). */
+async function initLisaProject(root: string): Promise<void> {
+  const proc = Bun.spawn(["lisa", "init"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const code = await proc.exited;
+  if (code !== 0) {
+    const err = (await new Response(proc.stderr).text()).trim();
+    throw new Error(`lisa init failed in temp root (exit ${code}): ${err}`);
+  }
+}
+
 async function seedTempProject(srcEpicPath: string): Promise<TempProject> {
   const root = await mkdtemp(join(tmpdir(), "vend-probe-"));
+  await initLisaProject(root); // a valid lisa project so the effect's `lisa validate` passes
+  // The epic dir is OPTIONAL — `lisa init` does not create it — so make it and seed the fixed
+  // epic there, where the minted stories/tickets resolve their epic and `lisa validate` finds it.
   const epicName = basename(srcEpicPath);
-  const epicPath = join(root, epicName);
+  const epicDir = join(root, "docs", "active", "epic");
+  await mkdir(epicDir, { recursive: true });
+  const epicPath = join(epicDir, epicName);
   await cp(srcEpicPath, epicPath);
+  // The real charter (the bounds gate greps it) at the path `assembleInputs` reads.
   const charterDst = join(root, CHARTER_PATH);
   await mkdir(join(charterDst, ".."), { recursive: true });
   await cp(join(process.cwd(), CHARTER_PATH), charterDst);
