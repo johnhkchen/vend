@@ -181,6 +181,19 @@ Recalibration is otherwise **invisible** (it auto-tunes the Confirm default — 
 structures the budget, not the author*, `mana-economics.md`); the Ledger view is the
 inspectable record (per-node p50/p90, andon-rate-vs-budget, trend, total mana).
 
+**IA-16 — Estimate via reference class: hierarchical, bias-corrected.** A raw estimate
+(a human's gut, a play's authored guess, an allocated envelope) carries systematic bias
+— *"we usually overestimate by ~80%."* Learn it from the **(estimated, actual)** pairs
+the run log accumulates and correct future estimates by the empirical ratio
+(reference-class forecasting — the outside view; the direction is data-driven, over- or
+under-). Structure the dataset **two ways**: a **generic play level** (the play's cost
+pooled across all projects — its intrinsic behaviour) and a **project level** (this
+codebase's deviation — big epics here run decompose long). Combine by **partial pooling**
+— lean on the generic play prior when project data is thin, shift to the project-specific
+estimate as it accumulates (empirical-Bayes shrinkage; the two-level form of IA-13's
+cold-start). The run log is thereby a durable **calibration dataset** (play × project ×
+estimated × actual) — the asset a future tuning regime would want thousands of hours of.
+
 The macro **"work for 2 hours" envelope** (the human-scale feature block) is spent
 *down* by individual casts whose micro-envelopes come from this loop — so measured
 envelopes are the prerequisite that makes the 2-hour gesture spend intelligently
@@ -209,4 +222,4 @@ Settle · IA-7 production-line-not-raw-stream · IA-8 meter-cannot-lie · IA-9
 andon-is-successful-refusal · IA-10 two-success-states · IA-11 andon-summons-success-
 quiet · IA-12 andon-budget-sets-the-percentile · IA-13 bound-from-successes-informative-
 censoring · IA-14 asymmetric-hysteresis-auto-widen-slow-tighten · IA-15 ledger-generates-
-demand.
+demand · IA-16 reference-class-hierarchical-bias-corrected-estimate.
