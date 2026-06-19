@@ -25,6 +25,16 @@ This workspace runs in two modes, separated by `process-gate.md`:
 The flag is the human's "I'm ready for you to process this" — it lets discovery run as
 long as it needs without the orchestrator jumping to a pull.
 
+## Workspace layout (evergreen vs. time-based)
+
+- **Evergreen (root):** `README.md` (this file) and `process-gate.md` (the control flag).
+  The desk's durable scaffolding — maintained, not dated.
+- **Time-based (`cycle-<date>-<slug>/`):** each completed discovery→processing cycle's
+  artifacts (discovery, triage, strategy, batch, brief, PRD…), archived as dated snapshots
+  with a per-cycle `README.md`. The live `proposed-batch.md` lives at root only while a
+  cycle is active. *(A strategy artifact that becomes a living anchor — e.g. a settled
+  value proposition — graduates to `docs/knowledge/`, not the cycle archive.)*
+
 ## What the PM agent does
 
 Operationalizes `playbooks/project-steering.md` (the 10 steering moves) as a delegated
