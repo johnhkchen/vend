@@ -44,6 +44,21 @@ import { consistencyReport, formatConsistencyReport, type ProbeOutcome, type Pro
 /** Casts per sweep, default. Overridable via the CLI `N` arg. */
 const RUNS_DEFAULT = 5;
 
+// ── the THIN negative-control fixtures (T-020-01, epic E-020) ─────────────────────────────────────
+// Deliberately-thin inputs where ABSTENTION is the CORRECT outcome — the negative control the E-020
+// honest-empty recalibration must satisfy to prove the gate was TIGHTENED, not DISABLED. Repo-relative
+// (resolved under `process.cwd()`, exactly as the grounded sweep references its fixture by path).
+
+/** A complete/frozen tiny project (thin charter + a `done` board) — survey reads NO demand gradient
+ *  off it, so the honest read is an EMPTY board ⇒ the "no demand staged" marker. The survey-side
+ *  negative control. Seeded in place of the live charter+board for `survey-thin`. */
+const THIN_BOARD_DIR = "docs/active/work/T-020-01/fixtures/thin-board";
+
+/** A vacuous-but-grammatical fragment that grounds no demand and cites nothing — the expand-side
+ *  negative control (the sibling of T-019-02's `grounded-fragment.txt`). Drives expand's honest-empty
+ *  STOP. Read for `expand-thin`. */
+const THIN_FRAGMENT_PATH = "docs/active/work/T-020-01/fixtures/thin-fragment.txt";
+
 /**
  * A play-parametric probe target — the parametric replacement for ./run-probe.ts's hard-wired
  * decompose glue. Each target knows how to seed its fixed input into a temp root, assemble the
@@ -91,23 +106,28 @@ async function seedTempRoot(): Promise<string> {
   return root;
 }
 
-/** Copy the REAL charter (the value function the gates grep) to the path the assembly verbs read. */
-async function seedCharter(root: string): Promise<void> {
+/** Copy a charter (the value function the gates grep) to the path the assembly verbs read. `srcRoot`
+ *  is the directory the charter is copied FROM — defaults to the live repo (`process.cwd()`), or a
+ *  fixtures dir for a negative-control target (T-020-01's `survey-thin` seeds a deliberately-thin
+ *  charter from `THIN_BOARD_DIR`). */
+async function seedCharter(root: string, srcRoot: string = process.cwd()): Promise<void> {
   const charterDst = join(root, CHARTER_PATH);
   await mkdir(join(charterDst, ".."), { recursive: true });
-  await cp(join(process.cwd(), CHARTER_PATH), charterDst);
+  await cp(join(srcRoot, CHARTER_PATH), charterDst);
 }
 
-/** Copy the live board (stories + tickets) into the temp root so a play that reads the demand
- *  gradient / dedups against existing ids (survey, steer, expand's `listIdsIn`) sees a real,
- *  GROUNDED input — fixed across every cast of one sweep. Absent dirs on the live repo are skipped
- *  (a valid emptier board). The same copy `surveyTarget` does, factored for the new targets. */
-async function seedBoardSnapshot(root: string): Promise<void> {
+/** Copy a board (stories + tickets) into the temp root so a play that reads the demand gradient /
+ *  dedups against existing ids (survey, steer, expand's `listIdsIn`) sees a fixed input across every
+ *  cast of one sweep. `srcRoot` is the directory the board is copied FROM — defaults to the live repo
+ *  (a GROUNDED board), or a fixtures dir for a negative-control target (T-020-01's `survey-thin` seeds
+ *  a deliberately-thin, fully-`done` board from `THIN_BOARD_DIR`). Absent dirs are skipped (a valid
+ *  emptier board). */
+async function seedBoardSnapshot(root: string, srcRoot: string = process.cwd()): Promise<void> {
   for (const dir of ["docs/active/stories", "docs/active/tickets"]) {
     try {
-      await cp(join(process.cwd(), dir), join(root, dir), { recursive: true });
+      await cp(join(srcRoot, dir), join(root, dir), { recursive: true });
     } catch {
-      // absent on the live repo ⇒ the play reads an emptier board; still a valid fixed input.
+      // absent at the source ⇒ the play reads an emptier board; still a valid fixed input.
     }
   }
 }
@@ -166,17 +186,31 @@ function surveyTarget(): ProbeTarget {
     seed: async (root) => {
       await seedCharter(root);
       // Copy the live board so survey has a grounded gradient to read (a fixed input across casts).
-      for (const dir of ["docs/active/stories", "docs/active/tickets"]) {
-        const src = join(process.cwd(), dir);
-        try {
-          await cp(src, join(root, dir), { recursive: true });
-        } catch {
-          // absent on the live repo ⇒ survey reads an emptier board; still a valid fixed input.
-        }
-      }
+      await seedBoardSnapshot(root);
     },
     assemble: (root) => assembleSurveyInputs({ projectRoot: root, budget: surveyPlay.budget }),
     subject: (root) => `survey of ${basename(root)}`,
+    outputDirs: ["docs/active/pm/staged"],
+    isAbstention: (output) => output === null || output.includes("no demand staged"),
+  };
+}
+
+/** Survey-THIN: the negative control (T-020-01). IDENTICAL to {@link surveyTarget} except the charter
+ *  + board are seeded from `THIN_BOARD_DIR` (a complete/frozen tiny project) instead of the live repo.
+ *  The fixed input grounds NO demand gradient, so the honest read is an EMPTY board ⇒ survey CLEARs
+ *  honest-empty and stages the "no demand staged" marker — recorded as `honest-empty` by the SAME
+ *  `isAbstention` test. Proves the honest-empty gate STILL abstains on truly-thin input (vs the
+ *  grounded `surveyTarget`, which has demand to stage) — the recalibration's "tightened, not disabled"
+ *  check. The ONLY variable between the two targets is the seeded input root. */
+function surveyThinTarget(): ProbeTarget {
+  return {
+    play: surveyPlay,
+    seed: async (root) => {
+      await seedCharter(root, THIN_BOARD_DIR);
+      await seedBoardSnapshot(root, THIN_BOARD_DIR);
+    },
+    assemble: (root) => assembleSurveyInputs({ projectRoot: root, budget: surveyPlay.budget }),
+    subject: (root) => `survey-thin of ${basename(root)}`,
     outputDirs: ["docs/active/pm/staged"],
     isAbstention: (output) => output === null || output.includes("no demand staged"),
   };
@@ -239,10 +273,19 @@ async function resolveTarget(
       return decomposeTarget(srcInputPath);
     case "survey":
       return surveyTarget();
+    case "survey-thin":
+      return surveyThinTarget(); // negative control: thin board seeded from THIN_BOARD_DIR
     case "expand":
     case "expand-fragment":
       if (!srcInputPath) return null; // the grounded fragment file is required
       return expandTarget((await readFile(srcInputPath, "utf8")).trim());
+    case "expand-thin": {
+      // Negative control: the FIXED vacuous fragment (no CLI input — the path is pinned). Reuses the
+      // `expandTarget` builder verbatim so the ONLY variable vs grounded `expand` is the fragment; the
+      // subject is overridden so the run log reads "thin", not "grounded".
+      const fragment = (await readFile(join(process.cwd(), THIN_FRAGMENT_PATH), "utf8")).trim();
+      return { ...expandTarget(fragment), subject: () => "expand of thin fragment" };
+    }
     case "steer":
       return steerTarget();
     default:
@@ -251,8 +294,9 @@ async function resolveTarget(
 }
 
 /** The supported probe-target names. Extend by adding a `ProbeTarget` builder + a `resolveTarget`
- *  case + a value-import (the T-019-01 seam; T-019-02 added expand + steer). */
-const SUPPORTED = ["decompose-epic", "survey", "expand", "steer"] as const;
+ *  case + a value-import (the T-019-01 seam; T-019-02 added expand + steer; T-020-01 added the
+ *  `*-thin` negative controls). */
+const SUPPORTED = ["decompose-epic", "survey", "expand", "steer", "survey-thin", "expand-thin"] as const;
 
 /** Classify one cast into a {@link ProbeOutcome}: a non-`success` outcome is the censored
  *  (budget-exhausted) bucket; a `success` is a signal unless the target's abstention test fires. */
