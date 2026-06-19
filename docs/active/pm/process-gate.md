@@ -1,6 +1,6 @@
 ---
 ready: false          # ← flip to true when you're ready for the PM agent to process
-requested_at:         # optional: stamp when you raised it
+requested_at:
 ---
 
 # Process gate — "I'm ready for you to process this"
@@ -26,4 +26,10 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
-_(blank = synthesize over everything discovered)_
+_(Processed 2026-06-19.)_ The discovery converged not into a re-ranked batch but into a
+single lean **work brief** — `brief.md`, the Trust & Consistency Evidence Gate (E1
+walk-away audit + E2 variance probe). The trust-before-autonomy through-line made the
+next move measurement, not a build, so the brief supersedes the macro-wallet ranking for
+now. The two new signals discovery surfaced (P6 second-executor; pricing/WTP probe) and
+the wallet remain staged for a later cycle — re-raise the gate to process them.
+
