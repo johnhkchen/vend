@@ -59,14 +59,14 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | **Dispense slice** — the single metered lever (`DecomposeEpic` via `claude -p`), gated · budgeted · streamed · countably logged | **Keystone** (unblocks all) | multi-session | **done → E-001** (converged + committed, `4a1d632`; verified green + 4/4 live paths) |
 | **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **done → E-003** — shelf live: bare `vend` renders a ranked menu, persisted to `.vend/menu.json`; 229 tests. |
 | **CI/CD structural backstop** (Dagger, Node-orchestrator) — independent structural inspection only; the same `bun run check:*` scripts the play invokes as andon gates | **High** (enabler — de-risks every parallel-fleet build; though the *weakest check type* by our own lens) | ~1 feature block (≈2h; one gate end-to-end per `ci-strategy.md`) | **done → E-002** — `/ci` Dagger gate live: `dagger -m ci call test run` runs `check:test` in-container, drift-free (independently verified, 7.6s warm). Keep-warm is the next CI signal (cold-start ~18s). |
+| **Casting engine** — author a play once; cast any registered play (sorcery/permanent) through the one metered seam — mana + gates + log; generalizes E-001's hardcoded runner. The v1 leap that makes the written specs runnable. | **Keystone** (next core capability; ramp) | ~2h/50k first slice (full engine: several blocks) | **carded → E-007** (`epic/E-007.md`); **ready to decompose**; resolves E-006's F4. |
 
-**Next-pull call — v0 is built.** E-001 · E-003 · E-004 · E-005 · E-002 are all
-**done**; the Signals table above is fully cleared and `vend` shows **nothing ready**.
-The only frontier is **E-007 (casting-engine)** — no card yet, readiness-gated on the
-E-006 sorcery friction (`F4`). The board's verdict: the next move is **not to pull more
-epics** but to make the clearing specs *real* — `DecomposeEpic` (R1–R12),
-`ProposeEpic` (PE-1–PE-7), the casting engine — into BAML plays. Author E-007 (or the
-DecomposeEpic build) when you're ready to cross from hand-cleared to machine-cleared.
+**Next-pull call — v0 built; the v1 frontier is carded.** E-001 · E-003 · E-004 · E-005
+· E-002 are **done**; the next live signal is **E-007 (casting-engine)** — now carded
+(`epic/E-007.md`) and surfaced on the shelf. It is the leap that makes the written specs
+(`DecomposeEpic` R1–R12, `ProposeEpic` PE-1–PE-7) *runnable*. **Pull it (decompose) to
+cross from hand-cleared to machine-cleared** — the first slice generalizes E-001's
+hardcoded runner into a play registry that casts ≥2 plays through one seam.
 
 ## Kaizen signals — from E-001's first live runs
 
