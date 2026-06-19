@@ -42,6 +42,29 @@ export function resolveLoggedModel(real: string | undefined, opt: string | undef
   return real ?? opt ?? DEFAULT_MODEL;
 }
 
+/**
+ * Resolve the effective agentic turn cap for a cast (T-015-02): the per-cast OVERRIDE
+ * (`CastOptions.maxTurns`, T-015-01) wins, else the play's WARRANTED DEFAULT (`Play.maxTurns`),
+ * else `undefined` (no cap ⇒ the seam omits `--max-turns` ⇒ turns bounded only by the
+ * wall-clock latch + token budget). PURE — pins the override-wins precedence (AC1) in one
+ * tested place, exactly as {@link resolveLoggedModel} pins the model-id precedence. The seam's
+ * truthy guard folds a `0` to "absent" downstream; this resolver is pure `??`, so a `0`
+ * override is returned as-is and the guard handles it.
+ */
+export function resolveMaxTurns(override: number | undefined, dflt: number | undefined): number | undefined {
+  return override ?? dflt;
+}
+
+/**
+ * Harvest turns-used off the terminal result's `num_turns` (T-015-02, AC2). PURE & TOTAL —
+ * keeps only a finite, non-negative integer; anything else (absent, NaN, negative, fractional,
+ * or a non-number on the open stream record) ⇒ `undefined`, so the run-log field is omitted
+ * (reads as unknown) rather than logged as a lie. Mirrors run-log's `normalizeTurnsUsed`.
+ */
+export function resolveTurnsUsed(numTurns: unknown): number | undefined {
+  return typeof numTurns === "number" && Number.isInteger(numTurns) && numTurns >= 0 ? numTurns : undefined;
+}
+
 /** The inputs to the pure outcome decision (the play-generic analogue of the runner's). */
 export interface ClassifyInput {
   /** The seam threw `ClaudeTimeoutError` (no result, nothing parsed/gated). */

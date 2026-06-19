@@ -9,6 +9,8 @@ import {
   formatMessage,
   makeStreamSink,
   resolveLoggedModel,
+  resolveMaxTurns,
+  resolveTurnsUsed,
 } from "./cast-core.ts";
 
 // T-007-02 generic cast loop: the PURE decision core. We import ONLY ./cast-core.ts (never
@@ -114,5 +116,34 @@ describe("resolveLoggedModel — real id → pinned → sentinel", () => {
   });
   test("falls back to the DEFAULT_MODEL sentinel when neither is present (a timed-out run)", () => {
     expect(resolveLoggedModel(undefined, undefined)).toBe(DEFAULT_MODEL);
+  });
+});
+
+describe("resolveMaxTurns — per-cast override wins over the warranted default (T-015-02 AC #1)", () => {
+  test("the override wins when present (even over a play default)", () => {
+    expect(resolveMaxTurns(30, 15)).toBe(30);
+  });
+  test("the play's warranted default applies when no override is given", () => {
+    expect(resolveMaxTurns(undefined, 15)).toBe(15);
+  });
+  test("neither ⇒ undefined (no cap ⇒ the seam omits --max-turns)", () => {
+    expect(resolveMaxTurns(undefined, undefined)).toBeUndefined();
+  });
+  test("a 0 override is returned as-is (the seam's truthy guard folds it to absent downstream)", () => {
+    expect(resolveMaxTurns(0, 15)).toBe(0);
+  });
+});
+
+describe("resolveTurnsUsed — harvest num_turns, total, never lies (T-015-02 AC #2)", () => {
+  test("a finite non-negative integer passes through", () => {
+    expect(resolveTurnsUsed(7)).toBe(7);
+    expect(resolveTurnsUsed(0)).toBe(0);
+  });
+  test("absent / NaN / negative / fractional / non-number ⇒ undefined (field omitted, reads unknown)", () => {
+    expect(resolveTurnsUsed(undefined)).toBeUndefined();
+    expect(resolveTurnsUsed(NaN)).toBeUndefined();
+    expect(resolveTurnsUsed(-1)).toBeUndefined();
+    expect(resolveTurnsUsed(2.5)).toBeUndefined();
+    expect(resolveTurnsUsed("3")).toBeUndefined();
   });
 });

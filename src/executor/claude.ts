@@ -38,6 +38,12 @@ export type ResultMessage = StreamMessage & {
   usage?: Record<string, unknown>;
   total_cost_usd?: number;
   /**
+   * Agentic turns the run took, carried on the terminal `result`. Typed here so a caller
+   * can read it off the result without a cast (T-015-02 surfaces it on the run record and
+   * the live line to calibrate the turn cap). Absent when the stream named none.
+   */
+  num_turns?: number;
+  /**
    * The REAL model id observed on the dispense stream (the assistant message's
    * `message.model`, or the system/init message's top-level `model`) — NOT carried
    * by the terminal `result` itself, so {@link dispense} attaches it here. Absent
