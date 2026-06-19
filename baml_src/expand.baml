@@ -40,8 +40,8 @@ enum SignalTier {
 // Mirrors the demand.md signal row: what + why, a value tier, a pre-filled budget envelope, the
 // charter value it advances, and board readiness. STAGED for a human pull, never auto-promoted.
 class Signal {
-  what string @description("ONE line: the move to make — what to do. Leave BLANK (together with `why`) ONLY when the fragment grounds no real demand — an honest-empty abstention. Never manufacture a move to fill the field.")
-  why string @description("why it might matter — the leverage, in one line (vision-distance closed, what it unblocks). Blank together with `what` ⇒ honest-empty.")
+  what string @description("ONE line: the move to make — what to do. Leave BLANK (together with `why`) ONLY when the fragment grounds NOTHING at all — off-topic noise or empty input, a RARE honest-empty abstention; a rough-but-grounded fragment is a SIGNAL, not an abstention. Never manufacture a move to fill the field.")
+  why string @description("why it might matter — the leverage, in one line (vision-distance closed, what it unblocks). Blank together with `what` ⇒ honest-empty — reserved for a fragment that reads off nothing, not merely a terse one.")
   tier SignalTier @description("leverage tier: keystone | high | standard | leaf (demand.md value ranking — ranked by leverage, NEVER an effort estimate)")
   budget string @description("the pre-filled budget envelope in demand.md notation, e.g. '~1 block (≈2h)' or 'small (~1h)' — a rough default; the measured E-013 envelope refines it downstream")
   advances string[] @description("the charter invariant id(s) this serves, e.g. [P2], OR the core-feature advance in plain words; never empty for a real signal, never a claim you can't back")
@@ -65,11 +65,24 @@ function ExpandFragment(fragment: string, charter: string, project: string) -> S
     `grounding`. A stated move you cannot ground is speculation, the garbage-factory anti-pattern
     the demand board exists to prevent.
 
-    ## Honest-empty (IA-4) — abstain rather than manufacture
-    If the fragment closes NO vision-distance — it maps to no real demand against THIS project —
-    then ABSTAIN: return a Signal with `what` and `why` BLANK. An honest empty result is correct;
-    manufactured busywork is the worst waste (overproduction). Do not invent a move to fill the
-    fields.
+    ## Honest-empty (IA-4) — the RARE abstention, not a default
+    Abstention is the EXCEPTION, never a co-equal branch. Most fragments are NOT empty — your job is
+    to CLEAR rough, terse, under-specified input, so roughness is NEVER a reason to abstain. Apply
+    this concrete test: can you cite even ONE real thing the fragment points at — a phrase in it, a
+    file/doc/TODO it names, a fact in the run log it implies? If YES, you have a signal: EXTRACT it,
+    and put that citation in `grounding`. ABSTAIN — return a Signal with `what` AND `why` BLANK —
+    ONLY when the honest answer is "there is nothing here to read."
+
+    Calibration (load-bearing — most fragments are NOT empty):
+    - "Remember to water the office plants and restock the coffee filters before the weekend." →
+      ABSTAIN. Off-topic; it grounds no demand against THIS project. `what`/`why` blank.
+    - "the run log records the outcome bucket but not WHICH gate stopped it" → EXTRACT. It names a
+      real gap (an observability hole) traceable to the run record — that is grounding, not invention.
+
+    Do NOT abstain because a fragment is rough, terse, or under-specified — that is exactly the input
+    you exist to clear. When in doubt and you can cite a real source, EXTRACT. Manufactured busywork
+    on a truly empty fragment is the worst waste (overproduction); a false abstention on a grounded
+    one is the same failure inverted. Hit the real demand, abstain only on genuine emptiness.
 
     ## Otherwise, author ONE signal by these rules
     - NAME THE VALUE — set `advances` to the charter invariant id(s) this serves (e.g. [P2]) or the
