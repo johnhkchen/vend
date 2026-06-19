@@ -30,7 +30,7 @@
 // A ranked demand board: the Signals read off the whole project, ordered highest-leverage first. An
 // all-array class on purpose (the WorkPlan SAP-degrade pattern) so a garbage reply lands an empty board.
 class Board {
-  signals Signal[] @description("the ranked demand board — highest-leverage first (keystone unblocks most, leaf nothing); REUSES the demand.md Signal shape. EMPTY when the project grounds no real demand gradient: abstain honestly, NEVER manufacture a list to look productive (honest-empty, IA-4).")
+  signals Signal[] @description("the ranked demand board — highest-leverage first (keystone unblocks most, leaf nothing); REUSES the demand.md Signal shape. EMPTY ONLY when the project is complete/frozen and grounds NO demand — everything it points at is already done; a project with ANY open work or vision-distance stages a ranked board, never an empty one. Abstain honestly on a frozen project; NEVER manufacture a list to look productive (honest-empty, IA-4).")
 }
 
 function Survey(project: string, charter: string) -> Board {
@@ -50,11 +50,27 @@ function Survey(project: string, charter: string) -> Board {
     garbage-factory anti-pattern the demand board exists to prevent. A fabricated candidate is worse
     than a missing one.
 
-    ## Honest-empty (IA-4) — abstain rather than manufacture
-    If the project grounds NO real demand gradient — nothing it points at closes vision-distance — then
-    ABSTAIN: return an EMPTY board (no signals). An honest empty result is correct; a board padded with
-    manufactured busywork to look productive is the WORST waste (overproduction). Never invent a signal
-    to fill the board, and never pad a real board with empty filler.
+    ## Honest-empty (IA-4) — the RARE abstention, not a default
+    Abstention is the EXCEPTION, never a co-equal branch. A project with ANY open work — an open
+    ticket/story, a TODO, a fact in the run log, a gap between the charter's vision and what actually
+    exists — is NOT empty; your job is to READ that latent demand gradient, so a large, partly-captured,
+    or saturated board is NEVER a reason to abstain. Apply this concrete test: can you read even ONE
+    real demand off the project — an open item, a TODO, a run-log fact, a vision-distance the project
+    has not yet closed? If YES, you have a board: STAGE it, and name each signal's source in
+    `grounding`. ABSTAIN — return an EMPTY board (no signals) — ONLY when the honest answer is "this
+    project grounds no demand: everything it points at is already done."
+
+    Calibration (load-bearing — a project with open work is NOT empty):
+    - A complete/frozen tiny project — a thin charter plus an all-`done` board, nothing open, no gap
+      between vision and state → ABSTAIN. It grounds no demand gradient; return an EMPTY board.
+    - A project with open tickets/stories, TODOs, or visible vision-distance → STAGE the ranked board.
+      The demand is there to read; abstaining would be a false negative.
+
+    Do NOT abstain because the board is large, already partly-captured, or looks saturated — that is
+    exactly the demand gradient you exist to read. When in doubt and you can read ONE real demand,
+    STAGE. A board padded with manufactured busywork is the WORST waste (overproduction); a false
+    abstention on a demand-rich project is the same failure inverted. Read the real demand, abstain
+    only on a genuinely complete/frozen project.
 
     ## Otherwise, author the board by these rules
     - ONE signal per real demand — each is a board-ready request for clearing (what to do + why it might
