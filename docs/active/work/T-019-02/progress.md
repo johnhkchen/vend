@@ -9,9 +9,23 @@
 | 1 | Extend harness — expand + steer targets, async `resolveTarget`, `SUPPORTED` | ✅ done, `tsc` clean |
 | 2 | Author fixed grounded fragment (`fixtures/grounded-fragment.txt`) | ✅ done |
 | 3 | `bun run check` green + CLI-guard smokes | ✅ 586 pass; guards exit 2 |
-| 4 | Launch live sweep (background, expand-first) | ⏳ running |
-| 5 | Write `findings.md` (fold real numbers; defer arms honestly) | ⏳ pending sweep |
-| 6 | `review.md` handoff | ⏳ |
+| 4 | Live sweep — all 3 plays, N=3, real budgets | ✅ **all 9 casts completed** |
+| 5 | Write `findings.md` (real numbers + verdict) | ✅ done |
+| 6 | `review.md` handoff | ✅ done |
+
+## Live sweep results (all arms completed in-session)
+
+| Play | outcomes (3 casts) | signal dispersion | honest-empty | budget-exhausted |
+|---|---|---|---|---|
+| expand | HE(STOP), signal, signal | 0.50 over 2 | 33% (raw `gate-failed`, D4) | 0 |
+| survey | HE, signal, HE | n=1 (not meaningful) | 67% (mix) | 0 |
+| steer | signal, signal, signal | 0.72 over 3 | 0% | 0 |
+
+**Verdict: consistency NOT yet acceptable — tune the gates.** Honest-empty gate over-fires on
+grounded input (survey 67% / expand 33% false negatives); signal content unbounded run-to-run
+(steer 0.72 / expand 0.50). **Budgets vindicated** (0/9 exhausted — E-018 recalibration held).
+E-016 finding (2) confirmed + generalized. Full write-up + the 2 demand.md bridge signals +
+the kaizen instrument signal: `findings.md`.
 
 ## What was built
 
@@ -49,4 +63,11 @@
 
 ## Deviations from plan
 
-- _(recorded here as they arise.)_
+- **Full live sweep completed in-session** (plan/AC#4 allowed deferring arms to the at-sweep human
+  run). All three plays ran concurrently in the background at real budgets, N=3 — no arm deferred.
+- **No-pollution invariant verified post-hoc:** the only `git status` change under
+  `docs/active/pm/staged/` (`graph-view-human-projection.md`) was **pre-existing** (in the
+  session-start snapshot), not sweep output; `.vend/` and the staged count (4) are untouched — every
+  cast wrote to a disposable `/var/folders/.../vend-consistency-*` temp root.
+- **AC#3 (T-019-01) carried forward:** `run-probe.ts` / `consistency.ts` / `variance.ts` show an
+  empty `git diff` — the generalization was *exercised*, not modified.

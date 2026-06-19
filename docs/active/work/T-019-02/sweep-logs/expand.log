@@ -45,3 +45,52 @@ consistency probe — 3× expand on a fixed input
 · assistant
 · assistant
 · assistant
+· user
+· assistant
+· result (success)
+· andon: gate-failed — gate 'honest-empty' stopped at <fragment>: honest-empty: the fragment grounds no demand — nothing to stage, not manufactured busywork (IA-4)
+· turns: 5
+  expand-fragment 1/3: gate-failed → budget-exhausted
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· effect ✓ staged /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-RfDKvI/docs/active/pm/staged/thread-castplay-s-structured-stop-reason-gate-name-unit-or-s.md
+· turns: 1
+  expand-fragment 2/3: success → signal
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· effect ✓ staged /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-RfDKvI/docs/active/pm/staged/thread-castplay-s-structured-stop-reason-gate-name-unit-or-s.md
+· turns: 1
+  expand-fragment 3/3: success → signal
+
+run-to-run signal dispersion: 0.50 over 2 (signal 2 · honest-empty 0 · budget-exhausted 1 (of 3); honest-empty rate 0%)
+raw run-log outcomes: gate-failed 1 · success 2
