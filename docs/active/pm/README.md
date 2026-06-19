@@ -10,6 +10,21 @@ This space is **not** the active board. The PM writes only here. It never edits
 `demand.md`, `epic/`, `stories/`, or `tickets/` — those change only when a play clears a
 promoted signal.
 
+## Process gate (discovery vs. processing)
+
+This workspace runs in two modes, separated by `process-gate.md`:
+
+- **Discovery (default, gate down):** the PM agent surveys freely and accumulates
+  findings + draft signals. A `proposed-batch.md` present in this mode is a
+  **preliminary draft**, not a decision. The orchestrator promotes **nothing** to the
+  active board while the gate is down.
+- **Processing (gate raised):** when the human sets `ready: true` in `process-gate.md`,
+  the PM synthesizes the final ranked batch and recommends promotions, then lowers the
+  gate (one-shot). Only now does a human pull a signal onto the board.
+
+The flag is the human's "I'm ready for you to process this" — it lets discovery run as
+long as it needs without the orchestrator jumping to a pull.
+
 ## What the PM agent does
 
 Operationalizes `playbooks/project-steering.md` (the 10 steering moves) as a delegated
