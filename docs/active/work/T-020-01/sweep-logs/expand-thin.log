@@ -44,3 +44,27 @@ consistency probe — 2× expand-thin on a fixed input
 · assistant
 · assistant
 · assistant
+· user
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 335083/250000 tokens (over by 85083)
+· turns: 8
+  expand-fragment 1/2: budget-exhausted → budget-exhausted
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· andon: gate-failed — gate 'honest-empty' stopped at <fragment>: honest-empty: the fragment grounds no demand — nothing to stage, not manufactured busywork (IA-4)
+· turns: 1
+  expand-fragment 2/2: gate-failed → budget-exhausted
+
+run-to-run signal dispersion: 0.00 over 0 (signal 0 · honest-empty 0 · budget-exhausted 2 (of 2); honest-empty rate 0%) — ⚠ signal arm too small to disperse — dispersion not meaningful
+raw run-log outcomes: budget-exhausted 1 · gate-failed 1
