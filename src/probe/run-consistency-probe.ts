@@ -37,6 +37,8 @@ import { assembleInputs } from "../play/project-context.ts";
 // Value-import the targetable plays so they self-register and their assembly verbs resolve here.
 import { decomposeEpicPlay } from "../play/decompose-epic.ts";
 import { surveyPlay, assembleSurveyInputs } from "../play/survey.ts";
+import { expandFragmentPlay, assembleExpandFragmentInputs } from "../play/expand-fragment.ts";
+import { steerProjectPlay, assembleSteerInputs } from "../play/steer.ts";
 import { consistencyReport, formatConsistencyReport, type ProbeOutcome, type ProbeResult } from "./consistency.ts";
 
 /** Casts per sweep, default. Overridable via the CLI `N` arg. */
@@ -94,6 +96,20 @@ async function seedCharter(root: string): Promise<void> {
   const charterDst = join(root, CHARTER_PATH);
   await mkdir(join(charterDst, ".."), { recursive: true });
   await cp(join(process.cwd(), CHARTER_PATH), charterDst);
+}
+
+/** Copy the live board (stories + tickets) into the temp root so a play that reads the demand
+ *  gradient / dedups against existing ids (survey, steer, expand's `listIdsIn`) sees a real,
+ *  GROUNDED input — fixed across every cast of one sweep. Absent dirs on the live repo are skipped
+ *  (a valid emptier board). The same copy `surveyTarget` does, factored for the new targets. */
+async function seedBoardSnapshot(root: string): Promise<void> {
+  for (const dir of ["docs/active/stories", "docs/active/tickets"]) {
+    try {
+      await cp(join(process.cwd(), dir), join(root, dir), { recursive: true });
+    } catch {
+      // absent on the live repo ⇒ the play reads an emptier board; still a valid fixed input.
+    }
+  }
 }
 
 /** Read+concat every `*.md` the effect materialized under the given dirs, sorted for determinism.
@@ -166,22 +182,77 @@ function surveyTarget(): ProbeTarget {
   };
 }
 
+/** Expand-fragment: the fixed input is a GROUNDED fragment STRING (read from the CLI `input.md`)
+ *  cast against the real charter + the live board's id space (for `listIdsIn` dedup). NOTE the
+ *  honest-empty asymmetry (T-019-02 design D4): expand abstains by STOPPING (the honest-empty gate
+ *  fails ⇒ a `gate-failed` non-`success` outcome, nothing materialized), so `classifyRun` folds it
+ *  into `budget-exhausted` and its abstention NEVER reaches `isAbstention` — the default suffices.
+ *  Expand's honest-empty/over-eagerness is therefore read from the RAW `RunOutcome` tally
+ *  (`gate-failed` count + the per-cast andon line), NOT this predicate or the probe mix. */
+function expandTarget(fragment: string): ProbeTarget {
+  return {
+    play: expandFragmentPlay,
+    seed: async (root) => {
+      await seedCharter(root);
+      await seedBoardSnapshot(root); // the grounded id space expand dedups against
+    },
+    assemble: (root) =>
+      assembleExpandFragmentInputs({ projectRoot: root, fragment, budget: expandFragmentPlay.budget }),
+    subject: () => "expand of grounded fragment",
+    outputDirs: ["docs/active/pm/staged"],
+    isAbstention: emptyOutput, // expand STOPs ⇒ honest-empty is a non-success outcome (see above)
+  };
+}
+
+/** Steer: the fixed input is the real charter + the live board snapshot (the whole-project demand
+ *  gradient steer reads). Like survey, steer's empty case CLEARS and materializes a marker note, so
+ *  its abstention test keys on that marker (the full two-sided "nothing to stage" abstention — NOT
+ *  the partial "_No forks_" line, which sits under a real staged board). */
+function steerTarget(): ProbeTarget {
+  return {
+    play: steerProjectPlay,
+    seed: async (root) => {
+      await seedCharter(root);
+      await seedBoardSnapshot(root);
+    },
+    assemble: (root) => assembleSteerInputs({ projectRoot: root, budget: steerProjectPlay.budget }),
+    subject: (root) => `steer of ${basename(root)}`,
+    outputDirs: ["docs/active/pm/staged"],
+    isAbstention: (output) =>
+      output === null ||
+      output.includes("# Steer — nothing to stage") ||
+      output.includes("honest empty steer"),
+  };
+}
+
 /** Resolve the CLI play name to a {@link ProbeTarget}, or `null` if unsupported (the caller prints
- *  usage + the supported names). Decompose requires the `input.md`; survey ignores it. */
-function resolveTarget(playName: string, srcInputPath: string | undefined): ProbeTarget | null {
+ *  usage + the supported names). Decompose + expand require the `input.md` (an epic / a fragment);
+ *  survey + steer ignore it (they read the whole seeded project). `async` because expand reads its
+ *  fragment file. */
+async function resolveTarget(
+  playName: string,
+  srcInputPath: string | undefined,
+): Promise<ProbeTarget | null> {
   switch (playName) {
     case "decompose-epic":
       if (!srcInputPath) return null; // the epic is required — caller surfaces the usage
       return decomposeTarget(srcInputPath);
     case "survey":
       return surveyTarget();
+    case "expand":
+    case "expand-fragment":
+      if (!srcInputPath) return null; // the grounded fragment file is required
+      return expandTarget((await readFile(srcInputPath, "utf8")).trim());
+    case "steer":
+      return steerTarget();
     default:
       return null;
   }
 }
 
-/** The supported probe-target names (the first-cut enumeration; extend by adding a target). */
-const SUPPORTED = ["decompose-epic", "survey"] as const;
+/** The supported probe-target names. Extend by adding a `ProbeTarget` builder + a `resolveTarget`
+ *  case + a value-import (the T-019-01 seam; T-019-02 added expand + steer). */
+const SUPPORTED = ["decompose-epic", "survey", "expand", "steer"] as const;
 
 /** Classify one cast into a {@link ProbeOutcome}: a non-`success` outcome is the censored
  *  (budget-exhausted) bucket; a `success` is a signal unless the target's abstention test fires. */
@@ -224,11 +295,11 @@ async function castN(
 
 /** The sweep: resolve the target, seed, cast N×, print the consistency report + the raw tally. */
 async function main(playName: string, srcInputPath: string | undefined, n: number, tokenBudget?: number): Promise<void> {
-  const target = resolveTarget(playName, srcInputPath);
+  const target = await resolveTarget(playName, srcInputPath);
   if (!target) {
     process.stderr.write(
       `unsupported or under-specified play "${playName}" — supported: ${SUPPORTED.join(", ")}` +
-        ` (decompose-epic requires an <input.md> epic)\n`,
+        ` (decompose-epic requires an <input.md> epic; expand requires an <input.md> fragment)\n`,
     );
     process.exit(2);
   }

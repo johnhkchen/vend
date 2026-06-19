@@ -1,0 +1,21 @@
+consistency probe — 3× survey on a fixed input
+(temp root: /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-5d7muI — ledger + board are disposable; per-cast tokens: 300000)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (notification)
+· system (thinking_tokens)
