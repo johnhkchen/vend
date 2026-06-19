@@ -9,6 +9,7 @@
   "scripts": {
     "check:test": "bun test",
     "check:typecheck": "tsc --noEmit",
+    "check:committed": "bun run src/ci/check-committed.ts",
     "baml:gen": "baml-cli generate --from baml_src",
     "check": "bun run baml:gen && bun run check:typecheck && bun run check:test",
     "build": "tsc --noEmit"
