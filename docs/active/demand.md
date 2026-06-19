@@ -67,7 +67,7 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | **`check:committed` scope-gap** — E-008's gate covers `src/baml_src/ci` but **not `.lisa/hooks/`**; E-010's own enforcement hook (`on-clear.sh`) slipped through uncommitted. Widen the gate to the lisa hooks (functional source — they enforce the gates). | **Standard** (closes the gate's blind spot — the commit-gate doesn't police the hooks that police commits) | small (~30m) | **done → E-012** — `SOURCE_PREFIXES` widened to `.lisa/hooks/` (one-line R12 contract); live andon proven (dirty `on-stop.sh` → exit 1, names the hook). **First epic both *minted and decomposed* by `vend chain` — the pipeline fed its own board.** |
 | **Chain: Signal → Tickets** (`epic/E-011.md`) — cast ProposeEpic → DecomposeEpic as one gesture: a demand signal → epic card → tickets. The engine's first play composition; *vend the whole roadmap*. | **Keystone** (the core-feature capstone; P2, one gesture) | ~2-3h | **done → E-011** — `vend chain <signal>` live: one gesture minted **E-012** *and* threaded it to tickets (two run-log records); both paths proven — success (signal→epic→tickets) **and** halt (thin budget → ProposeEpic andon → decompose never ran, no half-output). `castChain` impure shell over pure `runChain`; 340 tests. **"Vend the whole roadmap" is real.** |
 | **Measured envelopes** (`epic/E-013.md`) — read the run log's actuals; bound each play's cost at the value-tier percentile; surface it as the Confirm default so *accept-the-default* is earned, not guessed. The recalibration core (IA-12…IA-15). | **Keystone** (the budget contract made honest; the first rung of the 2-hour mechanic) | ~2-3h | **done → E-013** — `vend envelope <play>` live: reads run-log actuals, bounds at the value-tier percentile, de-biases a raw `--estimate` (IA-16), with honest cold-start/confidence (IA-8/IA-13 — censored excluded but counted, prior fallback). `src/ledger/recalibrate.ts`; 415 tests across every regime (percentile/censoring/cold-start/bias/3-way pooling). **The budget contract is measured, not guessed — the 2-hour mechanic now has measured prices to spend.** |
-| **Trust & consistency evidence gate** (`epic/E-014.md`) — measure walk-away trust (A2) + gate-driven variance reduction (A5) from existing run-log data **before** building more autonomy; return a go/reroute decision. From the PM discovery's central finding (trust-before-autonomy). | **Keystone** (gates the macro-wallet; the cheapest highest-leverage move — measurement, not a feature) | ~0.5–1h | **active → E-014** (S-014-01, 3 tickets — E1 trust capture+audit ∥ E2 variance probe → findings/decision). Spec: `pm/PRD-trust-consistency-evidence-gate.md`. **Lined up for the loop.** |
+| **Trust & consistency evidence gate** (`epic/E-014.md`) — measure walk-away trust (A2) + gate-driven variance reduction (A5) from existing run-log data **before** building more autonomy; return a go/reroute decision. From the PM discovery's central finding (trust-before-autonomy). | **Keystone** (gates the macro-wallet; the cheapest highest-leverage move — measurement, not a feature) | ~0.5–1h | **done → E-014** — instruments shipped + 467 tests: E1 `vend run --intervened/--no-intervened` + `vend audit`; E2 `vend run --no-gates` + `run-probe.ts` (line-set Jaccard, censoring-aware). Findings note returns **HOLD** — *unmeasured ≠ weak*; the macro-wallet stays gated. **The evidence gate refused to fabricate a verdict — an andon at the roadmap level.** → measurement sprint. |
 
 **Next-pull call — the clearing pipeline is real.** v0 (E-001/E-003/E-004/E-005/E-002),
 **E-007's first slice** (the `castPlay` engine), **E-008** (the commit gate), and
@@ -102,6 +102,12 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
+- **Measurement sprint** (unblocks E-014's verdict) — *human sweep, not a build.* Collect the
+  two numbers the instruments now read: **E1** — cast ≥10 real runs with `vend run
+  --intervened`/`--no-intervened`, then `vend audit` for the walk-away rate + trend (needs
+  forward data over time); **E2** — run `bun run src/probe/run-probe.ts <epic.md>` once for the
+  variance-reduction number (one live 5×2 sweep, ~10 casts; read *with* the censoring caveat).
+  Then re-apply E-014's pre-wired go/reroute rule. **This gates the macro-wallet below.**
 - **The "work for 2 hours" macro mechanic** — the founding gesture made literal: the
   human allocates a **feature-block budget** (the ~2h macro envelope) at the counter,
   and vend spends it *down* autonomously across casts — pulling/chaining until the
@@ -113,6 +119,9 @@ Surfaced demand, deliberately un-elaborated until pulled:
   **⚠ Gated by E-014:** the PM discovery flagged this builds *more* walk-away autonomy
   before walk-away trust (A2) is measured — pull only on E-014's **go** verdict (else
   reroute to andon-UX / consistency first).
+  **Status (T-014-03): HOLD** — instruments built (T-014-01/02) but unmeasured (0 intervention
+  self-reports; no variance sweep). The next pull is the **measurement sprint**, not the
+  wallet. See `work/T-014-03/findings.md`.
 - **Information architecture** — *captured* → `knowledge/information-architecture.md`
   (IA-1…IA-15): recommendation-first home, the cold-start arc, the Counter
   (Confirm→Run→Settle), the andon-as-successful-refusal stance, and the **Ledger
