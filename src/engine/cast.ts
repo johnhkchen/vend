@@ -52,6 +52,20 @@ export interface CastOptions {
   readonly transcriptDir?: string;
   /** Override the run-log ledger path (default `appendRunLog`'s `.vend/runs.jsonl`). */
   readonly runLogPath?: string;
+  /** The E1 trust bit (T-014-01): did the author step in mid-run (`true`) or let it clear
+   *  (`false`)? Self-reported at the cast command; threaded straight to the single end-of-cast
+   *  append (pass-through data, exactly like `project`). Absent ⇒ field omitted ⇒ unknown. */
+  readonly intervened?: boolean;
+  /**
+   * Skip the play's gate phase — the E2 / `--no-gates` run mode (T-014-02). When set, the
+   * parsed output is materialized WITHOUT clearing: `gateVerdict` stays null, so `classify`
+   * sees no stop and returns `success` → the effect lands ungated. Absent/false ⇒ the gated
+   * path is byte-for-byte unchanged. An ungated run logs `gateResults: []` (no gates ran —
+   * honest, the same shape a timed-out/exhausted run logs). The enabler for the variance
+   * probe (PRD KR3): casting one play ±gates on a fixed input to measure gate-driven
+   * variance reduction. NOT a quality bypass for normal use.
+   */
+  readonly skipGates?: boolean;
 }
 
 /** What a cast returns to its caller (which maps a non-`success` outcome to a non-zero exit). */
@@ -117,7 +131,10 @@ export async function castPlay<I, O>(
   // The context both gates and effect receive — assembled once.
   const ctx: CastContext<I> = { inputs, projectRoot: root };
 
-  // After the seam: meter tokens, then (if in budget) parse + gate via the play.
+  // After the seam: meter tokens, then (if in budget) parse + gate via the play. With the
+  // `--no-gates` run mode (T-014-02) the gate call is skipped — `gateVerdict` stays null, which
+  // `classify` reads as "no stop", so the output materializes ungated (the E2 probe's control
+  // arm). The gated path is unchanged when the flag is absent.
   let budgetOutcome: BudgetOutcome | null = null;
   let gateVerdict: GateVerdict | null = null;
   let output: O | null = null;
@@ -125,7 +142,8 @@ export async function castPlay<I, O>(
     budgetOutcome = check(budget, (result.usage ?? {}) as Usage);
     if (budgetOutcome.status === "ok") {
       output = play.parse(result.result ?? "");
-      gateVerdict = play.gates(output, ctx);
+      if (opts.skipGates) process.stdout.write("· gates skipped (--no-gates)\n");
+      gateVerdict = opts.skipGates ? null : play.gates(output, ctx);
     }
   }
 
@@ -170,6 +188,9 @@ export async function castPlay<I, O>(
       // The project this cast ran against — groups the record for two-level bias correction
       // (T-013-03, IA-16); the repo-root basename unless the caller overrode it.
       project,
+      // The E1 trust bit (T-014-01) — pass-through; spread only when supplied, so an
+      // unreported cast (and every pre-T-014-01 record) leaves the field off, reading unknown.
+      ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,

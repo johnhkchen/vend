@@ -356,6 +356,55 @@ describe("project identifier — round-trip, default, malformed (T-013-03 AC #1)
   });
 });
 
+describe("intervention bit — round-trip, absence, false-is-a-value, malformed (T-014-01 AC #1)", () => {
+  test("intervened: true round-trips through build → serialize → revive", () => {
+    const rec = buildRunRecord(baseInput({ runId: "iv1", intervened: true }));
+    expect(rec.intervened).toBe(true);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.intervened).toBe(true);
+  });
+
+  test("intervened: false is a VALUE (clean walk-away), written and round-tripped — not absence", () => {
+    const rec = buildRunRecord(baseInput({ runId: "iv2", intervened: false }));
+    expect("intervened" in rec).toBe(true);
+    expect(rec.intervened).toBe(false);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.intervened).toBe(false);
+  });
+
+  test("an absent intervened is OMITTED from the record (byte-for-byte back-compat)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "iv3" }));
+    expect("intervened" in rec).toBe(false);
+    expect(rec.intervened).toBeUndefined();
+  });
+
+  test("a non-boolean intervened is coerced to absent on build (legal, not a caller error)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "iv4", intervened: "yes" as unknown as boolean }));
+    expect("intervened" in rec).toBe(false);
+  });
+
+  test("a malformed intervened is dropped on revive, the record stays valid", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "iv5" })))),
+      intervened: "yes",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.intervened).toBeUndefined();
+    expect(rec!.runId).toBe("iv5");
+  });
+
+  test("a pre-T-014-01 line (no intervened field) parses, with intervened === undefined", () => {
+    const legacyLine =
+      '{"v":1,"runId":"L1","play":"decompose-epic","epic":"E-001","model":"claude-cli-default",' +
+      '"outcome":"success","usage":{"input_tokens":1,"output_tokens":2,' +
+      '"cache_read_input_tokens":3,"cache_creation_input_tokens":4},"costUsd":0.1,"gateResults":[],' +
+      '"startedAt":"2026-06-18T20:49:24.679Z","endedAt":"2026-06-18T20:50:40.749Z"}';
+    const { records, skipped } = readRuns(legacyLine);
+    expect(skipped).toBe(0);
+    expect(records[0]!.intervened).toBeUndefined();
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(

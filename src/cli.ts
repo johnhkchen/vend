@@ -14,9 +14,10 @@ import type { ValueTier } from "./shelf/menu.ts";
 
 /** Usage banner, printed on any parse error. */
 export const USAGE =
-  "usage: vend run <play> <epic.md> --budget <ms>,<tokens>\n" +
+  "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened]\n" +
   "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
-  "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]";
+  "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
+  "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
 /** The four leverage tiers (mirrors {@link ValueTier} in shelf/menu.ts), as a value tuple
  *  so `parseEnvelopeArgs` can membership-check a `--tier` word without importing the
@@ -25,7 +26,20 @@ const VALUE_TIERS = ["keystone", "high", "standard", "leaf"] as const;
 
 /** A successfully parsed command, or a usage request carrying the reason. */
 export type ParsedCommand =
-  | { readonly cmd: "run"; readonly play: string; readonly epicPath: string; readonly budget: Budget }
+  | {
+      readonly cmd: "run";
+      readonly play: string;
+      readonly epicPath: string;
+      readonly budget: Budget;
+      /** The E2 `--no-gates` run mode (T-014-02): skip the gate phase so the output
+       *  materializes ungated. Spread only when the flag is present, so the gated default
+       *  parses to the same object shape as before. */
+      readonly skipGates?: boolean;
+      /** The E1 trust self-report (T-014-01): `--intervened` ⇒ true (author stepped in),
+       *  `--no-intervened` ⇒ false (let it clear), neither ⇒ absent (unknown). Spread only
+       *  when supplied, so an unreported run keeps the same object shape. */
+      readonly intervened?: boolean;
+    }
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
@@ -35,6 +49,13 @@ export type ParsedCommand =
       readonly tier: ValueTier;
       readonly estimate?: Budget;
       readonly project?: string;
+    }
+  | {
+      readonly cmd: "audit";
+      /** Restrict the walk-away audit to one play; absent ⇒ every play (T-014-01). */
+      readonly play?: string;
+      readonly tier: ValueTier;
+      readonly window?: number;
     }
   | { readonly cmd: "usage"; readonly error?: string };
 
@@ -85,6 +106,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "run") return parseRunArgs(argv);
   if (argv[0] === "chain") return parseChainArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
+  if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
 }
 
@@ -131,6 +153,44 @@ function parseEnvelopeArgs(argv: readonly string[]): ParsedCommand {
     }
   }
   return { cmd: "envelope", play, tier, ...(estimate ? { estimate } : {}), ...(project ? { project } : {}) };
+}
+
+/**
+ * Parse the read-only `audit [<play>] [--tier <t>] [--window <n>]` path — the E1 walk-away
+ * trust readout over `.vend/runs.jsonl` (T-014-01, PRD KR1–KR2): andon-rate vs the IA-12
+ * budget, outcome mix, cost-vs-envelope, and the intervention rate/trend. PURE. The play name
+ * is OPTIONAL (the first non-flag token; absent ⇒ every play), `--tier` defaults to `standard`
+ * (the 10% andon budget — the neutral middle) and is validated against the four leverage tiers,
+ * `--window` is the OPTIONAL recency cap (a positive integer). Read-only — it never dispatches a
+ * cast, so it takes no `--budget`.
+ */
+function parseAuditArgs(argv: readonly string[]): ParsedCommand {
+  let play: string | undefined;
+  let tier: ValueTier = "standard";
+  let window: number | undefined;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--tier") {
+      const word = argv[++i];
+      const match = VALUE_TIERS.find((t) => t === word);
+      if (!match) return { cmd: "usage", error: `--tier must be one of ${VALUE_TIERS.join(" | ")}, got ${JSON.stringify(word)}` };
+      tier = match;
+    } else if (a === "--window") {
+      const word = argv[++i];
+      const n = Number(word);
+      if (word === undefined || !Number.isInteger(n) || n <= 0) {
+        return { cmd: "usage", error: `--window must be a positive integer, got ${JSON.stringify(word)}` };
+      }
+      window = n;
+    } else if (a.startsWith("--")) {
+      return { cmd: "usage", error: `unknown audit flag: ${a}` };
+    } else if (play === undefined) {
+      play = a;
+    } else {
+      return { cmd: "usage", error: `unexpected audit argument: ${a}` };
+    }
+  }
+  return { cmd: "audit", tier, ...(play ? { play } : {}), ...(window !== undefined ? { window } : {}) };
 }
 
 /**
@@ -191,7 +251,21 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
   } catch (e) {
     return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
   }
-  return { cmd: "run", play, epicPath, budget };
+  // `--no-gates` is a presence flag (the E2 run mode, T-014-02) — order-independent vs
+  // `--budget`. Spread `skipGates` only when present so the gated default keeps its shape.
+  const skipGates = argv.includes("--no-gates");
+  // `--intervened` / `--no-intervened` is the E1 trust self-report (T-014-01) — a presence
+  // flag pair: present-and-true ⇒ the author stepped in, present-and-false ⇒ a clean walk-away,
+  // neither ⇒ absent (unknown). Spread only when one was given so an unreported run keeps shape.
+  const intervened = argv.includes("--intervened") ? true : argv.includes("--no-intervened") ? false : undefined;
+  return {
+    cmd: "run",
+    play,
+    epicPath,
+    budget,
+    ...(skipGates ? { skipGates: true } : {}),
+    ...(intervened !== undefined ? { intervened } : {}),
+  };
 }
 
 /**
@@ -334,12 +408,35 @@ if (import.meta.main) {
     process.exit(0);
   }
 
+  if (parsed.cmd === "audit") {
+    // The E1 walk-away readout (T-014-01, PRD KR1–KR2): load the ledger, audit the trust
+    // numbers (andon-rate vs the IA-12 budget, outcome mix, cost-vs-envelope, intervention
+    // rate/trend), and PRINT the findings fragment T-014-03's note quotes. Read-only — it
+    // never actuates, so it always exits 0. Lazy imports keep the ledger deps off the pure
+    // parse path, exactly as the envelope arm does.
+    const { loadRunLog } = await import("./log/run-log.ts");
+    const { auditWalkAway, formatWalkAwayFindings } = await import("./ledger/walk-away.ts");
+    const { records } = await loadRunLog();
+    const report = auditWalkAway(records, {
+      tier: parsed.tier,
+      ...(parsed.play ? { play: parsed.play } : {}),
+      ...(parsed.window !== undefined ? { window: parsed.window } : {}),
+    });
+    process.stdout.write(`${formatWalkAwayFindings(report)}\n`);
+    process.exit(0);
+  }
+
   // The run path: look the play up BY NAME in the registry and cast it (no hardcoded
   // decompose-epic branch). Lazy import keeps the dispatcher (and its BAML addon) off the
   // pure-parse path, exactly as the browse/press arms keep their deps lazy. An unknown play
   // is the registry's typed andon → stderr + exit 2.
   const { runPlay } = await import("./play/dispatch.ts");
-  const res = await runPlay(parsed.play, { epicPath: parsed.epicPath, budget: parsed.budget });
+  const res = await runPlay(parsed.play, {
+    epicPath: parsed.epicPath,
+    budget: parsed.budget,
+    skipGates: parsed.skipGates,
+    intervened: parsed.intervened,
+  });
   if (res.kind === "no-play") {
     process.stderr.write(`${res.error.message}\n`);
     process.exit(2);

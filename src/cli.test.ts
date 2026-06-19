@@ -95,6 +95,30 @@ describe("parseArgs", () => {
     expect(parseArgs(["run", "decompose-epic", "epic.md", "--budget", "nope"]).cmd).toBe("usage");
   });
 
+  // T-014-02: the `--no-gates` run mode (the E2 probe's ungated arm).
+  test("run --no-gates sets skipGates:true", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--no-gates"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+      skipGates: true,
+    });
+  });
+  test("run --no-gates is order-independent vs --budget", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--no-gates", "--budget", "1,2"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+      skipGates: true,
+    });
+  });
+  test("run without --no-gates omits the skipGates key (gated default unchanged)", () => {
+    const p = parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2"]);
+    expect(p).not.toHaveProperty("skipGates");
+  });
+
   // T-011-02: the propose→decompose chain gesture.
   test("chain <signal> (no budget) → a chain command, no budget", () => {
     expect(parseArgs(["chain", "ship-the-head-gate"])).toEqual({ cmd: "chain", signal: "ship-the-head-gate" });
@@ -184,5 +208,61 @@ describe("parseArgs", () => {
   test("the bare two-arg envelope form is unchanged (no estimate/project)", () => {
     const parsed = parseArgs(["envelope", "decompose-epic"]);
     expect(parsed).toEqual({ cmd: "envelope", play: "decompose-epic", tier: "standard" });
+  });
+});
+
+describe("parseArgs — run --intervened / --no-intervened (T-014-01 E1 self-report)", () => {
+  test("--intervened sets intervened:true", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--intervened"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+      intervened: true,
+    });
+  });
+  test("--no-intervened sets intervened:false (a clean walk-away is a value)", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--no-intervened"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+      intervened: false,
+    });
+  });
+  test("neither flag omits the intervened key (unknown — back-compat shape)", () => {
+    const p = parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2"]);
+    expect(p).not.toHaveProperty("intervened");
+  });
+  test("--intervened composes with --no-gates", () => {
+    const p = parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--no-gates", "--intervened"]);
+    expect(p).toMatchObject({ cmd: "run", skipGates: true, intervened: true });
+  });
+});
+
+describe("parseArgs — audit (T-014-01 walk-away readout)", () => {
+  test("bare `audit` defaults to standard tier, all plays, no window", () => {
+    expect(parseArgs(["audit"])).toEqual({ cmd: "audit", tier: "standard" });
+  });
+  test("audit <play> scopes to one play", () => {
+    expect(parseArgs(["audit", "decompose-epic"])).toEqual({ cmd: "audit", tier: "standard", play: "decompose-epic" });
+  });
+  test("audit --tier + --window compose (play optional)", () => {
+    expect(parseArgs(["audit", "decompose-epic", "--tier", "keystone", "--window", "50"])).toEqual({
+      cmd: "audit",
+      tier: "keystone",
+      play: "decompose-epic",
+      window: 50,
+    });
+  });
+  test("audit with a bad tier → usage", () => {
+    expect(parseArgs(["audit", "--tier", "bogus"]).cmd).toBe("usage");
+  });
+  test("audit with a non-positive / non-integer window → usage", () => {
+    expect(parseArgs(["audit", "--window", "0"]).cmd).toBe("usage");
+    expect(parseArgs(["audit", "--window", "nope"]).cmd).toBe("usage");
+  });
+  test("audit with an unknown flag → usage", () => {
+    expect(parseArgs(["audit", "--bogus"]).cmd).toBe("usage");
   });
 });

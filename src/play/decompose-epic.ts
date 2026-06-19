@@ -66,6 +66,12 @@ export interface RunOptions {
   readonly runId?: string;
   /** Override the transcript dir (default `<root>/.vend/transcripts`). */
   readonly transcriptDir?: string;
+  /** The E1 trust bit (T-014-01): did the author step in mid-run? Forwarded to the cast's
+   *  single end-of-run append; absent ⇒ unknown. The `vend run --intervened` self-report. */
+  readonly intervened?: boolean;
+  /** The E2 run mode (T-014-02): skip the gate phase so the output materializes ungated. The
+   *  `vend run --no-gates` switch; absent/false ⇒ the gated path is unchanged. */
+  readonly skipGates?: boolean;
 }
 
 /** The result of spawning `lisa validate` (the final structural poka-yoke). */
@@ -191,6 +197,8 @@ export async function assembleAndCast(play: AnyPlay, opts: RunOptions): Promise<
     model: opts.model,
     runId: opts.runId,
     transcriptDir: opts.transcriptDir,
+    intervened: opts.intervened,
+    skipGates: opts.skipGates,
   });
 }
 

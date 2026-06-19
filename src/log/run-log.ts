@@ -114,6 +114,11 @@ export interface RunRecordInput {
    *  runner stamps the repo-root basename; absent ⇒ field omitted (every pre-T-013-03
    *  record), grouped under {@link DEFAULT_PROJECT} on read. */
   readonly project?: string;
+  /** One self-reported bit (T-014-01, PRD KR1): did the author step in mid-run (`true`) or
+   *  let it clear (`false`)? Absent ⇒ unknown — back-compat (every pre-T-014-01 record), and
+   *  the only legal "we don't know" value, so this coerces (non-boolean ⇒ omitted) rather
+   *  than asserting. The forward-looking E1 walk-away instrument. */
+  readonly intervened?: boolean;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -138,6 +143,10 @@ export interface RunRecord {
    *  record), so it is omitted rather than written, and {@link projectOf} supplies the
    *  default bucket on read. */
   readonly project?: string;
+  /** Present ONLY when the cast supplied one — absence is meaningful (unknown), so it is
+   *  omitted rather than written, exactly like {@link RunRecord.envelope}/`project`. `false`
+   *  (a clean walk-away) is a real value and IS written; only absence reads as unknown. */
+  readonly intervened?: boolean;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -196,6 +205,15 @@ function normalizeProject(p: string | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** Normalize the self-reported intervention bit (T-014-01): a real boolean is taken
+ *  verbatim (`false` is a value, not absence — it is the clean walk-away); anything else
+ *  (absent, or a non-boolean from a torn caller) ⇒ `undefined`, so the field is omitted and
+ *  reads as unknown. Like {@link normalizeProject}, absence is LEGAL back-compat — coerce,
+ *  don't assert. */
+function normalizeIntervened(v: boolean | undefined): boolean | undefined {
+  return typeof v === "boolean" ? v : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -219,11 +237,12 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   assertNonEmpty(input.endedAt, "endedAt");
   assertOutcome(input.outcome);
 
-  // Spread the envelope/project only when present, so an envelope-less cast (and every
-  // pre-T-013-01 / pre-T-013-03 record) leaves the field OFF the record — same shape, byte
-  // for byte.
+  // Spread envelope/project/intervened only when present, so an envelope-less cast (and every
+  // pre-T-013-01 / pre-T-013-03 / pre-T-014-01 record) leaves the field OFF the record — same
+  // shape, byte for byte. `intervened: false` is a value, not absence, so it IS written.
   const envelope = normalizeEnvelope(input.envelope);
   const project = normalizeProject(input.project);
+  const intervened = normalizeIntervened(input.intervened);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -237,6 +256,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     gateResults: normalizeGates(input.gateResults),
     ...(envelope ? { envelope } : {}),
     ...(project ? { project } : {}),
+    ...(intervened !== undefined ? { intervened } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -321,6 +341,11 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // (field omitted, grouped under the default) rather than admitted or used to reject.
   const project = isNonEmptyString(r.project) ? r.project : undefined;
 
+  // The intervention bit is kept only when it is a real boolean (T-014-01); anything else
+  // (absent — a pre-T-014-01 record — or a malformed value) is dropped (field omitted, reads
+  // as unknown) rather than admitted or used to reject the record. `false` is kept.
+  const intervened = typeof r.intervened === "boolean" ? r.intervened : undefined;
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -333,6 +358,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     gateResults,
     ...(envelope ? { envelope } : {}),
     ...(project ? { project } : {}),
+    ...(intervened !== undefined ? { intervened } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });
