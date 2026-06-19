@@ -18,6 +18,7 @@ export const USAGE =
   "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
   "       vend survey [--budget <ms>,<tokens>]\n" +
+  "       vend steer [--budget <ms>,<tokens>]\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -45,6 +46,7 @@ export type ParsedCommand =
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
   | { readonly cmd: "survey"; readonly budget?: Budget }
+  | { readonly cmd: "steer"; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -111,6 +113,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "chain") return parseChainArgs(argv);
   if (argv[0] === "expand") return parseExpandArgs(argv);
   if (argv[0] === "survey") return parseSurveyArgs(argv);
+  if (argv[0] === "steer") return parseSteerArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -310,6 +313,41 @@ function parseSurveyArgs(argv: readonly string[]): ParsedCommand {
   return budget ? { cmd: "survey", budget } : { cmd: "survey" };
 }
 
+/**
+ * Parse the `steer [--budget <v>]` path — the steering-capstone gesture (T-018-02). PURE. Like `survey`
+ * (and UNLIKE `expand`/`chain`), steer takes NO positional subject — it reads the WHOLE project and stages
+ * a ranked board AND the real forks — so this is a flags-only command: `--budget` is OPTIONAL (the gesture
+ * defaults to the play's warranted envelope), and any positional token is an error (there is no subject to
+ * type). A copy of {@link parseSurveyArgs}'s shape (the no-shared-util idiom: copy the five lines rather
+ * than couple two commands' parsers).
+ */
+function parseSteerArgs(argv: readonly string[]): ParsedCommand {
+  let budgetVal: string | undefined;
+  let sawBudgetFlag = false;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--budget") {
+      sawBudgetFlag = true;
+      budgetVal = argv[++i];
+    } else {
+      return { cmd: "usage", error: `unexpected steer argument: ${a}` };
+    }
+  }
+
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
+  } else if (sawBudgetFlag) {
+    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  }
+
+  return budget ? { cmd: "steer", budget } : { cmd: "steer" };
+}
+
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
  *  verbatim (any non-flag token); an UNKNOWN name is not a parse error — it parses to a
  *  `run` command and is rejected at dispatch by the registry (`PlayNotFoundError`), so the
@@ -477,6 +515,20 @@ if (import.meta.main) {
     const { castSurvey, surveyPlay } = await import("./play/survey.ts");
     const budget = parsed.budget ?? surveyPlay.budget;
     const summary = await castSurvey({ budget });
+    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.exit(summary.outcome === "success" ? 0 : 1);
+  }
+
+  if (parsed.cmd === "steer") {
+    // The steering-capstone gesture (T-018-02): cast Steer on the WHOLE project. On success it STAGES the
+    // ranked demand board AND the real forks under `docs/active/pm/staged/steer.md` for human assent; a
+    // read-never-invent / fork-genuineness refusal halts as a `gate-failed` andon with nothing staged (no
+    // fabricated board or manufactured fork materializes). `--budget` defaults to the play's warranted
+    // (generous, heaviest-read) envelope. Lazy import keeps the shell (and its BAML addon) off the
+    // pure-parse path, exactly as the other arms.
+    const { castSteer, steerProjectPlay } = await import("./play/steer.ts");
+    const budget = parsed.budget ?? steerProjectPlay.budget;
+    const summary = await castSteer({ budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
   }

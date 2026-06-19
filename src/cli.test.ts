@@ -189,6 +189,24 @@ describe("parseArgs", () => {
     expect(parseArgs(["survey", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
   });
 
+  // T-018-02: the steering-capstone gesture (flags-only — no positional subject, like survey).
+  test("steer (no budget) → a steer command, no budget", () => {
+    expect(parseArgs(["steer"])).toEqual({ cmd: "steer" });
+  });
+  test("steer --budget carries the override", () => {
+    expect(parseArgs(["steer", "--budget", "100,200"])).toEqual({
+      cmd: "steer",
+      budget: { timeMs: 100, tokens: 200 },
+    });
+  });
+  test("steer with an unexpected positional → usage (there is no subject to type)", () => {
+    expect(parseArgs(["steer", "junk"])).toEqual({ cmd: "usage", error: "unexpected steer argument: junk" });
+  });
+  test("steer --budget malformed / dangling → usage", () => {
+    expect(parseArgs(["steer", "--budget", "nope"]).cmd).toBe("usage");
+    expect(parseArgs(["steer", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
+  });
+
   // T-013-02: the read-only Ledger envelope readout.
   test("envelope <play> (no tier) → default tier standard", () => {
     expect(parseArgs(["envelope", "decompose-epic"])).toEqual({
