@@ -63,14 +63,16 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | **Done Means Committed** (the D-005 fix) — `check:committed` fails when source sits uncommitted, fired by a lisa `on-stop` hook; makes "done" mean "committed". | **High** (enabler — stops the recurring andon that bit 3 loops, incl. the E-007 broken HEAD) | small (~1h) | **done → E-008** — `check:committed` live (dirty source → fail naming the file; clean → pass), wired into the `on-stop` hook (blocks the stop on uncommitted source, fails open). **D-005 fixed.** |
 
 | **Register ProposeEpic** — the play above decompose: a demand signal → an epic card, cast through the engine; completes signal → epic → tickets. | **High** (core feature; the pipeline) | ~2-3h | **done → E-009** — ProposeEpic registered + cast live ($0.41): a signal minted a valid epic card (E-010, id disjoint, PE gates passed). **`signal → epic` is real; three plays cast through one engine.** |
-| **HEAD-builds gate** (`epic/E-010.md`) — verify the committed HEAD itself builds (isolated checkout + `check`), catching inconsistent-but-committed commits like E-007's `cast.ts`-without-`play.ts`. E-008's follow-up. | **High** (closes local-green vs HEAD-green; P3/P4) | ~2h | **decomposing → E-010** (S-010-01, 2 tickets), lined up. Boundaries settled at decompose: git-worktree not Docker (P5); `on-clear` trigger not `on-stop` (latency — correcting the card's own assumption). |
+| **HEAD-builds gate** (`epic/E-010.md`) — verify the committed HEAD itself builds (isolated checkout + `check`), catching inconsistent-but-committed commits like E-007's `cast.ts`-without-`play.ts`. E-008's follow-up. | **High** (closes local-green vs HEAD-green; P3/P4) | ~2h | **done → E-010** — `check:head` live (committed HEAD builds, isolated git-worktree, ~3s, no leak); wired to `on-clear` (per the decompose decision). **"Done" now means committed *and builds*.** |
+| **`check:committed` scope-gap** — E-008's gate covers `src/baml_src/ci` but **not `.lisa/hooks/`**; E-010's own enforcement hook (`on-clear.sh`) slipped through uncommitted. Widen the gate to the lisa hooks (functional source — they enforce the gates). | **Standard** (closes the gate's blind spot — the commit-gate doesn't police the hooks that police commits) | small (~30m) | **ready** — surfaced by E-010. |
 
 **Next-pull call — the clearing pipeline is real.** v0 (E-001/E-003/E-004/E-005/E-002),
 **E-007's first slice** (the `castPlay` engine), **E-008** (the commit gate), and
-**E-009** (register ProposeEpic) are all done. On its verification cast, ProposeEpic
-**proposed E-010** (the HEAD-builds gate) — *signal → epic, autonomously* — the
-pipeline's first machine-authored card and the next pullable work. The remaining
-follow-ups —
+**E-009** (register ProposeEpic), and **E-010** (the HEAD-builds gate) are all done.
+**The pipeline ran a full lap:** ProposeEpic *proposed* E-010, DecomposeEpic (by hand)
+*cleared* it, a loop *built* it — and decompose corrected propose (`on-clear`, not
+`on-stop`). Newly surfaced: the **`check:committed` scope-gap** (`.lisa/hooks/`
+uncovered, ready). The remaining follow-ups —
 the remaining moves are **follow-up slices onto the proven engine**: generalize input
 assembly so `vend run <any-play>` casts arbitrary plays; register `ProposeEpic`; re-cast
 the roadmap survey as a sorcery (full F4); then the multi-node DAG and open-model
