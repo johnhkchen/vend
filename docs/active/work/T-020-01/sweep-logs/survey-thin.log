@@ -105,3 +105,11 @@ consistency probe — 2× survey-thin on a fixed input
 · system (thinking_tokens)
 · system (thinking_tokens)
 · assistant
+· assistant
+· result (success)
+· effect ✓ staged /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-CPorxb/docs/active/pm/staged/survey-board.md
+· turns: 2
+  survey 2/2: success → honest-empty
+
+run-to-run signal dispersion: 0.00 over 0 (signal 0 · honest-empty 1 · budget-exhausted 1 (of 2); honest-empty rate 50%) — ⚠ signal arm too small to disperse — dispersion not meaningful
+raw run-log outcomes: budget-exhausted 1 · success 1

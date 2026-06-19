@@ -1,6 +1,6 @@
-### expand-thin N=2 ###
+### expand-thin N=2 (off-topic non-sequitur fragment) ###
 consistency probe — 2× expand-thin on a fixed input
-(temp root: /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-2r5UaJ — ledger + board are disposable; per-cast tokens: 250000)
+(temp root: /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-ftzsZz — ledger + board are disposable; per-cast tokens: 250000)
 · system (hook_started)
 · system (hook_started)
 · system (hook_response)
@@ -8,61 +8,12 @@ consistency probe — 2× expand-thin on a fixed input
 · system (init)
 · system (thinking_tokens)
 · system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
 · assistant
 · assistant
 · rate_limit_event
 · user
-· system (notification)
 · assistant
 · assistant
-· user
-· assistant
-· assistant
-· user
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· assistant
-· assistant
-· assistant
-· user
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· assistant
-· assistant
-· assistant
-· user
-· assistant
-· result (success)
-· andon: budget-exhausted — spent 260898/250000 tokens (over by 10898)
-· turns: 6
-  expand-fragment 1/2: budget-exhausted → budget-exhausted
-· system (hook_started)
-· system (hook_started)
-· system (hook_response)
-· system (hook_response)
-· system (init)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· assistant
-· assistant
-· rate_limit_event
 · user
 · system (notification)
 · system (thinking_tokens)
@@ -72,13 +23,9 @@ consistency probe — 2× expand-thin on a fixed input
 · user
 · system (thinking_tokens)
 · system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
 · assistant
-· assistant
-· user
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
 · assistant
 · assistant
 · user
@@ -86,19 +33,12 @@ consistency probe — 2× expand-thin on a fixed input
 · system (thinking_tokens)
 · system (thinking_tokens)
 · system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
 · assistant
-· assistant
-· user
-· system (thinking_tokens)
-· system (thinking_tokens)
 · assistant
 · assistant
 · user
-· system (thinking_tokens)
-· system (thinking_tokens)
-· system (thinking_tokens)
+· assistant
+· user
 · system (thinking_tokens)
 · system (thinking_tokens)
 · assistant
