@@ -26,12 +26,23 @@ import { runChain, type ChainResult, type ChainStep } from "./chain-core.ts";
 export * from "./chain-core.ts";
 
 /**
+ * A step's cast options — either STATIC, or DERIVED from the upstream `produced` reference. The
+ * function form lets a step name its run-log record from the threaded value: the propose→decompose
+ * chain (T-011-02) derives DecomposeEpic's `subject` (the run-log `epic` field) from the minted
+ * epic path it is cast on, which is only known at run time. Resolved against the same `upstream`
+ * the step's `adapt` sees (the first step's is `undefined`). A plain {@link CastOptions} is still
+ * a valid `StepOptions`, so static steps are unchanged — the function form is purely additive.
+ */
+export type StepOptions = CastOptions | ((upstream: string | undefined) => CastOptions);
+
+/**
  * One play in a chain: the play, its budget + cast options, and an `adapt` that builds the
  * step's typed inputs from the upstream `produced` reference. The FIRST step's `adapt` ignores
  * `upstream` (it has none); each LATER step adapts the previous step's `produced` into its own
  * inputs (e.g. an epic path → DecomposeEpic's `epicPath`, wired in T-011-02). `adapt` may be
  * async — assembling a play's inputs reads fs (`assembleProposeEpicInputs`), so `castChain`
- * awaits it before casting.
+ * awaits it before casting. `opts` is {@link StepOptions} — static, or derived from the same
+ * `upstream` (e.g. the run-log subject from the threaded epic path).
  *
  * @typeParam I the play's typed inputs
  * @typeParam O the play's typed output
@@ -39,7 +50,7 @@ export * from "./chain-core.ts";
 export interface PlayStep<I, O> {
   readonly play: Play<I, O>;
   readonly budget: Budget;
-  readonly opts: CastOptions;
+  readonly opts: StepOptions;
   readonly adapt: (upstream: string | undefined) => I | Promise<I>;
 }
 
@@ -60,7 +71,10 @@ export async function castChain(steps: readonly PlayStep<any, any>[]): Promise<C
   const chainSteps: ChainStep[] = steps.map((s) => ({
     cast: async (upstream) => {
       const inputs = await s.adapt(upstream);
-      return castPlay(s.play, inputs, s.budget, s.opts);
+      // Resolve the step's cast options against the SAME upstream the adapter saw — a step may
+      // derive its run-log subject from the threaded `produced` (T-011-02's decompose step).
+      const opts = typeof s.opts === "function" ? s.opts(upstream) : s.opts;
+      return castPlay(s.play, inputs, s.budget, opts);
     },
   }));
   return runChain(chainSteps);

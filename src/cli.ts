@@ -12,11 +12,14 @@
 import type { Budget } from "./budget/budget.ts";
 
 /** Usage banner, printed on any parse error. */
-export const USAGE = "usage: vend run <play> <epic.md> --budget <ms>,<tokens>";
+export const USAGE =
+  "usage: vend run <play> <epic.md> --budget <ms>,<tokens>\n" +
+  "       vend chain <signal> [--budget <ms>,<tokens>]";
 
 /** A successfully parsed command, or a usage request carrying the reason. */
 export type ParsedCommand =
   | { readonly cmd: "run"; readonly play: string; readonly epicPath: string; readonly budget: Budget }
+  | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | { readonly cmd: "usage"; readonly error?: string };
@@ -66,7 +69,46 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   // `vend 1 --budget …` — is the browse/press tail (T-003-04).
   if (argv.length === 0) return { cmd: "browse", all: false };
   if (argv[0] === "run") return parseRunArgs(argv);
+  if (argv[0] === "chain") return parseChainArgs(argv);
   return parseSelectOrBrowse(argv);
+}
+
+/**
+ * Parse the `chain <signal> [--budget <v>]` path — the propose→decompose capstone gesture
+ * (T-011-02). PURE. The signal is every non-flag token after `chain`, joined with a space (so an
+ * unquoted multi-word signal and a quoted single-token one both round-trip); `--budget` is OPTIONAL
+ * (the chain defaults to each play's warranted envelope). PE-1: exactly one pulled signal, never a
+ * board selection — that is why `chain` is its own command, not a `select` shape.
+ */
+function parseChainArgs(argv: readonly string[]): ParsedCommand {
+  const positional: string[] = [];
+  let budgetVal: string | undefined;
+  let sawBudgetFlag = false;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--budget") {
+      sawBudgetFlag = true;
+      budgetVal = argv[++i];
+    } else {
+      positional.push(a);
+    }
+  }
+
+  if (positional.length === 0) return { cmd: "usage", error: "missing <signal>" };
+
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
+  } else if (sawBudgetFlag) {
+    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  }
+
+  const signal = positional.join(" ");
+  return budget ? { cmd: "chain", signal, budget } : { cmd: "chain", signal };
 }
 
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
@@ -186,6 +228,20 @@ if (import.meta.main) {
       }
     }
   }
+  if (parsed.cmd === "chain") {
+    // The capstone gesture (T-011-02): cast the propose→decompose chain on ONE pulled signal
+    // (PE-1). On success it materializes BOTH the epic card AND its stories/tickets, each gated and
+    // logged (two run-log records). A ProposeEpic gate STOP halts BEFORE DecomposeEpic — surfaced
+    // as `halted`. Lazy import keeps the chain (and its BAML addon) off the pure-parse path.
+    const { castProposeDecomposeChain } = await import("./play/chain-propose-decompose.ts");
+    const result = await castProposeDecomposeChain({ signal: parsed.signal, budget: parsed.budget });
+    for (const s of result.steps) {
+      process.stdout.write(`run ${s.runId}: ${s.outcome} (materialized: ${s.materialized})\n`);
+    }
+    if (result.halted) process.stderr.write(`chain halted: ${result.haltReason}\n`);
+    process.exit(result.outcome === "success" && !result.halted ? 0 : 1);
+  }
+
   // The run path: look the play up BY NAME in the registry and cast it (no hardcoded
   // decompose-epic branch). Lazy import keeps the dispatcher (and its BAML addon) off the
   // pure-parse path, exactly as the browse/press arms keep their deps lazy. An unknown play

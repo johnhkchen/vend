@@ -81,6 +81,19 @@ describe("runChain — halts on any non-success; no downstream cast (AC#3)", () 
     expect(result.haltReason).toContain("no `produced`");
     expect(result.steps).toHaveLength(1);
   });
+
+  // T-011-02 AC: the propose→decompose headline — a ProposeEpic gate STOP halts the chain BEFORE
+  // DecomposeEpic runs. Step 1 = a `gate-failed` ProposeEpic; step 2 = DecomposeEpic (neverStep).
+  test("ProposeEpic STOP halts before DecomposeEpic — no downstream cast (T-011-02)", async () => {
+    const propose = { cast: async () => summary("gate-failed") }; // ProposeEpic value/bounds STOP
+    const decompose = neverStep; // must not run
+    const result = await runChain([propose, decompose]);
+
+    expect(result.halted).toBe(true);
+    expect(result.steps).toHaveLength(1); // only ProposeEpic cast — one run-log record, not two
+    expect(result.outcome).toBe("gate-failed");
+    expect(result.haltReason).toContain("gate-failed");
+  });
 });
 
 describe("runChain — edge cases", () => {

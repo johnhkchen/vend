@@ -94,4 +94,30 @@ describe("parseArgs", () => {
   test("malformed --budget surfaces the parse error as usage", () => {
     expect(parseArgs(["run", "decompose-epic", "epic.md", "--budget", "nope"]).cmd).toBe("usage");
   });
+
+  // T-011-02: the propose→decompose chain gesture.
+  test("chain <signal> (no budget) → a chain command, no budget", () => {
+    expect(parseArgs(["chain", "ship-the-head-gate"])).toEqual({ cmd: "chain", signal: "ship-the-head-gate" });
+  });
+  test("chain joins multi-token and single-token signals to the same string", () => {
+    const multi = parseArgs(["chain", "a", "pulled", "signal"]);
+    const single = parseArgs(["chain", "a pulled signal"]);
+    expect(multi).toEqual({ cmd: "chain", signal: "a pulled signal" });
+    expect(single).toEqual({ cmd: "chain", signal: "a pulled signal" });
+  });
+  test("chain <signal> --budget carries the override applied to both steps", () => {
+    expect(parseArgs(["chain", "ramp-the-shelf", "--budget", "100,200"])).toEqual({
+      cmd: "chain",
+      signal: "ramp-the-shelf",
+      budget: { timeMs: 100, tokens: 200 },
+    });
+  });
+  test("chain with no signal → usage", () => {
+    expect(parseArgs(["chain"])).toEqual({ cmd: "usage", error: "missing <signal>" });
+    expect(parseArgs(["chain", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing <signal>" });
+  });
+  test("chain <signal> --budget malformed → usage", () => {
+    expect(parseArgs(["chain", "sig", "--budget", "nope"]).cmd).toBe("usage");
+    expect(parseArgs(["chain", "sig", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
+  });
 });
