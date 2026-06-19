@@ -109,3 +109,41 @@ exactly what this file accumulates.
 - **Later (a real play, not now):** `SteerProject` writes its own decision records
   as it runs; an analyzer reads `decisions.jsonl` for kaizen; a preference model
   trains on the verdicts. **Build none of that yet.**
+
+---
+
+## Decomposition records — the `DecomposeEpic` training set
+
+A third record type, sibling to `decisions.jsonl`: one per epic decomposition,
+capturing the DAG **and its outcome**. This is what turns "we keep decomposing by
+hand" into a *measurable* convergence toward the automated play. Location:
+`.vend/decompositions.jsonl` (tracked, like `decisions.jsonl` — durable training data).
+
+```json
+{
+  "epic": "E-002",
+  "ts": "2026-06-18T16:30:00Z",
+  "dag": { "stories": ["S-002-01"], "tickets": 3, "edges": 2, "criticalPath": 3 },
+  "rulesApplied": ["R1","R3","R4","R6","R11","R12"],
+  "rulesGraduated": ["R6->E-004","R4->edges","R11->T-002-01-03"],
+  "outcome": {
+    "loopCleanCommit": null,          // did the loop self-commit (the D-005 trend)
+    "deviations": null,               // progress.md deviations
+    "buildGreenFirstTry": null,
+    "handVsMachineDiff": null         // null until DecomposeEpic re-runs it; THE signal
+  },
+  "durable": null
+}
+```
+
+**Which field is which signal:**
+- **`handVsMachineDiff`** → the key one. When `DecomposeEpic` (or a re-run) produces
+  the same DAG a human did, the rules are encoded; **divergence is a rule to add or
+  fix.** *(E-001: near-identical; the survey: re-derived F1.)*
+- **`rulesApplied` / `rulesGraduated`** → which rules recur (all of them, so far) and
+  which have crossed from doc to code — the "doc → gate" progress bar.
+- **`outcome.loopCleanCommit` / `deviations` / `buildGreenFirstTry`** → ticket-quality
+  calibration (do well-formed tickets execute cleanly?). Backfilled from lisa/git.
+
+Same minimal-now rule: append the cheap, unrecoverable fields by hand (the DAG, the
+rules applied); backfill `outcome` from lisa/git; **build no analyzer yet.**

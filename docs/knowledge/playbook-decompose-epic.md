@@ -98,9 +98,11 @@ authoring the play by demonstration). Each rule pairs with the gate that checks 
   parallel; add no spurious edges. *(E-001 wave-1: seam/budget/log/baml.)* → allocation gate.
 
 **Identity**
-- **R6 — Epic-scoped ids (`S-<epic>-<n>`, `T-<epic>-<n>`).** Namespace by epic;
-  generated ids must be disjoint from the live board. *(F1 — the very rule E-004
-  now enforces in code.)* → structural gate + the E-004 materialize guard.
+- **R6 — Ids disjoint from the live board, narrowest namespace that achieves it.**
+  Epic-scoped story ids (`S-<epic>-<n>`); drop to **story-scoped** ticket ids
+  (`T-<story>-<n>`) when the epic number is already taken. *(F1; E-002 — E-001's
+  `S-002` had already consumed `T-002-NN`, forcing `T-002-01-NN`. The rule E-004 now
+  enforces in code.)* → structural gate + the E-004 materialize guard.
 
 **Value & justification**
 - **R7 — Value-link every unit.** Each names what it `advances` (a charter
@@ -119,12 +121,23 @@ authoring the play by demonstration). Each rule pairs with the gate that checks 
   one-shot planning *sorcery* → a dispense, not a lisa ticket (else RDSPI friction +
   no run-log). *(F4.)* → a steering-layer routing choice, not a gate.
 
-**This list is the spec, and it's nearly closed.** Each new hand-decomposition has
-either *confirmed* a rule or *added* one; when it stops changing, the play is
-spec-complete — the TPS "standard stabilized → ready to systematize" signal. Two
-rules have **already graduated from doc to code** (R6 → E-004's id-guard; R4 → the
-file-overlap edge we modeled by hand), which is the bridge from "we keep doing this
-by hand" to "the play does it."
+**Risk isolation (earned in E-002)**
+- **R11 — Isolate andon-prone steps.** Put external-dependency, human-gated, or
+  irreversible steps in their *own* ticket, so the deterministic build completes
+  cleanly and the risky bit is a discrete, surfaceable unit. *(E-002: the Docker-gated
+  `dagger call` verify is its own ticket `T-002-01-03`; the `dagger develop` caution
+  is flagged, not buried.)* → a harness-readiness / andon-surfacing check, not a gate.
+- **R12 — Shared-contract-first.** When a unit introduces a contract multiple
+  consumers invoke, make *establishing that contract* the foundation ticket.
+  *(E-002's `check:test` is run identically by standalone / play / CI — the Central
+  Rule, "Dagger invokes, never defines," is this as architecture.)* → allocation gate.
+
+**This list is the spec, and it grows exactly as the mechanism predicts** (E-002 alone
+added R11/R12 and refined R6). Each new hand-decomposition either *confirms* a rule or
+*adds* one; when it stops changing, the play is spec-complete — the TPS "standard
+stabilized → ready to systematize" signal. Three rules have **already graduated from
+doc to code** (R6 → E-004's id-guard; R4 → the file-overlap edge; R11 → the isolated
+Docker verify), the bridge from "we keep doing this by hand" to "the play does it."
 
 ## Budget as a hard contract
 

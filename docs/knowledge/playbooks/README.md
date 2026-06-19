@@ -38,6 +38,10 @@ hands into a standard a system can run.
   surface the real forks, capture durably, resist over-build, queue the next pull —
   not the outputs it calls for. The top of the clearing stack; commissions the
   others. → the eventual "ask for 2 hours of steering" playbook.
+- **`propose-epic.md`** — the play *above* decompose: clear a **demand signal → an
+  epic card** (`PE-1…PE-7`, pull-discipline guard up front). Sibling spec to
+  `../playbook-decompose-epic.md`; together they're the `signal → epic → tickets`
+  pipeline. → future `ProposeEpic`.
 - **`steering-data-model.md`** — what to keep (a decision log + reward rubric
   mapped to the charter) so the steering play becomes *learnable*, not just run.
   A capture spec, not a pipeline.
