@@ -155,7 +155,8 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
  *                assignable to `GateVerdict`, and its `cleared` echo lets a successful cast
  *                log the four passed rows the welded runner wrote (T-007-03 D3).
  *  - `effect`  : {@link decomposeEffect}.
- *  - `budget`  : the warranted default envelope (high-tier 2h/50k). Both dispatch sites pass
+ *  - `budget`  : the warranted default envelope (high-tier 2h/120k — recalibrated from measured
+ *                use, E-014/E-015, not a cold guess). Both dispatch sites pass
  *                an explicit budget (CLI `--budget`; press `budgetForTier`), so this is the
  *                fallback. Inlined (not imported from the shelf's `TIER_BUDGET`) to keep the
  *                play from depending UP onto the shelf — that edge would cycle (press → play).
@@ -169,7 +170,12 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   parse: (text) => b.parse.DecomposeEpic(text),
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,
-  budget: { timeMs: 7_200_000, tokens: 50_000 },
+  // Recalibrated 2026-06-19 from MEASURED use (E-014/E-015 probes), not a cold guess: decompose
+  // is bimodal — lean runs land <50k, expensive runs ~85–94k (its GENUINE cost, not turn-sprawl —
+  // the 15-turn cap didn't move the tail). 120k clears the ~94k upper tail with headroom, so a
+  // legitimate run no longer false-andons. (E-013's recalibration loop should set this from the
+  // real log's tails once it warms; by hand until then.)
+  budget: { timeMs: 7_200_000, tokens: 120_000 },
   // The warranted DEFAULT turn cap (T-015-02) — the mid-flight bound on the agentic wandering
   // behind decompose's ~85–95k token tail (E-014 E2). Generous over the 1–7-turn clean band;
   // the per-cast override (CastOptions.maxTurns) still wins. Justified at DECOMPOSE_MAX_TURNS.
