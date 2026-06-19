@@ -62,10 +62,13 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | **Casting engine** — author a play once; cast any registered play (sorcery/permanent) through the one metered seam — mana + gates + log; generalizes E-001's hardcoded runner. The v1 leap that makes the written specs runnable. | **Keystone** (next core capability; ramp) | ~2h/50k first slice (full engine: several blocks) | **first slice done → E-007** — engine live: one play-agnostic `castPlay`, **two plays cast through it** (DecomposeEpic + `capture-note`, verified live, $0.12). Follow-ups (generalize input-assembly so `vend run <any-play>` works; `ProposeEpic`; the survey-as-cast for full F4; the DAG) are future pulls onto the proven engine. |
 | **Done Means Committed** (the D-005 fix) — `check:committed` fails when source sits uncommitted, fired by a lisa `on-stop` hook; makes "done" mean "committed". | **High** (enabler — stops the recurring andon that bit 3 loops, incl. the E-007 broken HEAD) | small (~1h) | **done → E-008** — `check:committed` live (dirty source → fail naming the file; clean → pass), wired into the `on-stop` hook (blocks the stop on uncommitted source, fails open). **D-005 fixed.** |
 
-**Next-pull call — engine shipped; D-005 fixed.** v0 (E-001/E-003/E-004/E-005/E-002)
-plus **E-007's first slice** (the play-agnostic `castPlay` engine) and **E-008** (the
-`done-means-committed` gate — the recurring commit andon is now automated away) are
-done. The board is again clear of *pullable* work —
+| **Register ProposeEpic** — the play above decompose: a demand signal → an epic card, cast through the engine; completes signal → epic → tickets. | **High** (core feature; the pipeline) | ~2-3h | **decomposing → E-009** (S-009-01, 3 tickets), lined up for the loop. |
+
+**Next-pull call — engine shipped; D-005 fixed; the pipeline is being completed.** v0
+(E-001/E-003/E-004/E-005/E-002) plus **E-007's first slice** (the play-agnostic
+`castPlay` engine) and **E-008** (the `done-means-committed` gate) are done; **E-009**
+(register ProposeEpic — signal → epic) is in flight. The board is otherwise clear of
+*pullable* work —
 the remaining moves are **follow-up slices onto the proven engine**: generalize input
 assembly so `vend run <any-play>` casts arbitrary plays; register `ProposeEpic`; re-cast
 the roadmap survey as a sorcery (full F4); then the multi-node DAG and open-model
