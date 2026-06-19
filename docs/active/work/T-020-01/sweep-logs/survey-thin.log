@@ -79,3 +79,29 @@ consistency probe — 2× survey-thin on a fixed input
 · assistant
 · assistant
 · assistant
+· user
+· assistant
+· user
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 635766/300000 tokens (over by 335766)
+· turns: 14
+  survey 1/2: budget-exhausted → budget-exhausted
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
