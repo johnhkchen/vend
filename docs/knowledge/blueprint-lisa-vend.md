@@ -173,11 +173,12 @@ cases); avoid bare all-caps `MUST/ALWAYS/NEVER` strings (a yellow flag: rigid le
 edge cases). vend/lisa are the **pre-made utility scripts** — say "**run** `vend chain …`"
 (execute, don't generate). Forward slashes; consistent terms; no time-sensitive info.
 
-**Build it evaluation-first** — write three real scenarios as the source of truth *before*
-fleshing the skill, e.g. (1) fresh project + a signal → cleared + built + verified; (2) a vague
-ask → `vend survey` → pull → build; (3) a loop left HEAD non-building → caught by `check:head`
-+ fixed. Then author with one Claude, test with a *fresh* Claude on real tasks, and iterate
-from observed behavior (not assumptions). Test across the models it'll run on.
+**Build it evaluation-first** — the three source-of-truth scenarios are **written** →
+`skill-evals-driving-lisa-vend.md`: (1) clear a signal end-to-end (the core loop); (2)
+cold-start from a vague ask (`vend survey` → leverage pull); (3) catch a dishonest "done"
+(verify-git-not-`lisa status` + andon). Each names the *baseline gap* it closes. Author with
+one Claude, test with a *fresh* Claude on real tasks, iterate from observed behavior — across
+the models it'll run on.
 
 **Still to fill (v0 → v1):** the full plays catalog + per-play gates; the budget/recalibration
 model in operating terms; the `troubleshooting.md` andon catalog; the `vend init` distribution
