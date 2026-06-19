@@ -71,6 +71,8 @@ export interface DispenseOptions {
   effort?: string;
   /** Grounding/persona system prompt → `--system-prompt`. Omitted ⇒ no flag. */
   system?: string;
+  /** Agentic turn cap → `--max-turns <n>`. Omitted ⇒ no flag ⇒ turns unbounded. */
+  maxTurns?: number;
   /**
    * Called once per stream-json message in order, before any throw, so the runner
    * can capture the transcript and per-turn usage. Must not mutate the message.
@@ -104,11 +106,14 @@ export class ClaudeTimeoutError extends Error {
  * `--model`/`--effort`/`--system-prompt` are appended only when supplied (omitting a
  * flag leaves the CLI default path unchanged).
  */
-export function buildArgs({ model, effort, system }: { model?: string; effort?: string; system?: string } = {}): string[] {
+export function buildArgs(
+  { model, effort, system, maxTurns }: { model?: string; effort?: string; system?: string; maxTurns?: number } = {},
+): string[] {
   const args = ["-p", "--output-format", "stream-json", "--verbose"];
   if (model) args.push("--model", model);
   if (effort) args.push("--effort", String(effort));
   if (system) args.push("--system-prompt", system);
+  if (maxTurns) args.push("--max-turns", String(maxTurns));
   return args;
 }
 
@@ -245,8 +250,8 @@ export function awaitChildClose(
  * `subtype` — including error subtypes — so the caller can meter and branch on it;
  * only a genuinely absent terminal result (the process emitted none) throws.
  */
-export async function dispense({ prompt, model, effort, system, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
-  const args = buildArgs({ model, effort, system });
+export async function dispense({ prompt, model, effort, system, maxTurns, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
+  const args = buildArgs({ model, effort, system, maxTurns });
   const child = spawn(CLAUDE_CLI, args, { stdio: ["pipe", "pipe", "pipe"] });
   child.stdin?.end(prompt);
 

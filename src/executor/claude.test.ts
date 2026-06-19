@@ -50,6 +50,28 @@ test("buildArgs: omits each flag independently", () => {
   ]);
 });
 
+test("buildArgs: appends max-turns when supplied, composes with all flags (last, stringified)", () => {
+  expect(buildArgs({ model: "m", effort: "low", system: "s", maxTurns: 5 })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose",
+    "--model", "m", "--effort", "low", "--system-prompt", "s", "--max-turns", "5",
+  ]);
+});
+
+test("buildArgs: max-turns alone", () => {
+  expect(buildArgs({ maxTurns: 3 })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose", "--max-turns", "3",
+  ]);
+});
+
+test("buildArgs: max-turns absent ⇒ no flag (argv identical to today)", () => {
+  expect(buildArgs()).not.toContain("--max-turns");
+  expect(buildArgs({ model: "m" })).not.toContain("--max-turns");
+});
+
+test("buildArgs: max-turns 0 is treated as absent (falsy guard)", () => {
+  expect(buildArgs({ maxTurns: 0 })).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+});
+
 // ── parseStreamJsonLine ──────────────────────────────────────────────────────
 
 test("parseStreamJsonLine: parses a valid JSON object", () => {
