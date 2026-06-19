@@ -17,6 +17,7 @@ export const USAGE =
   "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened]\n" +
   "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
+  "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -43,6 +44,7 @@ export type ParsedCommand =
     }
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
+  | { readonly cmd: "survey"; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -108,6 +110,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "run") return parseRunArgs(argv);
   if (argv[0] === "chain") return parseChainArgs(argv);
   if (argv[0] === "expand") return parseExpandArgs(argv);
+  if (argv[0] === "survey") return parseSurveyArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -273,6 +276,40 @@ function parseExpandArgs(argv: readonly string[]): ParsedCommand {
   return budget ? { cmd: "expand", fragment, budget } : { cmd: "expand", fragment };
 }
 
+/**
+ * Parse the `survey [--budget <v>]` path — the cold-start board-bootstrap gesture (T-017-02). PURE.
+ * UNLIKE `expand`/`chain`, survey takes NO positional subject — it reads the WHOLE project — so this is
+ * a flags-only command: `--budget` is OPTIONAL (the gesture defaults to the play's warranted envelope),
+ * and any positional token is an error (there is no subject to type). The whole-project read IS the
+ * gesture; read-never-invent is the gate, not a per-row pull.
+ */
+function parseSurveyArgs(argv: readonly string[]): ParsedCommand {
+  let budgetVal: string | undefined;
+  let sawBudgetFlag = false;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--budget") {
+      sawBudgetFlag = true;
+      budgetVal = argv[++i];
+    } else {
+      return { cmd: "usage", error: `unexpected survey argument: ${a}` };
+    }
+  }
+
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
+  } else if (sawBudgetFlag) {
+    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  }
+
+  return budget ? { cmd: "survey", budget } : { cmd: "survey" };
+}
+
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
  *  verbatim (any non-flag token); an UNKNOWN name is not a parse error — it parses to a
  *  `run` command and is rejected at dispatch by the registry (`PlayNotFoundError`), so the
@@ -427,6 +464,19 @@ if (import.meta.main) {
     const { castExpandFragment, expandFragmentPlay } = await import("./play/expand-fragment.ts");
     const budget = parsed.budget ?? expandFragmentPlay.budget;
     const summary = await castExpandFragment({ fragment: parsed.fragment, budget });
+    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.exit(summary.outcome === "success" ? 0 : 1);
+  }
+
+  if (parsed.cmd === "survey") {
+    // The cold-start board-bootstrap gesture (T-017-02): cast Survey on the WHOLE project. On success it
+    // STAGES a ranked demand board under `docs/active/pm/staged/survey-board.md` for a human pull; a
+    // honest-empty (padded board) / read-never-invent refusal halts as a `gate-failed` andon with
+    // nothing staged. `--budget` defaults to the play's warranted (generous, project-scale) envelope.
+    // Lazy import keeps the shell (and its BAML addon) off the pure-parse path, exactly as the other arms.
+    const { castSurvey, surveyPlay } = await import("./play/survey.ts");
+    const budget = parsed.budget ?? surveyPlay.budget;
+    const summary = await castSurvey({ budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
   }

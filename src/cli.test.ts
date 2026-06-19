@@ -171,6 +171,24 @@ describe("parseArgs", () => {
     expect(parseArgs(["expand", "frag", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
   });
 
+  // T-017-02: the survey cold-start board-bootstrap gesture (flags-only — no positional subject).
+  test("survey (no budget) → a survey command, no budget", () => {
+    expect(parseArgs(["survey"])).toEqual({ cmd: "survey" });
+  });
+  test("survey --budget carries the override", () => {
+    expect(parseArgs(["survey", "--budget", "100,200"])).toEqual({
+      cmd: "survey",
+      budget: { timeMs: 100, tokens: 200 },
+    });
+  });
+  test("survey with an unexpected positional → usage (there is no subject to type)", () => {
+    expect(parseArgs(["survey", "junk"])).toEqual({ cmd: "usage", error: "unexpected survey argument: junk" });
+  });
+  test("survey --budget malformed / dangling → usage", () => {
+    expect(parseArgs(["survey", "--budget", "nope"]).cmd).toBe("usage");
+    expect(parseArgs(["survey", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
+  });
+
   // T-013-02: the read-only Ledger envelope readout.
   test("envelope <play> (no tier) → default tier standard", () => {
     expect(parseArgs(["envelope", "decompose-epic"])).toEqual({
