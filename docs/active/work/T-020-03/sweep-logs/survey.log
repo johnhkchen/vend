@@ -1,0 +1,83 @@
+consistency probe — 2× survey on a fixed input
+(temp root: /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-76z99j — ledger + board are disposable; per-cast tokens: 300000)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ staged /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-76z99j/docs/active/pm/staged/survey-board.md
+· turns: 2
+  survey 1/2: success → signal
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· effect ✓ staged /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-76z99j/docs/active/pm/staged/survey-board.md
+· turns: 1
+  survey 2/2: success → signal
+
+run-to-run signal dispersion: 0.75 over 2 (signal 2 · honest-empty 0 · budget-exhausted 0 (of 2); honest-empty rate 0%)
+raw run-log outcomes: success 2
