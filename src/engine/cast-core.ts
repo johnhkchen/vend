@@ -61,17 +61,18 @@ export interface Verdict {
 
 /**
  * Translate a play's {@link GateVerdict} into run-log per-gate rows. A STOP → one failed
- * row naming the (real) gate/unit/reason the play reported. A CLEAR → `[]`: the
- * play-generic verdict is OPAQUE on clear (T-007-01 design D2 — `{status:"clear"}` carries
- * no list of cleared gate names, unlike gates.ts's `GateClear.cleared`), so the loop has no
- * gate names to record; the record's top-level `outcome: "success"` conveys the pass, and
- * fabricating a synthetic gate name the play never declared would be misleading data in an
- * append-only ledger. `null` (never gated) → `[]`.
+ * row naming the (real) gate/unit/reason the play reported. A CLEAR → one passed row per
+ * gate name the play echoed in `cleared`, or `[]` when it echoed none. The generic verdict
+ * is opaque-by-default (T-007-01 design D2), but a play whose gates already track the
+ * cleared names (DecomposeEpic, via gates.ts's `GateClear.cleared` — T-007-03 D3) supplies
+ * them so a successful run logs the same per-gate evidence the welded runner wrote. We
+ * never FABRICATE a name the play didn't declare: `cleared` absent ⇒ `[]`, honest about the
+ * loop not knowing the breakdown. `null` (never gated) → `[]`.
  */
 export function castGateRows(g: GateVerdict | null): readonly LogGate[] {
   if (g === null) return [];
   if (g.status === "stop") return [{ gate: g.gate, passed: false, detail: `${g.unit}: ${g.reason}` }];
-  return [];
+  return (g.cleared ?? []).map((gate) => ({ gate, passed: true }));
 }
 
 /**

@@ -2,25 +2,27 @@
 //
 // The press half of the two-gesture transaction. Bare `vend` (T-003-02) renders +
 // persists `.vend/menu.json`; this resolves a selection against THAT SAME persisted
-// list and dispatches each pick's playbook in order, under its warranted budget. The
-// only play today is `DecomposeEpic` → `runDecomposeEpic` (which streams live and
-// appends exactly one run-log record per call, so "each pick appended to the log" — AC#2
-// — is structural here, not extra wiring).
+// list and dispatches each pick BY NAME through the engine (`runPlay` → registry +
+// castPlay, T-007-03) in order, under its warranted budget. The only play today is
+// `decompose-epic` (each cast streams live and appends exactly one run-log record, so
+// "each pick appended to the log" — AC#2 — is structural here, not extra wiring).
 //
 // PURITY (house pattern, cf. gather.ts's browseShelf): every decision — epic-path
 // derivation, staleness compare, run planning — is a PURE, fixtured function in
 // press-core.ts. This module is the single IMPURE shell: it reads `.vend/menu.json`,
-// re-gathers demand+lisa for the freshness check, and spawns the runner. It is NOT
+// re-gathers demand+lisa for the freshness check, and dispatches the play. It is NOT
 // unit-tested (its logic is the pure core + thin I/O), exactly as browseShelf/dispense
-// are untested — proven by smoke. It value-imports `runDecomposeEpic` (the BAML addon
-// load), which is why the pure core is split out: press-core.test.ts never loads it.
+// are untested — proven by smoke. It dispatches BY NAME through the engine via `runPlay`
+// (which value-imports the play + its BAML addon), which is why the pure core is split
+// out: press-core.test.ts never loads it.
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { MenuCache } from "./menu.ts";
 import { gather, MENU_CACHE_FILE } from "./gather.ts";
 import { parseSelection, SelectionError } from "./select.ts";
-import { runDecomposeEpic, type RunSummary } from "../play/decompose-epic.ts";
+import { runPlay } from "../play/dispatch.ts";
+import type { RunSummary } from "../play/decompose-epic.ts";
 import { isMenuStale, planRuns, type PressOpts, type PressResult } from "./press-core.ts";
 
 export * from "./press-core.ts";
@@ -73,7 +75,13 @@ export async function pressShelf(opts: PressOpts): Promise<PressResult> {
   const planned = planRuns(cache, indices, root, opts.budget);
   const runs: RunSummary[] = [];
   for (const run of planned) {
-    runs.push(await runDecomposeEpic({ epicPath: run.epicPath, budget: run.budget, projectRoot: root }));
+    // Dispatch by name through the registry + castPlay. Every board epic action maps to the
+    // `decompose-epic` play today (the menu carries no per-action play yet), so the name is a
+    // constant here — not a hardcoded branch. A miss is a wiring bug (the play MUST be
+    // registered), so it throws rather than returning a press andon.
+    const res = await runPlay("decompose-epic", { epicPath: run.epicPath, budget: run.budget, projectRoot: root });
+    if (res.kind === "no-play") throw res.error;
+    runs.push(res.summary);
   }
   return { kind: "dispatched", runs };
 }

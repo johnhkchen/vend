@@ -20,6 +20,7 @@ import {
 const okBudget: BudgetOutcome = { status: "ok", spent: 100, ceiling: 1000, remaining: 900 };
 const exhausted: BudgetOutcome = { status: "exhausted", code: "EBUDGET_EXHAUSTED", spent: 1200, ceiling: 1000, overage: 200 };
 const cleared: GateVerdict = { status: "clear" };
+const clearedNamed: GateVerdict = { status: "clear", cleared: ["value", "allocation", "bounds", "structural"] };
 const stopped: GateVerdict = { status: "stop", gate: "value", unit: "<plan>", reason: "plan has no tickets" };
 
 describe("classify — terminal outcome + materialize decision (play-generic)", () => {
@@ -43,11 +44,23 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
     expect(v.gateLog).toEqual([{ gate: "value", passed: false, detail: "<plan>: plan has no tickets" }]);
   });
 
-  test("cleared + in budget → success + materialize; clear logs no per-gate rows (D3)", () => {
+  test("cleared (opaque) + in budget → success + materialize; logs no per-gate rows", () => {
     const v = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: cleared });
     expect(v.outcome).toBe("success");
     expect(v.materialize).toBe(true);
     expect(v.gateLog).toEqual([]);
+  });
+
+  test("a clear that echoes `cleared` logs one passed row per gate (T-007-03 D3)", () => {
+    const v = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: clearedNamed });
+    expect(v.outcome).toBe("success");
+    expect(v.materialize).toBe(true);
+    expect(v.gateLog).toEqual([
+      { gate: "value", passed: true },
+      { gate: "allocation", passed: true },
+      { gate: "bounds", passed: true },
+      { gate: "structural", passed: true },
+    ]);
   });
 });
 
@@ -55,8 +68,16 @@ describe("castGateRows — GateVerdict → run-log rows", () => {
   test("STOP → one failed row carrying the real gate, unit, and reason", () => {
     expect(castGateRows(stopped)).toEqual([{ gate: "value", passed: false, detail: "<plan>: plan has no tickets" }]);
   });
-  test("CLEAR → [] (the play-generic verdict exposes no per-gate names)", () => {
+  test("CLEAR with no `cleared` → [] (the verdict is opaque on clear by default)", () => {
     expect(castGateRows(cleared)).toEqual([]);
+  });
+  test("CLEAR echoing `cleared` → one passed row per named gate, in order", () => {
+    expect(castGateRows(clearedNamed)).toEqual([
+      { gate: "value", passed: true },
+      { gate: "allocation", passed: true },
+      { gate: "bounds", passed: true },
+      { gate: "structural", passed: true },
+    ]);
   });
   test("null (never gated) → []", () => {
     expect(castGateRows(null)).toEqual([]);

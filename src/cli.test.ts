@@ -33,7 +33,21 @@ describe("parseArgs", () => {
   });
   test("unknown command / play → usage", () => {
     expect(parseArgs(["frobnicate"])).toEqual({ cmd: "usage", error: "unknown command: frobnicate" } as never);
-    expect(parseArgs(["run", "summon"]).cmd).toBe("usage");
+    // `run summon` parses past the (now-generic) play name and trips on the missing epic —
+    // an unknown play is rejected at dispatch by the registry, not by the parser.
+    expect(parseArgs(["run", "summon"])).toEqual({ cmd: "usage", error: "missing <epic.md>" });
+  });
+  test("run <play> captures any play name generically (validated at dispatch, not parse)", () => {
+    expect(parseArgs(["run", "propose-epic", "e.md", "--budget", "1,2"])).toEqual({
+      cmd: "run",
+      play: "propose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+    });
+  });
+  test("run with no play name → usage", () => {
+    expect(parseArgs(["run"])).toEqual({ cmd: "usage", error: "missing <play>" });
+    expect(parseArgs(["run", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing <play>" });
   });
   test("bare `vend` is the browse surface (T-003-02)", () => {
     expect(parseArgs([])).toEqual({ cmd: "browse", all: false });

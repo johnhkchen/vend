@@ -12,11 +12,11 @@
 import type { Budget } from "./budget/budget.ts";
 
 /** Usage banner, printed on any parse error. */
-export const USAGE = "usage: vend run decompose-epic <epic.md> --budget <ms>,<tokens>";
+export const USAGE = "usage: vend run <play> <epic.md> --budget <ms>,<tokens>";
 
 /** A successfully parsed command, or a usage request carrying the reason. */
 export type ParsedCommand =
-  | { readonly cmd: "run"; readonly play: "decompose-epic"; readonly epicPath: string; readonly budget: Budget }
+  | { readonly cmd: "run"; readonly play: string; readonly epicPath: string; readonly budget: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | { readonly cmd: "usage"; readonly error?: string };
@@ -55,8 +55,10 @@ export function parseBudgetArg(s: string): Budget {
 
 /**
  * Parse argv (without the `bun`/script head) into a command. PURE — never reads fs or
- * exits. Recognizes ONLY `run decompose-epic <epic.md> --budget <v>`; anything else
- * resolves to a `usage` result with an error string for the shell to print.
+ * exits. Recognizes `run <play> <epic.md> --budget <v>` (the play name is captured
+ * generically — it is validated against the registry at DISPATCH, not here, so this parser
+ * never imports a play / the BAML addon); anything else resolves to a `usage` result with an
+ * error string for the shell to print.
  */
 export function parseArgs(argv: readonly string[]): ParsedCommand {
   // Bare `vend` (no args) is the browse surface (T-003-02). `vend run …` is the static
@@ -67,9 +69,13 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   return parseSelectOrBrowse(argv);
 }
 
-/** Parse the `run decompose-epic <epic.md> --budget <v>` static path. PURE. */
+/** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
+ *  verbatim (any non-flag token); an UNKNOWN name is not a parse error — it parses to a
+ *  `run` command and is rejected at dispatch by the registry (`PlayNotFoundError`), so the
+ *  parser stays addon-free. */
 function parseRunArgs(argv: readonly string[]): ParsedCommand {
-  if (argv[1] !== "decompose-epic") return { cmd: "usage", error: `unknown play: ${argv[1] ?? "(none)"}` };
+  const play = argv[1];
+  if (!play || play.startsWith("--")) return { cmd: "usage", error: "missing <play>" };
   const epicPath = argv[2];
   if (!epicPath || epicPath.startsWith("--")) return { cmd: "usage", error: "missing <epic.md>" };
 
@@ -83,7 +89,7 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
   } catch (e) {
     return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
   }
-  return { cmd: "run", play: "decompose-epic", epicPath, budget };
+  return { cmd: "run", play, epicPath, budget };
 }
 
 /**
@@ -180,8 +186,17 @@ if (import.meta.main) {
       }
     }
   }
-  const { runDecomposeEpic } = await import("./play/decompose-epic.ts");
-  const summary = await runDecomposeEpic({ epicPath: parsed.epicPath, budget: parsed.budget });
+  // The run path: look the play up BY NAME in the registry and cast it (no hardcoded
+  // decompose-epic branch). Lazy import keeps the dispatcher (and its BAML addon) off the
+  // pure-parse path, exactly as the browse/press arms keep their deps lazy. An unknown play
+  // is the registry's typed andon → stderr + exit 2.
+  const { runPlay } = await import("./play/dispatch.ts");
+  const res = await runPlay(parsed.play, { epicPath: parsed.epicPath, budget: parsed.budget });
+  if (res.kind === "no-play") {
+    process.stderr.write(`${res.error.message}\n`);
+    process.exit(2);
+  }
+  const summary = res.summary;
   process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
   process.exit(summary.outcome === "success" ? 0 : 1);
 }

@@ -1,54 +1,66 @@
-// The DecomposeEpic runner (T-002-03) — the convergence node of E-001.
+// The DecomposeEpic play (T-002-03 → registered onto the engine in T-007-03).
 //
-// Wires the hardcoded play end to end: assemble inputs → render (b.request) →
-// dispense (the `claude -p` seam, under a wall-clock budget) → SAP-parse (b.parse) →
-// clear (the four gates) → on PASS materialize lisa files + `lisa validate`; on any
-// STOP write nothing but the run log. Every stream message fans to BOTH surfaces
-// (live stdout + a durable per-run transcript); the run's outcome is logged once,
-// countably (one appendRunLog call).
+// Once the hardcoded, welded runner; now the FIRST registry entry of the casting engine
+// (E-007). The six per-play variation points that used to be spread through
+// `runDecomposeEpic`'s body — render, parse, gates, effect, budget, card — are collected
+// into one `Play<DecomposeInputs, WorkPlan>` (`decomposeEpicPlay`), registered onto the
+// shelf-wide `registry`. The generic `castPlay` loop (src/engine/cast.ts) now owns the
+// fixed spine (dispense → meter → classify → transcript → run log); this module owns only
+// the play-specific judgment. `runDecomposeEpic` is reimplemented as `castPlay` over the
+// entry (AC#2) — behaviour-preserving — and the name-based dispatcher lives in
+// ./dispatch.ts.
 //
-// PURITY (house pattern): the runner's JUDGMENT is pure and tested — `classify` maps
-// (timeout, budget, gate) → an outcome + a materialize decision; `gateRowsFor`
-// translates the gates' whole-plan verdict into run-log per-gate rows (T-002-02 #1);
-// `formatMessage`/`makeStreamSink` format the transcript given injected edges. The
-// ACTIONS (`runDecomposeEpic`, `lisaValidate`) are the IMPURE shell — they spawn
-// `claude`/`lisa`, touch fs, and call BAML in-process; they are the single untested
-// verbs (their logic lives in the pure cores), proven live in T-002-04.
+// DEPENDENCY DIRECTION (E-007 keystone): a concrete play depends UP onto the engine. This
+// module imports `castPlay` + the `Play` contract from src/engine/; the engine never
+// imports src/play/. That is what keeps the graph acyclic.
 //
-// BAML in-process: render + parse are called DIRECTLY here (no subprocess bridge).
-// The addon's one-call-per-process limit is `bun test`-runner-specific (memory 20232);
-// a plain `bun` process — which the runner/CLI is — runs both calls fine.
+// PURITY (house pattern): the play's `render`/`parse`/`gates` are pure-ish leaves
+// (render/parse call BAML in-process; gates is the pure `clear`); `decomposeEffect` is the
+// one async, world-touching member (materialize + lisaValidate). `assembleAndCast` /
+// `runDecomposeEpic` are the IMPURE verbs (read fs, spawn) — NOT unit-tested, their logic
+// is the engine's tested pure core, proven live in T-007-04's second-play proof and the
+// T-007-03 registration smoke.
+//
+// BAML in-process: `b.request`/`b.parse` are called directly inside the play's closures
+// (no subprocess bridge). The addon's one-call-per-process limit is `bun test`-specific
+// (memory 20232); a plain `bun` process — which the CLI/press are — runs both calls fine,
+// which is also why no bun-test file value-imports this module.
 
-import { appendFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { b } from "../../baml_client/sync_client.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 import { extractPromptText } from "../baml/decompose-bridge.ts";
-import { ClaudeTimeoutError, dispense, type ResultMessage } from "../executor/claude.ts";
-import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
-import { clear, isStop, type GateResult } from "../gate/gates.ts";
-import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
-import { assembleInputs } from "./project-context.ts";
+import { clear } from "../gate/gates.ts";
+import {
+  registry,
+  type AnyPlay,
+  type CastContext,
+  type Card,
+  type EffectResult,
+  type Play,
+} from "../engine/play.ts";
+import { castPlay } from "../engine/cast.ts";
+import type { Budget } from "../budget/budget.ts";
+import { assembleInputs, type DecomposeInputs } from "./project-context.ts";
 import { materialize, IdCollisionError } from "./materialize.ts";
-import { classify, makeStreamSink, resolveLoggedModel } from "./decompose-epic-core.ts";
 
-// The runner's PURE decision core lives in ./decompose-epic-core.ts (classify,
-// gateRowsFor, formatMessage, makeStreamSink) — split out so its test never loads the
-// BAML native addon this module value-imports. Re-export so callers have one entry.
-export * from "./decompose-epic-core.ts";
-
-/** The play name stamped on every run-log record. */
+/** The play name — the registry key and the value stamped on every run-log record. */
 export const PLAY = "decompose-epic";
-// DEFAULT_MODEL moved to ./decompose-epic-core.ts (re-exported via `export *` above)
-// so the run-log model fallback is resolvable + testable without the BAML addon.
 
-/** Options for {@link runDecomposeEpic}. */
+/** `RunSummary` is the engine's cast result (`{runId, outcome, materialized}`). Re-exported
+ *  here so `src/shelf/press-core.ts` / `press.ts` keep resolving the type from this module
+ *  (TYPE-ONLY for them — never loads the addon). */
+export type { RunSummary } from "../engine/cast.ts";
+import type { RunSummary } from "../engine/cast.ts";
+
+/** Options for {@link runDecomposeEpic} / {@link assembleAndCast} — the per-run values the
+ *  play itself does not carry. A subset of the engine's `CastOptions` plus the epic path. */
 export interface RunOptions {
   readonly epicPath: string;
   readonly budget: Budget;
   /** Repo root the snapshot is gathered from and lisa files are written under. */
   readonly projectRoot?: string;
-  /** Pinned model id; omitted ⇒ CLI default (and {@link DEFAULT_MODEL} logged). */
+  /** Pinned model id; omitted ⇒ CLI default (and the engine's `DEFAULT_MODEL` logged). */
   readonly model?: string;
   /** Stable run id; derived if omitted. */
   readonly runId?: string;
@@ -56,24 +68,17 @@ export interface RunOptions {
   readonly transcriptDir?: string;
 }
 
-/** What the runner returns to the CLI (which maps non-success → non-zero exit). */
-export interface RunSummary {
-  readonly runId: string;
-  readonly outcome: RunOutcome;
-  readonly materialized: boolean;
-}
-
-/** The result of spawning `lisa validate` (AC#6's final poka-yoke). */
+/** The result of spawning `lisa validate` (the final structural poka-yoke). */
 export interface ValidateResult {
   readonly ok: boolean;
   readonly output: string;
 }
 
 /**
- * Spawn `lisa validate --path <root>` — the final structural poka-yoke run after the
- * files are written. IMPURE verb. Tolerates `lisa` being absent (returns `ok: false`
- * with the reason rather than crashing the run record), so a missing binary degrades
- * to a logged validate-failure, not an unhandled throw.
+ * Spawn `lisa validate --path <root>` — the final structural poka-yoke run after the files
+ * are written. IMPURE verb. Tolerates `lisa` being absent (returns `ok: false` with the
+ * reason rather than crashing the run record), so a missing binary degrades to a logged
+ * validate-failure, not an unhandled throw.
  */
 export async function lisaValidate(projectRoot: string): Promise<ValidateResult> {
   try {
@@ -89,8 +94,9 @@ export async function lisaValidate(projectRoot: string): Promise<ValidateResult>
   }
 }
 
-/** Pull a lisa id out of the epic's frontmatter (`id: E-001`), else the file basename. */
-function epicIdOf(epic: string, epicPath: string): string {
+/** Pull a lisa id out of the epic's frontmatter (`id: E-001`), else the file basename. The
+ *  cast's `subject` — the run-log `epic` field. */
+export function epicIdOf(epic: string, epicPath: string): string {
   const m = epic.match(/^\s*id:\s*(\S+)/m);
   if (m?.[1]) return m[1];
   const base = epicPath.split("/").pop() ?? epicPath;
@@ -98,118 +104,102 @@ function epicIdOf(epic: string, epicPath: string): string {
 }
 
 /**
- * Run the hardcoded DecomposeEpic play end to end. The single IMPURE orchestrator —
- * composes the seam, budget, gates, materializer, and log, branching on the pure
- * `classify` verdict. NOT unit-tested (its logic is the pure cores above); the live
- * proof is T-002-04.
+ * The play's EFFECT — land the cleared plan in the world. The one async, impure member of
+ * the contract. A faithful re-encoding of the welded runner's materialize/validate/relabel
+ * block (T-007-03 D4):
+ *
+ *  - `materialize` runs its cross-board collision guard FIRST and throws `IdCollisionError`
+ *    BEFORE any write; we catch it and RELABEL the outcome to `id-collision` as DATA (the
+ *    house "returned data, not exception" rule the `EffectResult.outcome` field exists for),
+ *    so the cast loop logs it without a throw crossing the orchestration boundary.
+ *  - `lisaValidate` never throws; a validate FAILURE leaves the run `success` but reports
+ *    `ok:false` (⇒ `materialized:false`), exactly as the welded runner did (it relabeled
+ *    ONLY on collision).
+ *  - any OTHER throw (a genuine fs failure) propagates — not a clean outcome, mirroring the
+ *    runner's `else throw e`.
  */
-export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
-  const root = opts.projectRoot ?? process.cwd();
-  const startedAt = new Date().toISOString();
-  const runId = opts.runId ?? `run-${startedAt.replace(/[:.]/g, "-")}`;
-
-  const { epic, charter, project } = await assembleInputs({ epicPath: opts.epicPath, projectRoot: root });
-  const epicId = epicIdOf(epic, opts.epicPath);
-
-  // Render the prompt (BAML, in-process) — never the transport, just the text.
-  const req = b.request.DecomposeEpic(epic, charter, project) as unknown as {
-    body: { json: () => { messages?: unknown[] } };
-  };
-  const prompt = extractPromptText(req);
-
-  // Both surfaces: live stdout + a durable per-run transcript.
-  const transcriptPath = join(opts.transcriptDir ?? join(root, ".vend", "transcripts"), `${runId}.jsonl`);
-  await mkdir(dirname(transcriptPath), { recursive: true });
-  const onMessage = makeStreamSink({
-    write: (line) => process.stdout.write(`${line}\n`),
-    // fire-and-forget append; ordering within a run is preserved by the seam's
-    // in-order onMessage and append's O_APPEND.
-    sink: (raw) => void appendFile(transcriptPath, `${raw}\n`, "utf8"),
-  });
-
-  let timedOut = false;
-  let result: ResultMessage | null = null;
+const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>): Promise<EffectResult> => {
+  const root = ctx.projectRoot;
   try {
-    result = await dispense({
-      prompt,
-      model: opts.model, // undefined ⇒ no --model flag ⇒ CLI default
-      onMessage,
-      timeoutMs: timeoutMsFor(opts.budget),
+    const { storyFiles, ticketFiles } = await materialize(plan, {
+      storiesDir: join(root, "docs", "active", "stories"),
+      ticketsDir: join(root, "docs", "active", "tickets"),
     });
+    const validated = await lisaValidate(root);
+    return {
+      ok: validated.ok,
+      detail: validated.ok ? "lisa validate ✓" : `lisa validate ✗\n${validated.output}`,
+      artifacts: [...storyFiles, ...ticketFiles],
+    };
   } catch (e) {
-    if (e instanceof ClaudeTimeoutError) timedOut = true;
-    else throw e; // a genuine launch/absent-result failure is not a clean outcome
-  }
-
-  // After the seam: meter tokens, then (if in budget) parse + clear.
-  let budgetOutcome: BudgetOutcome | null = null;
-  let gateResult: GateResult | null = null;
-  let plan: WorkPlan | null = null;
-  if (!timedOut && result) {
-    budgetOutcome = check(opts.budget, (result.usage ?? {}) as Usage);
-    if (budgetOutcome.status === "ok") {
-      plan = b.parse.DecomposeEpic(result.result ?? "");
-      gateResult = clear(plan, { epic, charter });
+    if (e instanceof IdCollisionError) {
+      return { ok: false, outcome: "id-collision", detail: `id-collision — reused board id(s): ${e.collisions.join(", ")}` };
     }
+    throw e;
   }
+};
 
-  const verdict = classify({ timedOut, budgetOutcome, gateResult });
+/**
+ * DecomposeEpic as a {@link Play} — the six variation points the cast loop plugs into its
+ * fixed orchestration:
+ *  - `render`  : `b.request.DecomposeEpic(epic, charter, project)` → prompt text.
+ *  - `parse`   : `b.parse.DecomposeEpic(text)` → `WorkPlan` (SAP-parsed).
+ *  - `gates`   : `clear(plan, {epic, charter})` — gates.ts's `GateResult` is structurally
+ *                assignable to `GateVerdict`, and its `cleared` echo lets a successful cast
+ *                log the four passed rows the welded runner wrote (T-007-03 D3).
+ *  - `effect`  : {@link decomposeEffect}.
+ *  - `budget`  : the warranted default envelope (high-tier 2h/50k). Both dispatch sites pass
+ *                an explicit budget (CLI `--budget`; press `budgetForTier`), so this is the
+ *                fallback. Inlined (not imported from the shelf's `TIER_BUDGET`) to keep the
+ *                play from depending UP onto the shelf — that edge would cycle (press → play).
+ *  - `card`    : Azorius (WU) permanent, mythic — the keystone planning play (card-model.md).
+ */
+export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
+  name: PLAY,
+  render: (i) => extractPromptText(b.request.DecomposeEpic(i.epic, i.charter, i.project) as unknown as {
+    body: { json: () => { messages?: unknown[] } };
+  }),
+  parse: (text) => b.parse.DecomposeEpic(text),
+  gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
+  effect: decomposeEffect,
+  budget: { timeMs: 7_200_000, tokens: 50_000 },
+  card: { color: ["blue", "white"], type: "permanent", rarity: "mythic" } satisfies Card,
+};
 
-  let materialized = false;
-  // The collision guard lives inside `materialize` (T-004-02) and refuses by throwing
-  // BEFORE any write, so a re-minted id never reaches here as a CLEAR-then-clobber. A
-  // refusal relabels an otherwise-`success` verdict to `id-collision` for the one
-  // run-log record; the gates still genuinely passed, so `verdict.gateLog` is logged
-  // unchanged. Any non-collision throw is a genuine fs failure, not a clean outcome —
-  // re-raised, mirroring the seam's non-timeout handling above.
-  let outcome: RunOutcome = verdict.outcome;
-  if (verdict.materialize && plan) {
-    try {
-      await materialize(plan, {
-        storiesDir: join(root, "docs", "active", "stories"),
-        ticketsDir: join(root, "docs", "active", "tickets"),
-      });
-      const validated = await lisaValidate(root);
-      materialized = validated.ok;
-      process.stdout.write(
-        validated.ok ? "· lisa validate ✓\n" : `· lisa validate ✗\n${validated.output}\n`,
-      );
-    } catch (e) {
-      if (e instanceof IdCollisionError) {
-        outcome = "id-collision";
-        process.stdout.write(`· andon: id-collision — reused board id(s): ${e.collisions.join(", ")}\n`);
-      } else {
-        throw e;
-      }
-    }
-  } else if (verdict.outcome !== "success") {
-    process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateResult, budgetOutcome)}\n`);
-  }
+// Self-register at module load: any module that value-imports this one (the CLI/press
+// dispatch via ./dispatch.ts) populates the singleton. Pure tests import
+// ./decompose-epic-core.ts instead, so they never load this module and never register.
+registry.register(decomposeEpicPlay);
 
-  // Resolve the logged model id DOWNSTREAM of dispense, so the real id the stream
-  // reported (on `result.model`) is in scope: real id → pinned `opts.model` →
-  // sentinel (T-005-01). On timeout `result` is null and this falls back cleanly.
-  const loggedModel = resolveLoggedModel(result?.model, opts.model);
-
-  await appendRunLog({
-    runId,
-    play: PLAY,
-    epic: epicId,
-    model: loggedModel,
-    outcome,
-    usage: (result?.usage ?? {}) as Usage,
-    costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
-    gateResults: verdict.gateLog,
-    startedAt,
-    endedAt: new Date().toISOString(),
+/**
+ * Assemble DecomposeEpic's typed inputs from an epic path and cast the given play. The
+ * SINGLE site of the play-specific input assembly (`assembleInputs` + `epicIdOf`), shared
+ * by {@link runDecomposeEpic} (the entry directly) and {@link dispatch.runPlay} (the
+ * registry-resolved play). IMPURE — reads the epic/charter files and walks the board.
+ *
+ * Takes `play: AnyPlay` because today there is exactly ONE input shape, so the assembly is
+ * shared across whatever play the registry resolves; T-007-04's second play reveals the
+ * seam to generalize assembly per play. NOT unit-tested (its logic is the engine's pure
+ * core); proven by the registration smoke + T-007-04.
+ */
+export async function assembleAndCast(play: AnyPlay, opts: RunOptions): Promise<RunSummary> {
+  const root = opts.projectRoot ?? process.cwd();
+  const { epic, charter, project } = await assembleInputs({ epicPath: opts.epicPath, projectRoot: root });
+  return castPlay(play, { epic, charter, project }, opts.budget, {
+    subject: epicIdOf(epic, opts.epicPath),
+    projectRoot: root,
+    model: opts.model,
+    runId: opts.runId,
+    transcriptDir: opts.transcriptDir,
   });
-
-  return { runId, outcome, materialized };
 }
 
-/** A short andon suffix for stdout — names the gate/budget reason when there is one. */
-function stopReason(gate: GateResult | null, budget: BudgetOutcome | null): string {
-  if (gate && isStop(gate)) return ` — gate '${gate.gate}' stopped at ${gate.unit}: ${gate.reason}`;
-  if (budget?.status === "exhausted") return ` — spent ${budget.spent}/${budget.ceiling} tokens (over by ${budget.overage})`;
-  return "";
+/**
+ * Run the DecomposeEpic play end to end — now `castPlay` OVER the registry entry (AC#2): no
+ * orchestration of its own, the play-specific logic lives on `decomposeEpicPlay`. Kept as
+ * the canonical direct cast of the entry; `vend run` / the press route by name through
+ * ./dispatch.ts's `runPlay`, which reaches the same `assembleAndCast`.
+ */
+export async function runDecomposeEpic(opts: RunOptions): Promise<RunSummary> {
+  return assembleAndCast(decomposeEpicPlay, opts);
 }
