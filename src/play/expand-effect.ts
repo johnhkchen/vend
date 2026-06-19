@@ -47,18 +47,25 @@ export interface ExpandFragmentInputs {
   readonly project: string;
 }
 
+/** Cap the filename stem: a Signal's `what` can be a full sentence (a live cast slugged a ~250-char
+ *  `what` → ENAMETOOLONG). 60 chars is a readable, well-under-`PATH_MAX` stem. */
+const MAX_SLUG_LEN = 60;
+
 /**
  * Slugify a signal's `what` line into a filename stem. PURE. Lowercase, runs of non-alphanumerics →
- * a single `-`, leading/trailing dashes trimmed. A `what` that slugs to empty (all punctuation)
- * falls back to `"signal"` so the effect always has a writable `{stem}.md` — the artifact name is
- * never empty (the note-core `slugify` idiom, copied not imported: a cross-play core edge is worse
- * than five lines, per the gates.ts no-shared-util rule).
+ * a single `-`, leading/trailing dashes trimmed, then **capped at {@link MAX_SLUG_LEN}** (a `what`
+ * is a full sentence, not a title — uncapped it overflows the filesystem's name limit). A `what`
+ * that slugs to empty (all punctuation) falls back to `"signal"` so the effect always has a writable
+ * `{stem}.md` — the artifact name is never empty (the note-core `slugify` idiom, copied not imported:
+ * a cross-play core edge is worse than five lines, per the gates.ts no-shared-util rule).
  */
 export function slugify(what: string): string {
   const slug = what
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_SLUG_LEN)
+    .replace(/-+$/g, ""); // re-trim a dash the slice may have left dangling
   return slug.length > 0 ? slug : "signal";
 }
 
