@@ -2,7 +2,7 @@
 
 > Tracks Implement against `plan.md`. Updated as steps complete; deviations recorded with rationale.
 
-## Status: implementation complete; live-probe verification in progress
+## Status: complete — implementation committed, live-probe AC verified (both arms)
 
 | Step | State | Notes |
 |---|---|---|
@@ -11,7 +11,7 @@
 | 3 — `bun run baml:gen` | ✅ done | 14 files written; new prompt text verified in `baml_client/inlinedbaml.ts` |
 | 4 — `bun run check` (deterministic gate) | ✅ **green** | **639 pass / 0 fail**, `tsc` clean, `baml:gen` clean — no shape regression |
 | 5 — commit (atomic, gate-green) | ✅ done | `2a66121` — `baml_src/expand.baml` only (`baml_client/` is gitignored) |
-| 6 — live probe (AC directional evidence) | ⏳ running | `expand` + `expand-thin`, N=2, background → `sweep-logs/` |
+| 6 — live probe (AC directional evidence) | ✅ done | grounded: gate-failed **0/2** (was 33%); thin: gate-failed **1/2** STOP persists — both AC arms met (see `review.md`) |
 
 ## What changed
 

@@ -36,3 +36,29 @@ consistency probe — 2× expand on a fixed input
 · assistant
 · assistant
 · user
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 275239/250000 tokens (over by 25239)
+· turns: 7
+  expand-fragment 1/2: budget-exhausted → budget-exhausted
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· effect ✓ staged /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-consistency-7C1jVt/docs/active/pm/staged/thread-the-structured-stop-reason-from-castplay-the-gate-nam.md
+· turns: 1
+  expand-fragment 2/2: success → signal
+
+run-to-run signal dispersion: 0.00 over 1 (signal 1 · honest-empty 0 · budget-exhausted 1 (of 2); honest-empty rate 0%) — ⚠ signal arm too small to disperse — dispersion not meaningful
+raw run-log outcomes: budget-exhausted 1 · success 1
