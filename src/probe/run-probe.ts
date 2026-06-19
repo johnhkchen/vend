@@ -24,6 +24,7 @@
 import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import type { Budget } from "../budget/budget.ts";
 import { castPlay } from "../engine/cast.ts";
 import { assembleInputs, CHARTER_PATH } from "../play/project-context.ts";
 import { decomposeEpicPlay, epicIdOf } from "../play/decompose-epic.ts";
@@ -95,7 +96,7 @@ async function collectOutput(root: string): Promise<string | null> {
 
 /** Cast one arm `RUNS_PER_ARM` times, clearing the board before each so a clearing run
  *  materializes rather than collides. Returns each run's materialized output (or null). */
-async function castArm(proj: TempProject, skipGates: boolean): Promise<(string | null)[]> {
+async function castArm(proj: TempProject, skipGates: boolean, budget: Budget): Promise<(string | null)[]> {
   const label = skipGates ? "ungated" : "gated";
   const epic = await readFile(proj.epicPath, "utf8");
   const subject = epicIdOf(epic, proj.epicPath);
@@ -104,7 +105,7 @@ async function castArm(proj: TempProject, skipGates: boolean): Promise<(string |
   for (let i = 1; i <= RUNS_PER_ARM; i++) {
     for (const dir of OUTPUT_DIRS) await rm(join(proj.root, dir), { recursive: true, force: true });
     const inputs = await assembleInputs({ epicPath: proj.epicPath, projectRoot: proj.root });
-    const summary = await castPlay(decomposeEpicPlay, inputs, decomposeEpicPlay.budget, {
+    const summary = await castPlay(decomposeEpicPlay, inputs, budget, {
       subject,
       projectRoot: proj.root,
       runLogPath,
@@ -121,15 +122,19 @@ async function castArm(proj: TempProject, skipGates: boolean): Promise<(string |
 }
 
 /** The sweep: seed, cast both arms, diff, print the single number + the honest caveats. */
-async function main(srcEpicPath: string): Promise<void> {
+async function main(srcEpicPath: string, tokenBudget?: number): Promise<void> {
   const proj = await seedTempProject(srcEpicPath);
+  // Raise the per-cast token ceiling above the observed fat tail (~95k) so runs actually finish
+  // and materialize — N=1-per-arm censoring (the BUDGET, not the gates) made the first clean
+  // sweep unreadable. Wall-clock stays the play's generous 2h, so tokens remain the only cap.
+  const budget: Budget = { ...decomposeEpicPlay.budget, ...(tokenBudget ? { tokens: tokenBudget } : {}) };
   process.stdout.write(`variance probe — ${RUNS_PER_ARM}× gated, ${RUNS_PER_ARM}× ungated on ${srcEpicPath}\n`);
-  process.stdout.write(`(temp root: ${proj.root} — ledger + board are disposable)\n`);
+  process.stdout.write(`(temp root: ${proj.root} — ledger + board are disposable; per-cast tokens: ${budget.tokens})\n`);
 
   process.stdout.write("gated arm (gates ON):\n");
-  const gated = await castArm(proj, false);
+  const gated = await castArm(proj, false, budget);
   process.stdout.write("ungated arm (--no-gates):\n");
-  const ungated = await castArm(proj, true);
+  const ungated = await castArm(proj, true, budget);
 
   const report = varianceReduction(gated, ungated);
   process.stdout.write(`\n${formatVarianceReport(report)}\n`);
@@ -138,9 +143,14 @@ async function main(srcEpicPath: string): Promise<void> {
 if (import.meta.main) {
   const srcEpicPath = Bun.argv[2];
   if (!srcEpicPath) {
-    process.stderr.write("usage: bun run src/probe/run-probe.ts <epic.md>\n");
+    process.stderr.write("usage: bun run src/probe/run-probe.ts <epic.md> [tokenBudget]\n");
     process.exit(2);
   }
-  await main(srcEpicPath);
+  const tokenBudget = Bun.argv[3] ? Number.parseInt(Bun.argv[3], 10) : undefined;
+  if (tokenBudget !== undefined && (!Number.isFinite(tokenBudget) || tokenBudget <= 0)) {
+    process.stderr.write(`invalid tokenBudget: ${Bun.argv[3]}\n`);
+    process.exit(2);
+  }
+  await main(srcEpicPath, tokenBudget);
   process.exit(0);
 }
