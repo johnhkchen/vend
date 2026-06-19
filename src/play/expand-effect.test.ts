@@ -149,6 +149,15 @@ describe("slugify + renderStagedSignal — pure helpers", () => {
     expect(slugify("!@#$%")).toBe("signal");
   });
 
+  test("slugify caps the stem so a full-sentence `what` can't overflow the filename (ENAMETOOLONG)", () => {
+    const longWhat =
+      "recalibrate the other registered plays token budgets from measured run data and extend the empirical envelope treatment decompose got to the rest of the play surface";
+    const stem = slugify(longWhat);
+    expect(stem.length).toBeLessThanOrEqual(60);
+    expect(stem.endsWith("-")).toBe(false);
+    expect(stem.startsWith("recalibrate-the-other-registered-plays-token-budgets")).toBe(true);
+  });
+
   test("renderStagedSignal embeds exactly one demand row for the signal", () => {
     const body = renderStagedSignal(FULL_SIGNAL);
     expect(body.startsWith(`# ${FULL_SIGNAL.what}`)).toBe(true);
