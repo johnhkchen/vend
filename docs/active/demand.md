@@ -100,10 +100,16 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
-- **Design-language session** — assemble the project-wide *look* (the TUI surface
-  language: shelf, run stream, andon/gate-stop, budget meter); output a **capped
-  design charter** future TUI epics anchor to (same anti-staleness pattern as
-  `charter.md`). High; precedes any TUI epic. Generative, not an audit.
+- **Information architecture** — *captured* → `knowledge/information-architecture.md`
+  (IA-1…IA-11): recommendation-first home, the cold-start arc, the Counter
+  (Confirm→Run→Settle), the andon-as-successful-refusal stance. The capped spine TUI
+  epics anchor to. Its **open threads** (the Ledger recalibration loop, the
+  detached/notify mechanism, the fleet/DAG andon board, Confirm's budget-adjust
+  gesture) are the next design pulls.
+- **Design-language session** — assemble the project-wide *look* (the visual surface:
+  palette — amber andon per IA-9, run-stream, budget meter, shelf cards); output a
+  capped design charter, downstream of the IA spine. High; precedes any TUI epic.
+  Generative, not an audit. (Inherits IA-9's amber-not-red andon family.)
 - **Value/budget surface in Vend** — the shelf showing each playbook's worth and
   warranted budget, with the run log feeding *actuals* back to recalibrate
   envelopes. Standard; needs run-log data + a shelf to land on.
