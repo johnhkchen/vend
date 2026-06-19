@@ -23,7 +23,7 @@
 // the data; the log is a sink, never a collaborator. This keeps the DAG edge
 // (T-001-04 depends only on T-001-01) honest.
 
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 /** Default ledger location, relative to cwd. Overridable per call (AC #1). */
@@ -67,6 +67,20 @@ export interface NormalizedUsage {
   readonly cache_creation_input_tokens: number;
 }
 
+/**
+ * The allocated envelope (time + token ceiling) a cast was run under (T-013-01). This
+ * is structurally identical to budget's `Budget`, declared HERE so run-log keeps its
+ * zero-coupling-to-`src/budget/` invariant (the same `UsageInput` trick): the runner's
+ * `Budget` satisfies this by duck-typing, with no compile-time import. Recording it is
+ * what makes cost-vs-budget recoverable from the ledger (IA-12/IA-13) — actuals alone
+ * cannot tell how close a cast ran to its ceiling, nor mark a censored (andon'd-at-
+ * envelope) run.
+ */
+export interface Envelope {
+  readonly timeMs: number;
+  readonly tokens: number;
+}
+
 /** One gate's verdict. Declared locally — `src/gate/` has no type to import yet. */
 export interface GateResult {
   readonly gate: string;
@@ -87,6 +101,9 @@ export interface RunRecordInput {
   readonly costUsd?: number;
   /** Per-gate verdicts; absent ⇒ logged as `[]`. */
   readonly gateResults?: readonly GateResult[];
+  /** The allocated {@link Envelope} this cast ran under; absent ⇒ field omitted (a
+   *  cast that recorded no envelope, and every pre-T-013-01 record, look identical). */
+  readonly envelope?: Envelope;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -103,6 +120,10 @@ export interface RunRecord {
   readonly usage: NormalizedUsage;
   readonly costUsd: number;
   readonly gateResults: readonly GateResult[];
+  /** Present ONLY when the cast supplied one — absence is meaningful (no envelope
+   *  recorded), so it is omitted rather than zeroed (a zeroed envelope is an invalid
+   *  budget the recalibrator could not distinguish from a real allocation). */
+  readonly envelope?: Envelope;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -143,6 +164,14 @@ function normalizeUsage(u: UsageInput | undefined): NormalizedUsage {
   };
 }
 
+/** Normalize the allocated envelope: absent ⇒ `undefined` (the field is then omitted
+ *  from the record — absence is meaningful, never written as `0`s); present ⇒ both
+ *  numbers coerced finite (the `num` idiom), so a torn input can never inject `NaN`. */
+function normalizeEnvelope(e: Envelope | undefined): Envelope | undefined {
+  if (!e) return undefined;
+  return { timeMs: num(e.timeMs), tokens: num(e.tokens) };
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -166,6 +195,10 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   assertNonEmpty(input.endedAt, "endedAt");
   assertOutcome(input.outcome);
 
+  // Spread the envelope only when present, so an envelope-less cast (and every
+  // pre-T-013-01 record) leaves the field OFF the record — same shape, byte for byte.
+  const envelope = normalizeEnvelope(input.envelope);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: input.runId,
@@ -176,6 +209,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     usage: normalizeUsage(input.usage),
     costUsd: num(input.costUsd),
     gateResults: normalizeGates(input.gateResults),
+    ...(envelope ? { envelope } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -192,6 +226,153 @@ export function serializeRunRecord(record: RunRecord): string {
   return `${JSON.stringify(record)}\n`;
 }
 
+// ── The read face (T-013-01) ──────────────────────────────────────────────────────
+// The mirror image of the write face above, and the foundation the Ledger reads back
+// (E-013, IA-13). Same purity split: `reviveRecord` / `readRuns` / `forPlay` and the
+// two derivations are PURE (tested on string/object fixtures); `loadRunLog` is the one
+// thin impure fs verb. The two boundaries hold OPPOSITE stances by design: the WRITE
+// boundary asserts loudly (a malformed input is a caller bug), the READ boundary
+// degrades quietly (a torn or stale line in an append-only ledger is expected — skip it
+// and count it, never throw, so one bad line can't blind the recalibrator to the rest).
+
+/** The result of reading a ledger: the recovered records plus how many lines were
+ *  unreadable (malformed JSON, partial/torn final line, or structurally invalid). The
+ *  count is surfaced — not swallowed — so a consumer can flag a corrupt ledger. */
+export interface ReadResult {
+  readonly records: readonly RunRecord[];
+  readonly skipped: number;
+}
+
+/** True for a non-empty string — the id/timestamp fields a valid record must carry. */
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0;
+}
+
+/**
+ * Structurally revive one already-`JSON.parse`d value into a {@link RunRecord}, or
+ * return `null` if it is not a usable record. PURE and TOTAL — it NEVER throws; the
+ * read boundary degrades, it does not assert. Mirrors the normalization
+ * {@link buildRunRecord} applies, but with the opposite failure mode (drop, don't
+ * throw). Tolerates absent newer fields (an old `envelope`-less record parses) and
+ * drops a malformed `envelope` without rejecting the whole record — the actuals are
+ * still useful to the Ledger even if the envelope was corrupted.
+ */
+export function reviveRecord(parsed: unknown): RunRecord | null {
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const r = parsed as Record<string, unknown>;
+  if (
+    !isNonEmptyString(r.runId) ||
+    !isNonEmptyString(r.play) ||
+    !isNonEmptyString(r.epic) ||
+    !isNonEmptyString(r.model) ||
+    !isNonEmptyString(r.startedAt) ||
+    !isNonEmptyString(r.endedAt)
+  ) {
+    return null;
+  }
+  if (typeof r.outcome !== "string" || !(RUN_OUTCOMES as readonly string[]).includes(r.outcome)) {
+    return null;
+  }
+
+  // `usage`/`gateResults` are re-normalized through the same helpers the writer uses,
+  // so a partial or absent block degrades to the same canonical shape (0s / []).
+  const usage = normalizeUsage((typeof r.usage === "object" && r.usage !== null ? r.usage : undefined) as UsageInput);
+  const gateResults = normalizeGates(Array.isArray(r.gateResults) ? (r.gateResults as GateResult[]) : undefined);
+
+  // An envelope is kept only when BOTH numbers are finite; a malformed one is dropped
+  // (field omitted) rather than admitted as a lie or used to reject the record.
+  const env = r.envelope;
+  let envelope: Envelope | undefined;
+  if (typeof env === "object" && env !== null) {
+    const e = env as Record<string, unknown>;
+    if (Number.isFinite(e.timeMs) && Number.isFinite(e.tokens)) {
+      envelope = { timeMs: e.timeMs as number, tokens: e.tokens as number };
+    }
+  }
+
+  return Object.freeze({
+    v: RUN_LOG_SCHEMA_VERSION,
+    runId: r.runId,
+    play: r.play,
+    epic: r.epic,
+    model: r.model,
+    outcome: r.outcome as RunOutcome,
+    usage,
+    costUsd: num(typeof r.costUsd === "number" ? r.costUsd : undefined),
+    gateResults,
+    ...(envelope ? { envelope } : {}),
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+  });
+}
+
+/**
+ * Parse a JSONL ledger string into records. PURE — takes the text, not a path (the fs
+ * read is {@link loadRunLog}'s job), so it is unit-testable on a literal. Blank lines
+ * are ignored; any line that fails `JSON.parse` or {@link reviveRecord} is skipped and
+ * counted. This is the "tolerates malformed/partial lines without throwing" contract:
+ * an append-only ledger can end in a torn line if a process died mid-write, and that
+ * one casualty must not lose the records before it.
+ */
+export function readRuns(jsonl: string): ReadResult {
+  const records: RunRecord[] = [];
+  let skipped = 0;
+  for (const line of jsonl.split("\n")) {
+    if (line.trim().length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      skipped++;
+      continue;
+    }
+    const rec = reviveRecord(parsed);
+    if (rec === null) {
+      skipped++;
+      continue;
+    }
+    records.push(rec);
+  }
+  return { records, skipped };
+}
+
+/**
+ * Filter records to one play, optionally to one outcome. PURE. This is the seam the
+ * recalibrator needs (IA-13): `forPlay(recs, p, { outcome: "success" })` is the
+ * uncensored sample to bound the tail from; the censored set (`budget-exhausted` /
+ * `timed-out`, treated as `≥ envelope` lower bounds) is the same call with the other
+ * outcome. The split is enabled here; the percentile math is T-013-02.
+ */
+export function forPlay(
+  records: readonly RunRecord[],
+  play: string,
+  opts: { readonly outcome?: RunOutcome } = {},
+): readonly RunRecord[] {
+  return records.filter((r) => r.play === play && (opts.outcome === undefined || r.outcome === opts.outcome));
+}
+
+/**
+ * Derived wall-clock duration of a record in ms (`endedAt − startedAt`). PURE. Returns
+ * `null` if either ISO timestamp is unparseable, so a consumer branches explicitly
+ * rather than propagating a `NaN`. Not stored on the record — derivable, so not persisted.
+ */
+export function wallClockMs(r: RunRecord): number | null {
+  const start = Date.parse(r.startedAt);
+  const end = Date.parse(r.endedAt);
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  return end - start;
+}
+
+/**
+ * Derived total tokens for a record: the sum of the four usage sub-counts. PURE. This
+ * is the same definition as budget's `countTokens` (the single notion of "spent"); it
+ * is inlined here rather than imported to preserve run-log's zero-coupling invariant.
+ */
+export function totalTokens(r: RunRecord): number {
+  const u = r.usage;
+  return u.input_tokens + u.output_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens;
+}
+
 /**
  * Append one run's record to the ledger. The single IMPURE verb — composes the pure
  * pair above and adds only the fs calls. Not unit-tested (its logic is the tested
@@ -205,4 +386,24 @@ export async function appendRunLog(input: RunRecordInput, opts: AppendRunLogOpti
   const line = serializeRunRecord(buildRunRecord(input));
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, line, "utf8");
+}
+
+/**
+ * Load and parse the ledger from disk. The single IMPURE read verb — the mirror of
+ * {@link appendRunLog}, composing the pure {@link readRuns} and adding only the fs
+ * read. Not unit-tested (its logic is the tested pure core), exactly as `appendRunLog`
+ * is not. A MISSING ledger is not an error — a fresh project simply has no runs yet,
+ * so ENOENT returns an empty result; any other fs error propagates (a real fault, not
+ * a clean "no data" state).
+ */
+export async function loadRunLog(opts: AppendRunLogOptions = {}): Promise<ReadResult> {
+  const path = opts.path ?? DEFAULT_RUN_LOG_PATH;
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return { records: [], skipped: 0 };
+    throw e;
+  }
+  return readRuns(text);
 }

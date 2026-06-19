@@ -157,6 +157,10 @@ export async function castPlay<I, O>(
       play: play.name,
       epic: opts.subject,
       model: loggedModel,
+      // The allocated envelope this cast ran under — recorded so cost-vs-budget is
+      // recoverable from the ledger (T-013-01, IA-12/13). `Budget` duck-types onto the
+      // log's local `Envelope` (no src/budget ↔ src/log import — the decoupling holds).
+      envelope: budget,
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,

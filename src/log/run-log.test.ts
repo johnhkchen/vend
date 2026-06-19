@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildRunRecord,
+  forPlay,
+  readRuns,
+  reviveRecord,
   RUN_LOG_SCHEMA_VERSION,
   RUN_OUTCOMES,
   type RunOutcome,
+  type RunRecord,
   type RunRecordInput,
   serializeRunRecord,
+  totalTokens,
+  wallClockMs,
 } from "./run-log.ts";
 
 // T-001-04 countable-run-log: the two PURE functions (buildRunRecord,
@@ -184,5 +190,158 @@ describe("serializeRunRecord — countability contract (wc -l / jq)", () => {
     expect(lines).toHaveLength(2);
     expect((JSON.parse(lines[0]!) as { runId: string }).runId).toBe("a");
     expect((JSON.parse(lines[1]!) as { runId: string }).runId).toBe("b");
+  });
+});
+
+// ── T-013-01: the allocated envelope (write path) ──────────────────────────────────
+describe("buildRunRecord — allocated envelope (T-013-01)", () => {
+  test("carries an envelope through and round-trips via serialize/parse", () => {
+    const rec = buildRunRecord(baseInput({ envelope: { timeMs: 600_000, tokens: 60_000 } }));
+    expect(rec.envelope).toEqual({ timeMs: 600_000, tokens: 60_000 });
+    const parsed = JSON.parse(serializeRunRecord(rec));
+    expect(parsed).toEqual(rec);
+  });
+
+  test("absent envelope ⇒ the field is OMITTED, not null (back-compat symmetry)", () => {
+    const rec = buildRunRecord(baseInput({ envelope: undefined }));
+    expect("envelope" in rec).toBe(false);
+    // and the serialized line carries no `envelope` key at all
+    expect(serializeRunRecord(rec).includes("envelope")).toBe(false);
+  });
+
+  test("non-finite envelope numbers coerce to 0 (the num idiom), never NaN", () => {
+    const rec = buildRunRecord(baseInput({ envelope: { timeMs: NaN, tokens: Infinity } }));
+    expect(rec.envelope).toEqual({ timeMs: 0, tokens: 0 });
+  });
+});
+
+// ── T-013-01: the read face — reviveRecord / readRuns / forPlay / derivations ───────
+/** Serialize a list of inputs into a JSONL ledger string (the on-disk shape readRuns sees). */
+const ledgerOf = (...inputs: RunRecordInput[]): string =>
+  inputs.map((i) => serializeRunRecord(buildRunRecord(i))).join("");
+
+describe("readRuns — parse a JSONL ledger, skip+count malformed lines", () => {
+  test("parses every well-formed line and reports zero skipped", () => {
+    const jsonl = ledgerOf(
+      baseInput({ runId: "r1" }),
+      baseInput({ runId: "r2", play: "propose-epic" }),
+      baseInput({ runId: "r3", outcome: "gate-failed" }),
+    );
+    const { records, skipped } = readRuns(jsonl);
+    expect(records).toHaveLength(3);
+    expect(skipped).toBe(0);
+    expect(records.map((r) => r.runId)).toEqual(["r1", "r2", "r3"]);
+  });
+
+  test("blank lines are ignored, not counted as skipped", () => {
+    const jsonl = `\n${ledgerOf(baseInput({ runId: "r1" }))}\n   \n`;
+    const { records, skipped } = readRuns(jsonl);
+    expect(records).toHaveLength(1);
+    expect(skipped).toBe(0);
+  });
+
+  test("a non-JSON line and a torn final line are skipped + counted; good lines survive", () => {
+    const good = ledgerOf(baseInput({ runId: "r1" }), baseInput({ runId: "r2" }));
+    const jsonl = `${good}not json at all\n{"runId":"r3","play":`; // last line is torn (no trailing \n)
+    const { records, skipped } = readRuns(jsonl);
+    expect(records.map((r) => r.runId)).toEqual(["r1", "r2"]);
+    expect(skipped).toBe(2);
+  });
+
+  test("a structurally-invalid line (unknown outcome / empty id) is skipped", () => {
+    const jsonl = [
+      JSON.stringify({ ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput()))), outcome: "exploded" }),
+      JSON.stringify({ ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput()))), runId: "" }),
+      serializeRunRecord(buildRunRecord(baseInput({ runId: "ok" }))).trimEnd(),
+    ].join("\n");
+    const { records, skipped } = readRuns(jsonl);
+    expect(records.map((r) => r.runId)).toEqual(["ok"]);
+    expect(skipped).toBe(2);
+  });
+});
+
+describe("reviveRecord / readRuns — backward compatibility with pre-T-013-01 records", () => {
+  // A verbatim copy of a real v:1 line from .vend/runs.jsonl — no `envelope` field.
+  const legacyLine =
+    '{"v":1,"runId":"A1","play":"decompose-epic","epic":"E-001","model":"claude-cli-default",' +
+    '"outcome":"success","usage":{"input_tokens":10923,"output_tokens":5720,' +
+    '"cache_read_input_tokens":39436,"cache_creation_input_tokens":22262},"costUsd":0.4399529999999999,' +
+    '"gateResults":[{"gate":"value","passed":true}],' +
+    '"startedAt":"2026-06-18T20:49:24.679Z","endedAt":"2026-06-18T20:50:40.749Z"}';
+
+  test("an envelope-less legacy record still parses, with envelope === undefined", () => {
+    const { records, skipped } = readRuns(legacyLine);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.envelope).toBeUndefined();
+    expect(records[0]!.runId).toBe("A1");
+  });
+
+  test("a record with a malformed envelope keeps its actuals, drops just the envelope", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "m1" })))),
+      envelope: { timeMs: "lots", tokens: null },
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.envelope).toBeUndefined();
+    expect(rec!.runId).toBe("m1");
+  });
+
+  test("reviveRecord returns null (never throws) for non-object input", () => {
+    expect(reviveRecord(42)).toBeNull();
+    expect(reviveRecord(null)).toBeNull();
+    expect(reviveRecord("nope")).toBeNull();
+  });
+});
+
+describe("forPlay — filter by play and (optionally) outcome", () => {
+  const { records } = readRuns(
+    ledgerOf(
+      baseInput({ runId: "d1", play: "decompose-epic", outcome: "success" }),
+      baseInput({ runId: "d2", play: "decompose-epic", outcome: "budget-exhausted" }),
+      baseInput({ runId: "d3", play: "decompose-epic", outcome: "success" }),
+      baseInput({ runId: "p1", play: "propose-epic", outcome: "success" }),
+    ),
+  );
+
+  test("filters to one play across all outcomes", () => {
+    expect(forPlay(records, "decompose-epic").map((r) => r.runId)).toEqual(["d1", "d2", "d3"]);
+    expect(forPlay(records, "propose-epic").map((r) => r.runId)).toEqual(["p1"]);
+  });
+
+  test("outcome filter partitions successes (uncensored) from censored runs", () => {
+    expect(forPlay(records, "decompose-epic", { outcome: "success" }).map((r) => r.runId)).toEqual(["d1", "d3"]);
+    expect(forPlay(records, "decompose-epic", { outcome: "budget-exhausted" }).map((r) => r.runId)).toEqual(["d2"]);
+  });
+
+  test("an unknown play yields an empty list", () => {
+    expect(forPlay(records, "no-such-play")).toEqual([]);
+  });
+});
+
+describe("derivations — wallClockMs and totalTokens", () => {
+  const rec: RunRecord = buildRunRecord(
+    baseInput({
+      usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 1000, cache_creation_input_tokens: 20 },
+      startedAt: "2026-06-18T12:00:00.000Z",
+      endedAt: "2026-06-18T12:05:00.000Z",
+    }),
+  );
+
+  test("wallClockMs = endedAt − startedAt", () => {
+    expect(wallClockMs(rec)).toBe(5 * 60 * 1000);
+  });
+
+  test("wallClockMs returns null on an unparseable timestamp", () => {
+    const bad = reviveRecord({
+      ...JSON.parse(serializeRunRecord(rec)),
+      endedAt: "not-a-date",
+    });
+    expect(bad).not.toBeNull();
+    expect(wallClockMs(bad!)).toBeNull();
+  });
+
+  test("totalTokens sums all four usage buckets", () => {
+    expect(totalTokens(rec)).toBe(100 + 50 + 1000 + 20);
   });
 });
