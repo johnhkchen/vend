@@ -133,13 +133,65 @@ future: many lines running, only the stops light up.)
 
 ---
 
+## The Ledger — recalibration as an error-budget control loop
+
+The Ledger turns actuals into measured envelopes so the Confirm default (IA-6) is
+*earned*, not guessed. Without it the user re-specifies budget every cast — a
+specification cost paid every run, which breaks the founding promise (spec is paid
+once, at authoring). The design is a recombination of three mature practices: an
+**error-budget control loop** (SRE), **asymmetric-hysteresis actuation**
+(autoscaling), over **streaming tail estimates** (t-digest), honest about
+**informative censoring** (survival analysis).
+
+**IA-12 — The setpoint is an andon budget; value sets it; the percentile spends it.**
+Each play-node has an **andon budget** — the tolerable stop rate, exactly an SRE
+error budget. Value tier sets it (Keystone ~5% / Standard ~10% / Leaf ~25%): work
+that matters tolerates less interruption, so it gets a fatter envelope. The envelope
+is the percentile of measured cost that *spends* that budget (Keystone→~p95,
+Leaf→~p75). This reconciles "budget ∝ value" with "calibrate from data": **value
+picks the percentile, data provides the value at it.** An andon rate at budget is the
+gates working (IA-10), not a defect — a 0% rate is suspicious, not ideal.
+
+**IA-13 — Bound the fat tail from successes; track the stop rate separately.** Agent
+runs are fat-tailed — bound, never mean+stddev (the average is dominated by the fast
+majority and hides the tail). Recalibrate the envelope from **successful** runs (what
+finishing actually costs) and weight recent runs more (drift tracking). The catch is
+**informative censoring**: andon'd runs are right-censored at the envelope — we never
+see their true cost, and we censor *precisely* the expensive tail, so even
+Kaplan–Meier (which assumes random censoring) stays biased. Consequences: the andon
+budget **caps how much tail you can ever observe**; treat andons as `≥ envelope`
+lower bounds; and run an occasional **uncensored probe cast** to learn the true tail.
+(Mechanism: t-digest per node for online quantiles; an exact percentile over a
+JSONL window is fine until scale demands the digest.)
+
+**IA-14 — Actuate with asymmetric hysteresis: auto-widen, slow-tighten, deadband.**
+Borrowed from autoscaling's flapping fix. A **deadband** (~10%): don't move the
+envelope if the new percentile is within 10% of the current — kills churn on noise.
+**Asymmetry:** widen **fast and automatically** (a starved play that andons is the
+expensive failure — react now), but tighten **slowly and conservatively** (reclaiming
+budget is low-stakes; don't surprise-starve a play whose tail just hasn't appeared).
+This resolves auto-vs-recommend by stakes: autonomy (P4) where waiting is costly,
+caution where it is cheap — consistent with recommend-never-auto (IA-5).
+
+**IA-15 — The Ledger generates demand.** Recalibration's second output, for free: a
+node whose **andon rate spikes** or whose **cost trends up** signals the play rotted
+or the project outgrew it → a pull signal surfaced to the demand board. Runs → Ledger
+→ signals → board. The kaizen signal-generation done by hand becomes automatic.
+Recalibration is otherwise **invisible** (it auto-tunes the Confirm default — *Vend
+structures the budget, not the author*, `mana-economics.md`); the Ledger view is the
+inspectable record (per-node p50/p90, andon-rate-vs-budget, trend, total mana).
+
+The macro **"work for 2 hours" envelope** (the human-scale feature block) is spent
+*down* by individual casts whose micro-envelopes come from this loop — so measured
+envelopes are the prerequisite that makes the 2-hour gesture spend intelligently
+(fit the next cast into the remaining macro budget) instead of against guesses.
+
+---
+
 ## Open threads (honestly unresolved)
 
 Named so they don't masquerade as settled. Pull one when it's worth designing.
 
-- **The Ledger as the recalibration loop.** Actuals → measured envelopes (the kaizen
-  feedback `demand.md` keeps gesturing at). What the Ledger shows, and how Settle
-  feeds it back, is undesigned.
 - **The detached/notify mechanism.** *That* andon summons you is settled (IA-11);
   *how* (terminal bell, OS notification, an andon board on next launch) is not.
 - **The fleet/DAG andon board.** Multiple concurrent casts → Home's "in-flight"
@@ -155,4 +207,6 @@ IA-1 recommendation-first · IA-2 four-objects-three-places · IA-3 onboarding-i
 core-loop · IA-4 honest-empty-state · IA-5 recommend-never-auto · IA-6 Confirm→Run→
 Settle · IA-7 production-line-not-raw-stream · IA-8 meter-cannot-lie · IA-9
 andon-is-successful-refusal · IA-10 two-success-states · IA-11 andon-summons-success-
-quiet.
+quiet · IA-12 andon-budget-sets-the-percentile · IA-13 bound-from-successes-informative-
+censoring · IA-14 asymmetric-hysteresis-auto-widen-slow-tighten · IA-15 ledger-generates-
+demand.

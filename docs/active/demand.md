@@ -66,6 +66,7 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | **HEAD-builds gate** (`epic/E-010.md`) — verify the committed HEAD itself builds (isolated checkout + `check`), catching inconsistent-but-committed commits like E-007's `cast.ts`-without-`play.ts`. E-008's follow-up. | **High** (closes local-green vs HEAD-green; P3/P4) | ~2h | **done → E-010** — `check:head` live (committed HEAD builds, isolated git-worktree, ~3s, no leak); wired to `on-clear` (per the decompose decision). **"Done" now means committed *and builds*.** |
 | **`check:committed` scope-gap** — E-008's gate covers `src/baml_src/ci` but **not `.lisa/hooks/`**; E-010's own enforcement hook (`on-clear.sh`) slipped through uncommitted. Widen the gate to the lisa hooks (functional source — they enforce the gates). | **Standard** (closes the gate's blind spot — the commit-gate doesn't police the hooks that police commits) | small (~30m) | **done → E-012** — `SOURCE_PREFIXES` widened to `.lisa/hooks/` (one-line R12 contract); live andon proven (dirty `on-stop.sh` → exit 1, names the hook). **First epic both *minted and decomposed* by `vend chain` — the pipeline fed its own board.** |
 | **Chain: Signal → Tickets** (`epic/E-011.md`) — cast ProposeEpic → DecomposeEpic as one gesture: a demand signal → epic card → tickets. The engine's first play composition; *vend the whole roadmap*. | **Keystone** (the core-feature capstone; P2, one gesture) | ~2-3h | **done → E-011** — `vend chain <signal>` live: one gesture minted **E-012** *and* threaded it to tickets (two run-log records); both paths proven — success (signal→epic→tickets) **and** halt (thin budget → ProposeEpic andon → decompose never ran, no half-output). `castChain` impure shell over pure `runChain`; 340 tests. **"Vend the whole roadmap" is real.** |
+| **Measured envelopes** (`epic/E-013.md`) — read the run log's actuals; bound each play's cost at the value-tier percentile; surface it as the Confirm default so *accept-the-default* is earned, not guessed. The recalibration core (IA-12…IA-15). | **Keystone** (the budget contract made honest; the first rung of the 2-hour mechanic) | ~2h (first slice) | **active → E-013** (S-013-01, 2 tickets — telemetry + pure `recalibrate` core), lined up for the loop. Design settled in `information-architecture.md`. |
 
 **Next-pull call — the clearing pipeline is real.** v0 (E-001/E-003/E-004/E-005/E-002),
 **E-007's first slice** (the `castPlay` engine), **E-008** (the commit gate), and
@@ -100,10 +101,19 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
+- **The "work for 2 hours" macro mechanic** — the founding gesture made literal: the
+  human allocates a **feature-block budget** (the ~2h macro envelope) at the counter,
+  and vend spends it *down* autonomously across casts — pulling/chaining until the
+  budget is exhausted or the board is cleared, each cast fit into the **remaining**
+  macro budget using its measured price. **The rung directly above E-013** (measured
+  envelopes are the prerequisite — you can't spend a macro budget intelligently against
+  guessed per-cast costs). **Keystone**; pull when E-013 lands. A macro budget *wallet*
+  that depletes (P7) + the autonomous spend-until-exhausted loop (P4).
 - **Information architecture** — *captured* → `knowledge/information-architecture.md`
-  (IA-1…IA-11): recommendation-first home, the cold-start arc, the Counter
-  (Confirm→Run→Settle), the andon-as-successful-refusal stance. The capped spine TUI
-  epics anchor to. Its **open threads** (the Ledger recalibration loop, the
+  (IA-1…IA-15): recommendation-first home, the cold-start arc, the Counter
+  (Confirm→Run→Settle), the andon-as-successful-refusal stance, and the **Ledger
+  recalibration loop** (IA-12…IA-15 — the andon-budget control loop; now *building* as
+  E-013). The capped spine TUI epics anchor to. Remaining **open threads** (the
   detached/notify mechanism, the fleet/DAG andon board, Confirm's budget-adjust
   gesture) are the next design pulls.
 - **Design-language session** — assemble the project-wide *look* (the visual surface:
