@@ -59,14 +59,15 @@ the envelope, the gates make it yield gated work or an honest andon (charter P7)
 | **Dispense slice** — the single metered lever (`DecomposeEpic` via `claude -p`), gated · budgeted · streamed · countably logged | **Keystone** (unblocks all) | multi-session | **done → E-001** (converged + committed, `4a1d632`; verified green + 4/4 live paths) |
 | **`vend` context-aware shelf** — call bare `vend` and drop into a *dynamic selection* driven by the available playbooks **+ current project state** (demand board, charter, ready epics, in-flight work); pick → allocate budget → run. The early CLI-ification of the two-gesture counter, ahead of the full TUI. Evolves E-001's static `vend run <play>`. | **High** (core feature; P2 two gestures) | ~1 feature block (≈2h) | **done → E-003** — shelf live: bare `vend` renders a ranked menu, persisted to `.vend/menu.json`; 229 tests. |
 | **CI/CD structural backstop** (Dagger, Node-orchestrator) — independent structural inspection only; the same `bun run check:*` scripts the play invokes as andon gates | **High** (enabler — de-risks every parallel-fleet build; though the *weakest check type* by our own lens) | ~1 feature block (≈2h; one gate end-to-end per `ci-strategy.md`) | **done → E-002** — `/ci` Dagger gate live: `dagger -m ci call test run` runs `check:test` in-container, drift-free (independently verified, 7.6s warm). Keep-warm is the next CI signal (cold-start ~18s). |
-| **Casting engine** — author a play once; cast any registered play (sorcery/permanent) through the one metered seam — mana + gates + log; generalizes E-001's hardcoded runner. The v1 leap that makes the written specs runnable. | **Keystone** (next core capability; ramp) | ~2h/50k first slice (full engine: several blocks) | **decomposing → E-007** — S-007-01, 4 tickets, lined up for the loop (registry → cast loop → register DecomposeEpic → second play). The v1 leap underway. |
+| **Casting engine** — author a play once; cast any registered play (sorcery/permanent) through the one metered seam — mana + gates + log; generalizes E-001's hardcoded runner. The v1 leap that makes the written specs runnable. | **Keystone** (next core capability; ramp) | ~2h/50k first slice (full engine: several blocks) | **first slice done → E-007** — engine live: one play-agnostic `castPlay`, **two plays cast through it** (DecomposeEpic + `capture-note`, verified live, $0.12). Follow-ups (generalize input-assembly so `vend run <any-play>` works; `ProposeEpic`; the survey-as-cast for full F4; the DAG) are future pulls onto the proven engine. |
 
-**Next-pull call — v0 built; the v1 frontier is carded.** E-001 · E-003 · E-004 · E-005
-· E-002 are **done**; the next live signal is **E-007 (casting-engine)** — now carded
-(`epic/E-007.md`) and surfaced on the shelf. It is the leap that makes the written specs
-(`DecomposeEpic` R1–R12, `ProposeEpic` PE-1–PE-7) *runnable*. **Pull it (decompose) to
-cross from hand-cleared to machine-cleared** — the first slice generalizes E-001's
-hardcoded runner into a play registry that casts ≥2 plays through one seam.
+**Next-pull call — the casting engine's first slice shipped.** v0 (E-001/E-003/E-004/
+E-005/E-002) plus **E-007's first slice** are done: the play-agnostic `castPlay` loop is
+live and proven (≥2 plays cast through it). The board is again clear of *pullable* work —
+the remaining moves are **follow-up slices onto the proven engine**: generalize input
+assembly so `vend run <any-play>` casts arbitrary plays; register `ProposeEpic`; re-cast
+the roadmap survey as a sorcery (full F4); then the multi-node DAG and open-model
+executors. Author/pull one when you want to keep building — the engine is ready to carry them.
 
 ## Kaizen signals — from E-001's first live runs
 
