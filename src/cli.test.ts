@@ -120,4 +120,28 @@ describe("parseArgs", () => {
     expect(parseArgs(["chain", "sig", "--budget", "nope"]).cmd).toBe("usage");
     expect(parseArgs(["chain", "sig", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
   });
+
+  // T-013-02: the read-only Ledger envelope readout.
+  test("envelope <play> (no tier) → default tier standard", () => {
+    expect(parseArgs(["envelope", "decompose-epic"])).toEqual({
+      cmd: "envelope",
+      play: "decompose-epic",
+      tier: "standard",
+    });
+  });
+  test("envelope <play> --tier carries the chosen leverage tier", () => {
+    expect(parseArgs(["envelope", "decompose-epic", "--tier", "keystone"])).toEqual({
+      cmd: "envelope",
+      play: "decompose-epic",
+      tier: "keystone",
+    });
+  });
+  test("envelope with no play → usage", () => {
+    expect(parseArgs(["envelope"])).toEqual({ cmd: "usage", error: "missing <play>" });
+    expect(parseArgs(["envelope", "--tier", "leaf"])).toEqual({ cmd: "usage", error: "missing <play>" });
+  });
+  test("envelope --tier with an unknown tier → usage", () => {
+    expect(parseArgs(["envelope", "decompose-epic", "--tier", "bogus"]).cmd).toBe("usage");
+    expect(parseArgs(["envelope", "decompose-epic", "--tier"]).cmd).toBe("usage");
+  });
 });

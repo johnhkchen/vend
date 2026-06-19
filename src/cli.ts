@@ -10,11 +10,18 @@
 // (E-003) — this is just enough surface to dispense one real run from a shell/CI.
 
 import type { Budget } from "./budget/budget.ts";
+import type { ValueTier } from "./shelf/menu.ts";
 
 /** Usage banner, printed on any parse error. */
 export const USAGE =
   "usage: vend run <play> <epic.md> --budget <ms>,<tokens>\n" +
-  "       vend chain <signal> [--budget <ms>,<tokens>]";
+  "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
+  "       vend envelope <play> [--tier <keystone|high|standard|leaf>]";
+
+/** The four leverage tiers (mirrors {@link ValueTier} in shelf/menu.ts), as a value tuple
+ *  so `parseEnvelopeArgs` can membership-check a `--tier` word without importing the
+ *  shelf at parse time. cli already owns local routing constants (cf. `SELECTION_SHAPE`). */
+const VALUE_TIERS = ["keystone", "high", "standard", "leaf"] as const;
 
 /** A successfully parsed command, or a usage request carrying the reason. */
 export type ParsedCommand =
@@ -22,6 +29,7 @@ export type ParsedCommand =
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
+  | { readonly cmd: "envelope"; readonly play: string; readonly tier: ValueTier }
   | { readonly cmd: "usage"; readonly error?: string };
 
 /** A selection token's shape: digits, commas, ranges, whitespace — nothing else. The
@@ -70,7 +78,31 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length === 0) return { cmd: "browse", all: false };
   if (argv[0] === "run") return parseRunArgs(argv);
   if (argv[0] === "chain") return parseChainArgs(argv);
+  if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   return parseSelectOrBrowse(argv);
+}
+
+/**
+ * Parse the read-only `envelope <play> [--tier <t>]` path — the Ledger readout that shows
+ * a play's measured envelope proposed from its history (T-013-02, IA-12/13). PURE. The
+ * play name is taken verbatim (any non-flag token); `--tier` is OPTIONAL, defaulting to
+ * `standard` (p90 — the neutral middle), and is validated against the four leverage tiers
+ * (an unknown tier is a usage error). This command never dispatches a cast — it only
+ * displays — so it takes no `--budget`.
+ */
+function parseEnvelopeArgs(argv: readonly string[]): ParsedCommand {
+  const play = argv[1];
+  if (!play || play.startsWith("--")) return { cmd: "usage", error: "missing <play>" };
+
+  let tier: ValueTier = "standard";
+  const flagIdx = argv.indexOf("--tier", 2);
+  if (flagIdx >= 0) {
+    const word = argv[flagIdx + 1];
+    const match = VALUE_TIERS.find((t) => t === word);
+    if (!match) return { cmd: "usage", error: `--tier must be one of ${VALUE_TIERS.join(" | ")}, got ${JSON.stringify(word)}` };
+    tier = match;
+  }
+  return { cmd: "envelope", play, tier };
 }
 
 /**
@@ -240,6 +272,22 @@ if (import.meta.main) {
     }
     if (result.halted) process.stderr.write(`chain halted: ${result.haltReason}\n`);
     process.exit(result.outcome === "success" && !result.halted ? 0 : 1);
+  }
+
+  if (parsed.cmd === "envelope") {
+    // The Ledger readout (T-013-02): load the ledger, recalibrate this play at the tier
+    // percentile over its successful history, and PRINT the proposed envelope + an honest
+    // confidence label. Read-only — it DISPLAYS the measured default, it does not actuate
+    // it into a dispatch (IA-14 — auto-widen/slow-tighten — is a later rung), so it always
+    // exits 0. Lazy imports keep the ledger/shelf deps off the pure-parse path.
+    const { loadRunLog } = await import("./log/run-log.ts");
+    const { recalibrate, formatEnvelopeLabel } = await import("./ledger/recalibrate.ts");
+    const { budgetForTier } = await import("./shelf/gather.ts");
+    const { records } = await loadRunLog();
+    const result = recalibrate(parsed.play, records, parsed.tier, budgetForTier(parsed.tier));
+    const { timeMs, tokens } = result.envelope;
+    process.stdout.write(`${parsed.play} [${parsed.tier}]: ${tokens} tokens / ${timeMs} ms — ${formatEnvelopeLabel(result)}\n`);
+    process.exit(0);
   }
 
   // The run path: look the play up BY NAME in the registry and cast it (no hardcoded
