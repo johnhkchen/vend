@@ -25,7 +25,7 @@ import { ClaudeTimeoutError, dispense, type ResultMessage } from "../executor/cl
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import type { CastContext, GateVerdict, Play } from "./play.ts";
-import { classify, makeStreamSink, resolveLoggedModel } from "./cast-core.ts";
+import { classify, makeStreamSink, resolveLoggedModel, resolveMaxTurns, resolveTurnsUsed } from "./cast-core.ts";
 
 // Re-export the pure core so callers (T-007-03) have one engine entry for the cast surface.
 export * from "./cast-core.ts";
@@ -117,13 +117,19 @@ export async function castPlay<I, O>(
     sink: (raw) => void appendFile(transcriptPath, `${raw}\n`, "utf8"),
   });
 
+  // The effective turn cap (T-015-02): the per-cast override (T-015-01) wins, else the play's
+  // warranted default (`play.maxTurns`), else undefined ⇒ the seam omits `--max-turns` ⇒ turns
+  // bounded only by the wall-clock latch + token budget. The number is calibrated from data
+  // (turnsUsed, logged below), not frozen.
+  const maxTurns = resolveMaxTurns(opts.maxTurns, play.maxTurns);
+
   let timedOut = false;
   let result: ResultMessage | null = null;
   try {
     result = await dispense({
       prompt,
       model: opts.model, // undefined ⇒ no --model flag ⇒ CLI default
-      maxTurns: opts.maxTurns, // undefined ⇒ no --max-turns flag ⇒ unbounded turns
+      maxTurns, // override ?? play default ?? undefined (no flag ⇒ unbounded turns)
       onMessage,
       timeoutMs: timeoutMsFor(budget),
     });
@@ -179,6 +185,12 @@ export async function castPlay<I, O>(
   // `result` is null and this falls back cleanly.
   const loggedModel = resolveLoggedModel(result?.model, opts.model);
 
+  // Harvest the agentic turns the run took off the terminal result's `num_turns` (T-015-02):
+  // the signal the warranted turn cap is calibrated from. Absent on a timed-out run (no
+  // result) or a stream that named none ⇒ the run-log field is omitted (reads unknown).
+  const turnsUsed = resolveTurnsUsed(result?.num_turns);
+  if (turnsUsed !== undefined) process.stdout.write(`· turns: ${turnsUsed}${maxTurns ? ` / ${maxTurns} cap` : ""}\n`);
+
   await appendRunLog(
     {
       runId,
@@ -195,6 +207,9 @@ export async function castPlay<I, O>(
       // The E1 trust bit (T-014-01) — pass-through; spread only when supplied, so an
       // unreported cast (and every pre-T-014-01 record) leaves the field off, reading unknown.
       ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
+      // The agentic turns the cast took (T-015-02) — pass-through, spread only when known so a
+      // timed-out run (no result) leaves the field off, exactly like `intervened`.
+      ...(turnsUsed !== undefined ? { turnsUsed } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
