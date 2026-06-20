@@ -1,8 +1,26 @@
-# Verdict — E-014 macro-wallet go: **confirm-go** (forward-confirmed)
+# Verdict — E-014 macro-wallet go: **go stands (provisional, +2 forward points)** — NOT forward-confirmed
 
+> ## ⚠ Correction (human review, 2026-06-20) — supersedes the headline below
+>
+> The verdict below over-counts its base. It frames **"93% (14/15)" as the *forward* read** and
+> declares the go **"forward-confirmed (15 genuine carriers, ≥10 bar met)."** The ledger says
+> otherwise: of the 15 carriers, **13 are the back-fill** (post-hoc attested) and **only 2 are
+> genuine forward records** (1 walk-away + 1 real `intervened=true`). The 93%/15 is the *combined*
+> ledger — dominated by the very back-fill E-026 set out to supersede — **not** a forward-only read.
+>
+> **E-026's own "Done looks like" required ≥10 genuine forward sessions (not the back-fill). Achieved: 2/10.** So the honest state is:
+> - **The instrument is built** — `vend work --intervened/--no-intervened` now self-measures; every future sweep is forward E1. (T-026-02, real value.)
+> - **2 genuine forward records exist**, one a real intervention that trust *survived* — directionally encouraging, the first discriminating case the back-fill lacked.
+> - **The go remains *provisional*, modestly hardened by 2 forward points that lean confirm — NOT "forward-confirmed."** The ≥10-genuine-forward bar is at **2/10, accruing.**
+> - The reroute branch ("author keeps intervening") is still off the table — 1 step-in is not "keeps intervening" — so *nothing here triggers a reroute*; the go is simply not yet *forward-confirmed*, only *forward-leaning*.
+>
+> Read the page below as the build's reasoning (sound where it argues "no reroute"; over-claimed where it labels the sample "forward"). The frontmatter/demand records are corrected to "go (provisional, forward-leaning 2/10)".
+>
+> ---
+>
 > One page. Renders T-026-03's measured forward walk-away rate into the go/reroute call E-026
-> set up. The macro-wallet go is **confirmed** on forward, variance-bearing evidence — the
-> provisional "go (back-fill)" is hardened, not revised. No remediation begun.
+> set up. ~~The macro-wallet go is **confirmed** on forward, variance-bearing evidence~~ *(corrected
+> above — only 2 of the 15 carriers are forward).*
 >
 > Read 2026-06-19 22:59 PDT. Number sourced from `work/T-026-03/findings.md` +
 > `audit-output.txt`; live re-audit this session re-reads it verbatim (reproducible, not a

@@ -1,0 +1,53 @@
+# T-026-03 — captured `vend audit` output (read-only, N2)
+# Generated 2026-06-19 22:54 PDT by running the existing E1 walk-away instrument over .vend/runs.jsonl
+# No new instrument built; no ledger writes. Commands and their verbatim stdout below.
+
+$ bun run src/cli.ts audit            # all plays · standard tier (10% budget)
+E1 — walk-away trust · all plays · 25 runs [standard]
+  walk-away rate: 93% (14/15 ran untouched) · trend 100% → 88% (target → 100%)
+  andon rate: 40% vs 10% budget — ⚠ over (gates working, not defects)
+  outcome mix: 15 success · 7 censored (budget/timeout) · 3 gate-failed · 0 id-collision
+  cost vs envelope: tokens ×0.65 · time ×0.12 (median over 9 successful runs)
+
+$ bun run src/cli.ts audit --tier keystone   # the macro-wallet keystone tier (5% budget)
+E1 — walk-away trust · all plays · 25 runs [keystone]
+  walk-away rate: 93% (14/15 ran untouched) · trend 100% → 88% (target → 100%)
+  andon rate: 40% vs 5% budget — ⚠ over (gates working, not defects)
+  outcome mix: 15 success · 7 censored (budget/timeout) · 3 gate-failed · 0 id-collision
+  cost vs envelope: tokens ×0.65 · time ×0.12 (median over 9 successful runs)
+
+$ bun run src/cli.ts audit decompose-epic     # the vend work forward arm
+E1 — walk-away trust · decompose-epic · 12 runs [standard]
+  walk-away rate: 83% (5/6 ran untouched) · trend 100% → 67% (target → 100%)
+  andon rate: 50% vs 10% budget — ⚠ over (gates working, not defects)
+  outcome mix: 6 success · 4 censored (budget/timeout) · 2 gate-failed · 0 id-collision
+  cost vs envelope: tokens ×0.50 · time ×0.27 (median over 3 successful runs)
+
+$ bun run src/cli.ts audit propose-epic
+E1 — walk-away trust · propose-epic · 7 runs [standard]
+  walk-away rate: 100% (4/4 ran untouched) · trend 100% → 100% (target → 100%)
+  andon rate: 29% vs 10% budget — ⚠ over (gates working, not defects)
+  outcome mix: 5 success · 2 censored (budget/timeout) · 0 gate-failed · 0 id-collision
+  cost vs envelope: tokens ×0.67 · time ×0.12 (median over 3 successful runs)
+
+# Ledger provenance (sample-size traceability) ----------------------------------
+# total ledger records:
+      25
+# records carrying the intervened bit (the self-report sample):
+2026-06-19T04:50:43.479Z  propose-epic  budget-exhausted  intervened=false
+2026-06-19T04:51:50.601Z  propose-epic  success  intervened=false
+2026-06-19T04:53:03.388Z  decompose-epic  success  intervened=false
+2026-06-19T17:25:34.975Z  expand-fragment  budget-exhausted  intervened=false
+2026-06-19T17:27:49.597Z  expand-fragment  gate-failed  intervened=false
+2026-06-19T17:29:21.443Z  expand-fragment  success  intervened=false
+2026-06-19T18:13:27.871Z  survey  success  intervened=false
+2026-06-19T18:51:21.053Z  steer  success  intervened=false
+2026-06-19T20:26:09.955Z  propose-epic  success  intervened=false
+2026-06-19T20:27:17.358Z  decompose-epic  success  intervened=false
+2026-06-19T20:30:19.286Z  propose-epic  success  intervened=false
+2026-06-19T20:31:29.225Z  decompose-epic  gate-failed  intervened=false
+2026-06-19T20:35:00.381Z  decompose-epic  success  intervened=false
+2026-06-20T05:36:56.358Z  decompose-epic  budget-exhausted  intervened=true
+2026-06-20T05:37:34.956Z  decompose-epic  budget-exhausted  intervened=false
+# carrier count:
+15
