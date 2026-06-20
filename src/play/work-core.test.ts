@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseBoardSignals, labelForSignal, formatStepSignal, renderReceipt } from "./work-core.ts";
+import { parseBoardSignals, labelForSignal, formatStepSignal, renderReceipt, isBoardStale, renderStaleBoard } from "./work-core.ts";
 import type { SessionResult, StepSignal } from "../engine/spend-core.ts";
 import type { Budget } from "../budget/budget.ts";
 
@@ -124,5 +124,50 @@ describe("renderReceipt", () => {
     const r = session("wallet-exhausted", [], FUNDED);
     const out = renderReceipt(r, { funded: FUNDED, remaining: FUNDED });
     expect(out).toContain("No cast ran");
+  });
+});
+
+// T-027-01 (epic E-027): the board-freshness gate's pure half — the staleness decision and the
+// stale-board andon render. The impure mtime gather + the castWork wiring are proven by the free,
+// deterministic live refusal (work.ts value-imports the addon — no bun test may import it).
+
+describe("isBoardStale", () => {
+  test("board older than the live state ⇒ stale", () => {
+    expect(isBoardStale(100, 200)).toBe(true);
+  });
+  test("board newer than the live state ⇒ fresh", () => {
+    expect(isBoardStale(200, 100)).toBe(false);
+  });
+  test("equal mtimes ⇒ fresh (fresh-on-tie)", () => {
+    expect(isBoardStale(100, 100)).toBe(false);
+  });
+  test("no live state at all (newest 0) ⇒ fresh (nothing to be stale against)", () => {
+    expect(isBoardStale(5, 0)).toBe(false);
+  });
+});
+
+describe("renderStaleBoard", () => {
+  // A fixed, deterministic fixture: the board predates the live state (B > A).
+  const A = Date.parse("2026-06-19T11:54:37.000Z");
+  const B = Date.parse("2026-06-19T22:30:00.000Z");
+  const r = { boardPath: "docs/active/pm/staged/steer.md", boardMtimeMs: A, liveMtimeMs: B };
+
+  test("renders both timestamps, the refused board, the re-survey move, and the honest caveat", () => {
+    const out = renderStaleBoard(r);
+    expect(out).toContain(new Date(A).toISOString()); // board staged
+    expect(out).toContain(new Date(B).toISOString()); // project changed
+    expect(out).toContain("steer.md"); // which board was refused
+    expect(out).toContain("vend steer");
+    expect(out).toContain("vend work"); // the next move is handed over
+    expect(out).toContain("--stale-ok"); // the escape hatch
+    expect(out).toContain("heuristic"); // the honest mtime caveat
+    expect(out).toContain("refused"); // a successful stop, not a crash
+  });
+
+  test("color off (default) is plain text; color on wraps amber, never red (IA-9)", () => {
+    expect(renderStaleBoard(r)).not.toContain("\x1b[");
+    const colored = renderStaleBoard(r, { color: true });
+    expect(colored).toContain("\x1b[33m"); // amber
+    expect(colored).not.toContain("\x1b[31m"); // never red
   });
 });

@@ -94,6 +94,44 @@ export function formatStepSignal(s: StepSignal, funded: Budget): string {
   return `${arrow}: ${s.candidate}\n    ${formatWallet(wallet)}`;
 }
 
+/**
+ * The board-freshness decision (T-027-01, epic E-027). PURE/TOTAL. The board is **stale** iff it
+ * predates the project's live state — `boardMtimeMs < liveMtimeMs` — so equal/newer is FRESH
+ * (fresh-on-tie: a board re-staged at the instant the project last moved is current). No I/O: the
+ * caller (`castWork`) gathers the two mtimes (the board's stat + the newest across
+ * `docs/active/{epic,stories,tickets}`) and asks here. **Honest caveat:** mtime is a heuristic — a
+ * `git checkout` can reset it — so this gate is `--stale-ok`-overridable (IA-5), never a hard lock.
+ */
+export function isBoardStale(boardMtimeMs: number, liveMtimeMs: number): boolean {
+  return boardMtimeMs < liveMtimeMs;
+}
+
+/**
+ * The stale-board andon (T-027-01, IA-9): a stale board is a **successful refusal**, not a crash —
+ * amber at the surface, exiting like the other broken-precondition outcomes. PURE. Renders both
+ * timestamps (ISO 8601, so the text is deterministic + unit-assertable — `new Date(ms)` is total,
+ * unlike argless `new Date()`), the board it refused, the re-survey next move (IA-9 summons the fix),
+ * and the honest mtime caveat (the `--stale-ok` escape hatch, IA-5). `opts.color` (default false)
+ * gates the ANSI so tests assert plain text and the CLI passes `color: true` — exactly `renderReceipt`.
+ */
+export function renderStaleBoard(
+  r: { readonly boardPath: string; readonly boardMtimeMs: number; readonly liveMtimeMs: number },
+  opts: { color?: boolean } = {},
+): string {
+  const color = opts.color ?? false;
+  const boardWhen = new Date(r.boardMtimeMs).toISOString();
+  const liveWhen = new Date(r.liveMtimeMs).toISOString();
+  return [
+    amber("⚠ stale board — refused (a successful stop, not a crash)", color),
+    `  board:           ${r.boardPath}`,
+    `  board staged:    ${boardWhen}`,
+    `  project changed: ${liveWhen}  (newer than the board)`,
+    "  The board predates the project's current state — spending would clear superseded work.",
+    "  Re-survey before spending:  vend steer  (or  vend survey ),  then  vend work",
+    "  (mtime is a heuristic — a git checkout can reset it; pass --stale-ok to spend anyway.)",
+  ].join("\n");
+}
+
 /** Human phrasing for each clean stop (IA-9). `andon` is the successful refusal (amber at the
  *  surface); the other two are clean terminal states (the wallet spent, or the board cleared). */
 const STOP_HEAD: Record<SessionResult["stop"], string> = {
