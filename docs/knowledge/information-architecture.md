@@ -223,16 +223,28 @@ same result twice." Two axes, and only the first is the promise:
 
 The per-play verdict, **measured by the E-022 equivalence sweep (N=3, 2026-06-19)**: **expand →
 by-design** (`equivalent-diversity`, 1.00 — the grounded fragment pins intent; divergence is
-rewording, Jaccard 0.50); **survey → converge** (`genuine-disagreement`, 0.00 — the boards
-genuinely differ run-to-run, and survey drives the home's single recommended pull, IA-1); **steer
-→ by-design** (`equivalent-diversity`, 1.00 *despite* the highest dispersion, 0.80 — many valid
-framings of one direction, not flip-flopping). The decisive lesson: **dispersion magnitude does
-not predict meaning** — steer's 0.80 is pure diversity while survey's 0.68 is pure disagreement,
-so the *meaning* axis (the judge), not Jaccard, adjudicates the contract. A "converge" verdict
-pulls a **downstream** convergence lever (canonical-form gate / consensus cast / temperature) —
-never re-litigating the validity axis, which the gates already own; survey's lever must first
-isolate whether the load-bearing #1 pull flips or only the tail re-orders. Evidence + the resolved
-fork: `docs/active/work/T-022-02/findings.md`.
+rewording, Jaccard 0.50); **survey → tail-divergence-by-design** (the **load-bearing #1 pull is
+consistent run-to-run** — semantic `head-stable`, 1.00, the head-isolating re-sweep below; only the
+*tail* ranking re-orders); **steer → by-design** (`equivalent-diversity`, 1.00 *despite* the highest
+dispersion, 0.80 — many valid framings of one direction, not flip-flopping). The decisive lesson:
+**dispersion magnitude does not predict meaning** — steer's 0.80 is pure diversity, so the *meaning*
+axis (the judge), not Jaccard, adjudicates the contract. A "converge" verdict would pull a
+**downstream** convergence lever (canonical-form gate / consensus cast / temperature) — never
+re-litigating the validity axis, which the gates already own. Evidence + the resolved fork:
+`docs/active/work/T-022-02/findings.md`.
+
+**Survey's head, isolated (E-023, N=3, 2026-06-19).** E-022's whole-board judge scored survey's
+*full ranking* as different run-to-run, but IA-1's contract is narrower — does the **#1 recommended
+pull** flip, or only the tail? The head-isolating probe (T-023-01) answered it: **semantic
+`head-stable` (1.00)** — all 3 casts' #1 pick the *same* pull (the keystone "scaffold the
+Bun/TypeScript project," reworded each time), while the **lexical** baseline flips (0.00 — the head
+is reworded, not re-chosen). The lexical-flip / semantic-stable split *is this principle in
+miniature*: the load-bearing recommendation is the same proposed work, not the same wording. So
+survey's "converge" verdict is **honestly downgraded to tail-divergence-by-design — no lever built**:
+you don't converge a head that doesn't move (the whole-board judge itself swung between two N=3
+sweeps — `genuine-disagreement` 0.00 → `equivalent-diversity` 1.00 — while the head held, which is
+exactly why the contract rests on the head, not the volatile tail). Re-measure once `src/**` is no
+longer empty and the keystone resolves. Evidence: `docs/active/work/T-023-02/findings.md`.
 
 ---
 

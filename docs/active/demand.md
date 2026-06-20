@@ -137,16 +137,16 @@ Surfaced demand, deliberately un-elaborated until pulled:
   E-013). The capped spine TUI epics anchor to. Remaining **open threads** (the
   detached/notify mechanism, the fleet/DAG andon board, Confirm's budget-adjust
   gesture) are the next design pulls.
-- **Survey-convergence** — **active → E-023** (`survey-convergence`, pulled 2026-06-19). *measured defect, lever unbuilt.* The
-  E-022 sweep proved the **survey** play genuinely disagrees run-to-run (`genuine-disagreement`
-  0.00 over N=3) — and survey drives IA-1's single recommended pull, so an unstable board erodes
-  the product's spine. **First slice = measure, not build:** isolate whether the load-bearing **#1
-  pull** flips or only the *tail* re-orders (the whole-board judge over-counts for the contract's
-  purpose). *Then* the lever, chosen against that read: a consensus cast (cast N → converge the
-  agreed core, the equivalence judge becomes a gate), a canonical-form/normalization gate, or
-  lowered temperature on the survey node. **High** (P3 — survey is load-bearing for IA-1); the
-  evidence + the head-vs-tail caveat: `work/T-022-02/findings.md`. **Awaiting human assent to pull**
-  (the converge gesture; expand + steer resolved by-design, no lever).
+- **Survey-convergence** — **done → E-023** (`survey-convergence`, 2026-06-19). *Resolved:
+  measure-then-decide said accept, not build — no lever.* The head-isolating probe (T-023-01) read
+  survey at N=3: lexical head **flips** (the #1 is reworded each cast) but semantic head is
+  **stable 1.00** (3/3 — the #1 pull is the *same* keystone scaffold every time). E-022's
+  whole-board `genuine-disagreement` over-counted: it scored the **tail**, not the head IA-1 feeds.
+  So **IA-17 amended** — survey divergence is *tail re-ordering by-design; the load-bearing #1 pull
+  is consistent run-to-run*. **No convergence lever built** (you don't converge a head that doesn't
+  move — the E-014/E-022 discipline paying off a second time). All three articulation plays now
+  resolved **by-design**; the E-019 dispersion thread is closed. Re-measure trigger: once `src/**`
+  is no longer empty (the keystone resolves, a new #1 must emerge). `work/T-023-02/findings.md`.
 - **Design-language session** — assemble the project-wide *look* (the visual surface:
   palette — amber andon per IA-9, run-stream, budget meter, shelf cards); output a
   capped design charter, downstream of the IA spine. High; precedes any TUI epic.
