@@ -115,6 +115,33 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
+- **Per-play tool/MCP/skill provisioning** (surfaced 2026-06-20) — a play should **declare the
+  MCPs / tools / skills it uses**, scoped to *that play*, not inherited from a global executor config.
+  Concretely: `decompose-epic` should itself reference `codebase-memory-mcp` (the way we just wired it
+  into the E-031 tickets by hand), so casting decompose *wires that MCP in* — instead of it being
+  globally available (or silently absent on a machine that didn't configure it). **High** (P1
+  author-once — a play's tool needs are part of its encoded judgment and must travel with it; also
+  least-privilege — a play's tool surface is its blast radius, so capture-note shouldn't get Bash and
+  decompose shouldn't get write-everywhere). ~1–2 blocks.
+  **The "project based?" question — split the concern (recommended):**
+  - **Requirement → on the Play (code-as-config, author-once).** The play declares *which* capabilities
+    it needs — e.g. `tools: { mcp: ["codebase-memory-mcp"], allow: ["Read","Grep"], skills: [...] }` on
+    the `Play` contract (`src/engine/play.ts`). This is encoded judgment (P1) and travels with the play.
+  - **Binding → project-based (NOT global).** The *concrete* server config (launch command, args,
+    secrets, paths) can't live in the play — it differs per checkout. Reuse Claude Code's project
+    `.mcp.json` convention (the same file that already defines `codebase-memory-mcp` here) rather than
+    invent a Vend format; a play references a server *by id*, the project supplies the *how*.
+  - **Resolution → at cast, least-privilege.** Vend resolves the play's declared ids against the
+    project's available servers and wires **only those** into the executor seam (`--mcp-config` subset
+    + `--allowedTools`), never the global firehose. A **required MCP the project doesn't provide →
+    amber andon** (IA-9 honest refusal — a run missing its declared capability is not the same run,
+    IA-17), not a silent blind run. Lands naturally at the `claude -p` seam (`buildArgs`/`dispense`,
+    where `--max-turns` already lives, E-015).
+  - **Open sub-questions for the pull:** (1) undeclared play = inherit today's default (back-compat) or
+    strict-minimal (least-privilege, opt-in)? — recommend back-compat default now, strict mode opt-in;
+    (2) unify mcp/tool/skill under one `tools` block or keep three lists? (Claude Code treats them
+    differently — skills are md+frontmatter, MCPs are servers, tools are built-in); (3) andon-hard vs
+    warn-and-degrade on a missing optional vs required capability. **Not yet pulled** — say the word.
 - **Measurement sprint** (unblocks E-014's verdict) — **done 2026-06-19 → verdict: go.** Both
   numbers collected: **E1** walk-away **100% (13/13)**, KR1 ≥10 met (via the auditable back-fill
   `src/ledger/attest-intervention.ts` — post-hoc, attested, marked as such); **E2** clean **21%**
