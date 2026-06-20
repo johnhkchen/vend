@@ -18,7 +18,7 @@
 // (spend-core.test.ts / wallet.test.ts), its cast is the tested chain. Proven LIVE (AC#3), the
 // `castChain` / chain-propose-decompose.ts stance.
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { allocate } from "../budget/wallet.ts";
 import type { Budget } from "../budget/budget.ts";
@@ -29,7 +29,7 @@ import { decomposeEpicPlay } from "./decompose-epic.ts";
 import { recalibrate } from "../ledger/recalibrate.ts";
 import { budgetForTier } from "../shelf/gather.ts";
 import { loadRunLog } from "../log/run-log.ts";
-import { parseBoardSignals, labelForSignal } from "./work-core.ts";
+import { parseBoardSignals, labelForSignal, isBoardStale } from "./work-core.ts";
 
 /** The "fund it, walk away for two hours" default macro budget when `--budget` is omitted (design
  *  D6): the vision's literal framing made the pre-filled default (IA-6 — adjust is the exception). */
@@ -56,7 +56,16 @@ export interface WorkOptions {
   readonly model?: string;
   /** The IA-7 production-line emit, forwarded to `spendDown` (the CLI renders it). */
   readonly onStep?: (s: StepSignal) => void;
+  /** Spend even when the staged board is stale — the human override (IA-5, T-027-01). Default
+   *  (absent/false): the freshness gate refuses a board older than the project's live state. */
+  readonly staleOk?: boolean;
 }
+
+/** The `docs/active/**` dirs whose newest `*.md` mtime IS the project's "live state" the board is
+ *  measured against (the decomposed epic→story→ticket board the staged board ranks). Mirrors
+ *  load.ts's three dirs — the no-shared-util idiom: a thin readdir+stat here, not load.ts's full
+ *  node parse, since the freshness gate needs only the newest mtime (T-027-01). */
+const ACTIVE_DIRS = ["docs/active/epic", "docs/active/stories", "docs/active/tickets"] as const;
 
 /**
  * The result {@link castWork} reports back as DATA (the CLI renders it via work-core). Tagged: a
@@ -66,6 +75,10 @@ export interface WorkOptions {
 export type WorkResult =
   | { readonly kind: "no-board"; readonly tried: readonly string[] }
   | { readonly kind: "empty-board"; readonly boardPath: string }
+  /** The board predates the project's live state (T-027-01, E-027): a CLEAN refusal (the CLI renders
+   *  the amber IA-9 andon + exits like no-board/empty-board), NOT a thrown fault. Carries both mtimes
+   *  so the render needs no second stat. Bypassed by `--stale-ok` (IA-5). */
+  | { readonly kind: "stale-board"; readonly boardPath: string; readonly boardMtimeMs: number; readonly liveMtimeMs: number }
   | { readonly kind: "spent"; readonly session: SessionResult; readonly funded: Budget };
 
 /** Per-denomination sum of two budgets — the chain's predicted price is the sum of its two plays'
@@ -90,6 +103,34 @@ async function readBoard(root: string, explicit?: string): Promise<{ md: string;
   return null;
 }
 
+/** The newest `*.md` mtime across {@link ACTIVE_DIRS} — the project's "live state" timestamp the
+ *  board's staging time is checked against (T-027-01). Mirrors load.ts's readdir-per-dir idiom but
+ *  takes `stat().mtimeMs` and a running max instead of file bodies. TOLERANT: a missing dir (ENOENT)
+ *  or a per-file stat fault is skipped, so a partly-scaffolded board never throws. Returns 0 when
+ *  there are no active files at all ⇒ {@link isBoardStale} reads fresh (no live state to be stale
+ *  against). IMPURE (reads mtimes); the staleness DECISION it feeds is the pure, unit-tested core. */
+async function newestActiveMtimeMs(root: string): Promise<number> {
+  let newest = 0;
+  for (const rel of ACTIVE_DIRS) {
+    let names: string[];
+    try {
+      names = await readdir(join(root, rel));
+    } catch {
+      continue; // a missing dir is not the project's newest change — just skip it
+    }
+    for (const name of names) {
+      if (!name.endsWith(".md")) continue;
+      try {
+        const s = await stat(join(root, rel, name));
+        if (s.mtimeMs > newest) newest = s.mtimeMs;
+      } catch {
+        continue; // a vanished/unreadable entry can't be the newest change
+      }
+    }
+  }
+  return newest;
+}
+
 /**
  * Cast the `vend work` gesture end to end — the counter's Confirm→Run→Settle spine (IA-6). Reads the
  * staged board into its ranked signals, funds the wallet, prices each pull at its recalibrated
@@ -107,6 +148,19 @@ export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
   }
   const candidates = parseBoardSignals(board.md);
   if (candidates.length === 0) return { kind: "empty-board", boardPath: board.path };
+
+  // The freshness gate (T-027-01, E-027): BEFORE funding the wallet, refuse a board that predates the
+  // project's live state — spending it down clears already-done/superseded work (overproduction). The
+  // decision is the pure `isBoardStale`; the two mtimes are gathered here (the board's stat + the
+  // newest `docs/active/**` change). `--stale-ok` (IA-5) bypasses the gather entirely. mtime is a
+  // heuristic (git checkout can reset it) — hence the override, not a hard lock.
+  if (!opts.staleOk) {
+    const boardMtimeMs = (await stat(board.path)).mtimeMs;
+    const liveMtimeMs = await newestActiveMtimeMs(root);
+    if (isBoardStale(boardMtimeMs, liveMtimeMs)) {
+      return { kind: "stale-board", boardPath: board.path, boardMtimeMs, liveMtimeMs };
+    }
+  }
 
   const funded = opts.budget ?? DEFAULT_MACRO_BUDGET;
   const wallet = allocate(funded);
