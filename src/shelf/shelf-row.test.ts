@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildRunRecord, type RunOutcome, type RunRecord, type RunRecordInput } from "../log/run-log.ts";
 import type { Budget } from "../budget/budget.ts";
 import type { Card, Play, Rarity } from "../engine/play.ts";
-import { RARITY_TIER, shelfRows, tierForRarity } from "./shelf-row.ts";
+import { RARITY_TIER, renderShelf, type ShelfRow, shelfRows, tierForRarity } from "./shelf-row.ts";
 
 // T-030-01 shelf-row core: the PURE worth + warranted-budget composition. No fs/clock/spawn
 // and NO BAML — fixtures build Play STUBS directly (the play.test.ts precedent) and fabricate
@@ -126,5 +126,61 @@ describe("shelfRows — worth, keys, order, and per-play isolation", () => {
     const records = [recordOf()];
     expect(shelfRows([], records)).toEqual([]);
     expect(records.length).toBe(1);
+  });
+});
+
+describe("renderShelf — the supply view (DL-6/9/3)", () => {
+  const measuredRow = (over: Partial<ShelfRow> = {}): ShelfRow => ({
+    name: "decompose-epic",
+    summary: "clear an epic into ready stories and tickets",
+    envelope: { timeMs: 7_200_000, tokens: 80_000 },
+    confidence: { kind: "measured", runs: 5 },
+    ...over,
+  });
+  const defaultRow = (over: Partial<ShelfRow> = {}): ShelfRow => ({
+    name: "survey",
+    summary: "read the project into a ranked demand board",
+    envelope: { timeMs: 7_200_000, tokens: 50_000 },
+    confidence: { kind: "default" },
+    ...over,
+  });
+
+  test("a measured row shows the plain envelope + (measured · N runs), no ~", () => {
+    const out = renderShelf([measuredRow()]);
+    expect(out).toContain("decompose-epic");
+    expect(out).toContain("2h/80k (measured · 5 runs)");
+    // The measured envelope is a real bound — never prefixed with the cold-start ~.
+    expect(out).not.toContain("~2h/80k");
+  });
+
+  test("a one-run measured row reads singular `1 run`", () => {
+    expect(renderShelf([measuredRow({ confidence: { kind: "measured", runs: 1 } })])).toContain("(measured · 1 run)");
+  });
+
+  test("a default row flags ~envelope + (default — no runs yet) and never says measured (E-026)", () => {
+    const out = renderShelf([defaultRow()]);
+    expect(out).toContain("~2h/50k (default — no runs yet)");
+    expect(out).not.toContain("measured");
+  });
+
+  test("no card chrome — a flat list, no box characters (DL-9)", () => {
+    const out = renderShelf([measuredRow(), defaultRow()]);
+    expect(out).not.toMatch(/[|┌┐└┘├┤┬┴┼─│[\]]/u);
+  });
+
+  test("worth leads, columns align across unequal name lengths (DL-3)", () => {
+    const lines = renderShelf([measuredRow(), defaultRow()]).split("\n").slice(2); // drop header + blank
+    // Each row's summary starts at the same column (name padded to the widest name).
+    const summaryCol = (line: string, summary: string) => line.indexOf(summary);
+    expect(summaryCol(lines[0] ?? "", "clear an epic")).toBe(summaryCol(lines[1] ?? "", "read the project"));
+  });
+
+  test("empty shelf → one guidance line, never a throw", () => {
+    expect(renderShelf([])).toBe("(no playbooks)");
+  });
+
+  test("seam: a real cold-start row from shelfRows renders as default", () => {
+    const play = makeStubPlay("survey", { summary: "read the project into a ranked demand board" });
+    expect(renderShelf(shelfRows([play], []))).toContain("(default — no runs yet)");
   });
 });

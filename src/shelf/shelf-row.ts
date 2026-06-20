@@ -22,7 +22,7 @@ import type { Budget } from "../budget/budget.ts";
 import type { AnyPlay, Rarity } from "../engine/play.ts";
 import type { RunRecord } from "../log/run-log.ts";
 import { recalibrate } from "../ledger/recalibrate.ts";
-import type { ValueTier } from "./menu.ts";
+import { formatBudget, type ValueTier } from "./menu.ts";
 
 /**
  * How trustworthy a row's envelope is — a DISCRIMINATED union, so the E-026 lesson is
@@ -91,4 +91,52 @@ export function shelfRows(plays: readonly AnyPlay[], records: readonly RunRecord
       result.source === "measured" ? { kind: "measured", runs: result.confidence.successes } : { kind: "default" };
     return { name: play.name, summary: play.summary, envelope: result.envelope, confidence };
   });
+}
+
+/**
+ * The honest confidence qualifier for a row's envelope. PURE/TOTAL. An exhaustive `switch`
+ * over the {@link ShelfConfidence} union (no default branch — `tsc` proves both arms), so the
+ * E-026 lie is unconstructable: a `default` row carries NO `runs`, so this can never print
+ * "measured (0 runs)". `measured` reads `(measured · N runs)` (singular for one); `default`
+ * reads `(default — no runs yet)`.
+ */
+function confidenceLabel(c: ShelfConfidence): string {
+  switch (c.kind) {
+    case "measured":
+      return `(measured · ${c.runs} run${c.runs === 1 ? "" : "s"})`;
+    case "default":
+      return "(default — no runs yet)";
+  }
+}
+
+/**
+ * Render the supply shelf clean-typographic — the SUPPLY view beside the demand board (DL-6:
+ * the shelf serves beneath; here it stands on its own behind `vend shelf`). PURE/TOTAL.
+ *
+ * DL-9 (card-as-lens, not chrome): a flat NUMBERED LIST, never a grid of boxed cards — the
+ * `renderMenu` discipline. DL-3 (hierarchy from the terminal's few levers): WORTH LEADS (name
+ * + summary at column 0), the warranted budget + confidence RECEDE to the trailing column;
+ * with no color to spend here (no andon applies — DL-5 is silent on the shelf), recession is
+ * carried by position + the parenthetical qualifier + a `~` that flags a cold-start envelope.
+ *
+ * The envelope is formatted by {@link formatBudget} — the SAME formatter the board uses
+ * (`menu.ts`) — so the shelf and the board read identically (no data/display drift). A
+ * `default` (cold-start) row prefixes its envelope with `~` and is labelled
+ * `(default — no runs yet)`; a `measured` row shows its envelope plainly + `(measured · N
+ * runs)`. Columns self-size to the widest name/summary so adding a play needs no hand-tuned
+ * width. An empty shelf renders one guidance line instead of erroring (the `renderMenu`
+ * precedent). Input order is preserved; nothing is mutated.
+ */
+export function renderShelf(rows: readonly ShelfRow[]): string {
+  if (rows.length === 0) return "(no playbooks)";
+
+  const nameW = Math.max(...rows.map((r) => r.name.length));
+  const summaryW = Math.max(...rows.map((r) => r.summary.length));
+
+  const lines = rows.map((r, i) => {
+    const env = `${r.confidence.kind === "default" ? "~" : ""}${formatBudget(r.envelope)}`;
+    return `  ${i + 1}. ${r.name.padEnd(nameW)}   ${r.summary.padEnd(summaryW)}   ${env} ${confidenceLabel(r.confidence)}`;
+  });
+
+  return `shelf — ${rows.length} playbook${rows.length === 1 ? "" : "s"}\n\n${lines.join("\n")}`;
 }
