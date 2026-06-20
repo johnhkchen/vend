@@ -83,13 +83,15 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — the board is clear. Pull a frontier below.*
+| Signal | Value | Status |
+|---|---|---|
+| **`macro-wallet-live-proof`** (Frontier 1) — cast the headline gesture for real: a fresh board, a bounded budget, `vend work --no-intervened`, spend down to a clean P7 stop; accrue forward-E1 off its 1/2 floor. A **metered** spend (real casts/tokens), bounded by P7 — not a free proof. | **Keystone** (P4/P7 + the trust gate) | **active → E-037** — pre-flight (free) → the live sweep (metered) → settle + honest verdict. Awaiting `lisa loop`. |
 
 ---
 
 ## Pullable signals (open demand)
 
-### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone*
+### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **pulled → E-037 (in flight)**
 
 - **Macro-wallet live proof + forward-E1 accrual.** E-024 wired `vend work --budget`
   to spend a feature-block budget down across casts (green, 825 tests) but the
