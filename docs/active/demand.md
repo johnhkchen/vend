@@ -83,25 +83,25 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`per-cast-timeout-headroom`** (Frontier 1 unblocker) — the per-cast wall-clock timeout *is* the p90 envelope, so heavy signals are guillotined at p90 and censored out of their own sample (a ratchet). Give `timeoutMsFor` headroom above the price; keep the meter honest. | **High** (the concrete unblocker of the keystone) | **active → E-038** — single surgical ticket (`timeoutMsFor × HEADROOM`, kill-switch only) + deterministic proof. Awaiting `lisa loop`. |
+*Nothing in flight — E-038 cleared the time-censor ratchet (the keystone unblocker). Frontier 1's
+next move is the **live re-sweep** (now unblocked); a PM-staged distribution/onboarding batch awaits
+a pull (see below). Pull one.*
 
 ---
 
 ## Pullable signals (open demand)
 
-### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 done; frontier open**
+### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 + E-038 done; frontier open**
 
-- **`propose-epic` time-censors the board's top signal before it can mint** → **pulled → E-038
-  (in flight).** E-037's sweep cleared 0 because the per-cast timeout *is* the p90 envelope, so a
-  signal heavier than p90 is guillotined and censored out of its own sample (a ratchet). Grounding
-  corrected E-037's own suggested fix: **raising the percentile can't work** (the tail is censored
-  from the sample); the fix is **timeout headroom** in `timeoutMsFor` (kill-switch only; the meter
-  stays the honest p90). E-038 is the surgical lever.
-- **Accrue cleared forward-E1 to ≥10.** Once the censor clears, each `vend work --no-intervened`
-  sweep that *clears* a pull adds a genuine forward record (now **4/10**, censored). The ≥10-genuine
-  bar fully ungates the macro-wallet's provisional go — a **cadence**, not a single epic.
+- **Re-run the live sweep, now the censor is cleared (the next keystone pull).** E-037 watched the
+  wallet live but cleared 0 (the time-censor ratchet); **E-038 fixed it** (`timeoutMsFor × 2`
+  headroom — heavy signals finish instead of being guillotined at p90). The deterministic proof shows
+  E-037's casualties would now finish — but a *live* re-sweep is needed to **confirm the heavy signal
+  actually clears** and accrue the first **cleared** forward record. A metered spend, bounded by P7.
+  **Keystone** · the unblocker is in place.
+- **Accrue cleared forward-E1 to ≥10.** Each `vend work --no-intervened` sweep that *clears* a pull
+  adds a genuine forward record (now **4/10**, all censored). The ≥10-genuine bar fully ungates the
+  macro-wallet's provisional go — a **cadence**, not a single epic.
 - **Macro-wallet live proof + forward-E1 accrual.** E-024 wired `vend work --budget`
   to spend a feature-block budget down across casts (green, 825 tests). The headline
   gesture is now **watched** (E-037, 2026-06-20): a real metered sweep demonstrated
@@ -171,6 +171,18 @@ named by the charter principle it advances and the gap it closes:
   - *(rolls up to)* **auto-structure demands for efficiency** — the engine applies
     ordering + routing + bounding invisibly; the consistency layer measures
     cache-hit + per-model cost and tunes it. The product-level goal these serve.
+
+### Frontier 7 — Distribution & onboarding (newly surfaced) — *PM-staged, awaiting a pull*
+
+The board was **silent** on getting Vend *onto a machine* and a new user *driving it* — surfaced by
+E-037's loop (go-and-see + a **green** `bun build --compile` + BAML spike) and ranked by the PM's
+2026-06-20 distribution/onboarding cycle (`pm/proposed-batch.md`; detail in
+`pm/deployability-discovery.md` + `pm/onboarding-examples-discovery.md`). High-leverage on its own
+**and** it compounds the keystone (more driveable projects → more cleared runs → forward-E1 → the
+wallet ungates). Un-elaborated here (PE-6); the PM batch has the ranked detail. Recommended first
+pull: **`vend init`**. Signals: `vend init`/`vend doctor` · a driveable hackathon `examples/`
+template · Homebrew/`bun --compile` delivery · onboarding docs. **High** (foundation-first: init →
+example → delivery). *Pull from the PM batch when ready — the human pulls (pull-discipline).*
 
 ---
 
