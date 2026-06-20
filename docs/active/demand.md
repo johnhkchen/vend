@@ -83,22 +83,21 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-038 cleared the time-censor ratchet (the keystone unblocker). Frontier 1's
-next move is the **live re-sweep** (now unblocked); a PM-staged distribution/onboarding batch awaits
-a pull (see below). Pull one.*
+| Signal | Value | Status |
+|---|---|---|
+| **`macro-wallet-live-clear`** (Frontier 1 keystone) — re-run the metered sweep now the censor's fixed (E-038): confirm a pull actually **clears** (propose finishes, a real epic mints) + the first **cleared** forward-E1 record. Aim at a **concrete** #1 (E-037's was self-referential). Metered, bounded by P7. | **Keystone** (P4/P7 + the trust cadence) | **active → E-039** — the live re-sweep (metered) → settle + honest verdict. Awaiting `lisa loop`. May still 0-clear (honest if so — the bottleneck moved). |
 
 ---
 
 ## Pullable signals (open demand)
 
-### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 + E-038 done; frontier open**
+### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 + E-038 done; re-sweep → E-039 (in flight)**
 
-- **Re-run the live sweep, now the censor is cleared (the next keystone pull).** E-037 watched the
-  wallet live but cleared 0 (the time-censor ratchet); **E-038 fixed it** (`timeoutMsFor × 2`
-  headroom — heavy signals finish instead of being guillotined at p90). The deterministic proof shows
-  E-037's casualties would now finish — but a *live* re-sweep is needed to **confirm the heavy signal
-  actually clears** and accrue the first **cleared** forward record. A metered spend, bounded by P7.
-  **Keystone** · the unblocker is in place.
+- **Re-run the live sweep** → **pulled → E-039 (in flight).** E-037 watched the wallet (cleared 0,
+  time-censor); **E-038 fixed it** (`timeoutMsFor × 2`). E-039 re-runs the bounded metered sweep to
+  confirm a pull actually **clears** (propose finishes, a real epic mints) + accrue the first
+  **cleared** forward record. Aims at a **concrete** #1 (E-037's was a self-referential "run the
+  sweep" meta-signal). May still 0-clear (honest if so — the bottleneck moved to decompose/tokens).
 - **Accrue cleared forward-E1 to ≥10.** Each `vend work --no-intervened` sweep that *clears* a pull
   adds a genuine forward record (now **4/10**, all censored). The ≥10-genuine bar fully ungates the
   macro-wallet's provisional go — a **cadence**, not a single epic.
