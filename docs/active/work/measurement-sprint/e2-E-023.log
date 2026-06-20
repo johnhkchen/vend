@@ -1,0 +1,240 @@
+=== E2 strengthen sweep: decompose on E-023, 5×2 @ 180k — Fri Jun 19 20:12:15 PDT 2026 ===
+variance probe — 5× gated, 5× ungated on docs/active/epic/E-023.md
+(temp root: /var/folders/8w/d2995gqn5_1g_wcqy7_tnqgw0000gn/T/vend-probe-yXbjBE — ledger + board are disposable; per-cast tokens: 180000)
+gated arm (gates ON):
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· andon: gate-failed — gate 'value' stopped at <plan>: plan has no tickets — it advances nothing (malformed/empty)
+· turns: 1 / 15 cap
+  gated 1/5: gate-failed (materialized: false)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· andon: gate-failed — gate 'value' stopped at <plan>: plan has no tickets — it advances nothing (malformed/empty)
+· turns: 1 / 15 cap
+  gated 2/5: gate-failed (materialized: false)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ lisa validate ✓
+· turns: 2 / 15 cap
+  gated 3/5: success (materialized: true)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ lisa validate ✓
+· turns: 2 / 15 cap
+  gated 4/5: success (materialized: true)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· rate_limit_event
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· andon: gate-failed — gate 'value' stopped at <plan>: plan has no tickets — it advances nothing (malformed/empty)
+· turns: 2 / 15 cap
+  gated 5/5: gate-failed (materialized: false)
+ungated arm (--no-gates):
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· gates skipped (--no-gates)
+· effect ✗ lisa validate ✗
+docs/active/tickets/: readiness: no tickets found. Create at least one ticket file.
+
+1 error(s) found. Fix and re-run `lisa validate`.
+Error: 1 error(s) found. Fix and re-run `lisa validate`.
+· turns: 2 / 15 cap
+  ungated 1/5: success (materialized: false)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· rate_limit_event
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· gates skipped (--no-gates)
+· effect ✗ lisa validate ✗
+docs/active/tickets/: readiness: no tickets found. Create at least one ticket file.
+
+1 error(s) found. Fix and re-run `lisa validate`.
+Error: 1 error(s) found. Fix and re-run `lisa validate`.
+· turns: 2 / 15 cap
+  ungated 2/5: success (materialized: false)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· result (success)
+· gates skipped (--no-gates)
+· effect ✓ lisa validate ✓
+· turns: 1 / 15 cap
+  ungated 3/5: success (materialized: true)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· gates skipped (--no-gates)
+· effect ✓ lisa validate ✓
+· turns: 2 / 15 cap
+  ungated 4/5: success (materialized: true)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· gates skipped (--no-gates)
+· effect ✗ lisa validate ✗
+docs/active/tickets/: readiness: no tickets found. Create at least one ticket file.
+
+1 error(s) found. Fix and re-run `lisa validate`.
+Error: 1 error(s) found. Fix and re-run `lisa validate`.
+· turns: 2 / 15 cap
+  ungated 5/5: success (materialized: false)
+
+gate-driven variance reduction: 34% (ungated dispersion 0.47 over 5 · gated 0.31 over 2) — ⚠ 3 gated censored
+=== E2 sweep done Fri Jun 19 20:17:22 PDT 2026 ===

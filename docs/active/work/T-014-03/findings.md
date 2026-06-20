@@ -11,6 +11,22 @@ instruments are built, tested, and committed (T-014-01, T-014-02); the ledger ca
 intervention self-reports** and **no variance sweep has been run**. *Unmeasured is not
 weak.* The next pull is the **measurement sprint**, not a build and not a reroute.
 
+> **Update 2026-06-19 (evening) — both numbers now collected; verdict moves HOLD → go (with a
+> stated caveat).** The measurement sprint ran. **E1:** 13 real session clearing runs attested as
+> walk-aways (`vend audit`: walk-away **100%, 13/13**, KR1 ≥10 **met**) — via the new auditable
+> back-fill instrument (`src/ledger/attest-intervention.ts`, which marks each bit as a post-hoc
+> *attestation*, not a live capture). The "E1 weak → author keeps intervening" reroute branch is
+> **off the table** (nothing forced an intervention). **E2:** clean **21%** stands (first epic);
+> a second sweep on E-023 came back **censored** (3/5 gated runs gate-failed on the `value` gate —
+> E-023 is a sorcery epic already decomposed, a poor probe input), but *loudly* corroborated the
+> mechanism: the gate **refused 3/5 empty/no-op decompositions**. So per the pre-wired rule (both
+> not-weak) → **go: un-gate the macro-wallet**. **The caveat (this is why it's "go," not "proven"):**
+> E1 is a *uniform, post-hoc, single-attestor* signal — 13 falses, **zero variance**, so it shows
+> "nothing forced a stop this session," not "trust calibrated against tempting-to-intervene cases."
+> A forward, live-recorded E1 with *some* `--intervened` records would be far stronger. Recommend:
+> un-gate, but build the wallet with the andon/budget hard-stops intact (P7) — the trust evidence
+> is *didn't-break*, not *stress-tested*. The un-gate gesture is the human's (IA-5).
+>
 > **Update 2026-06-19 — E2 measured.** The variance sweep ran, after fixing the probe's
 > temp-project seeding (`lisa init` + epic dir) and raising the per-cast token budget to **180k**
 > to clear decompose's ~95k fat tail (the 50k default censored 8/10 runs). **Gate-driven

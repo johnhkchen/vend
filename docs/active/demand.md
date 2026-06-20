@@ -110,12 +110,14 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
-- **Measurement sprint** (unblocks E-014's verdict) — *human sweep, not a build.* Collect the
-  two numbers the instruments now read: **E1** — cast ≥10 real runs with `vend run
-  --intervened`/`--no-intervened`, then `vend audit` for the walk-away rate + trend (needs
-  forward data over time); **E2** — run `bun run src/probe/run-probe.ts <epic.md>` once for the
-  variance-reduction number (one live 5×2 sweep, ~10 casts; read *with* the censoring caveat).
-  Then re-apply E-014's pre-wired go/reroute rule. **This gates the macro-wallet below.**
+- **Measurement sprint** (unblocks E-014's verdict) — **done 2026-06-19 → verdict: go.** Both
+  numbers collected: **E1** walk-away **100% (13/13)**, KR1 ≥10 met (via the auditable back-fill
+  `src/ledger/attest-intervention.ts` — post-hoc, attested, marked as such); **E2** clean **21%**
+  stands + a censored-but-corroborating E-023 read (the `value` gate refused 3/5 empty plans).
+  Neither reroute branch fires → the pre-wired rule reads **go: un-gate the macro-wallet** (below).
+  **Caveat (load-bearing):** E1 is *uniform / post-hoc / single-attestor* (zero `--intervened`), so
+  it's "didn't-break," not "stress-tested" — a forward, variance-bearing E1 is the real next
+  collection. `work/measurement-sprint/findings.md`.
 - **The "work for 2 hours" macro mechanic** — the founding gesture made literal: the
   human allocates a **feature-block budget** (the ~2h macro envelope) at the counter,
   and vend spends it *down* autonomously across casts — pulling/chaining until the
@@ -124,12 +126,12 @@ Surfaced demand, deliberately un-elaborated until pulled:
   envelopes are the prerequisite — you can't spend a macro budget intelligently against
   guessed per-cast costs). **Keystone**; E-013 landed. A macro budget *wallet*
   that depletes (P7) + the autonomous spend-until-exhausted loop (P4).
-  **⚠ Gated by E-014:** the PM discovery flagged this builds *more* walk-away autonomy
-  before walk-away trust (A2) is measured — pull only on E-014's **go** verdict (else
-  reroute to andon-UX / consistency first).
-  **Status (T-014-03): HOLD** — instruments built (T-014-01/02) but unmeasured (0 intervention
-  self-reports; no variance sweep). The next pull is the **measurement sprint**, not the
-  wallet. See `work/T-014-03/findings.md`.
+  **✅ Un-gated by E-014 (2026-06-19): go.** The measurement sprint collected both numbers and
+  neither reroute branch fired (E1 walk-away 100%/13, E2 21%) → the pre-wired rule green-lights
+  the wallet. **Build it with the andon/budget hard-stops intact (P7)** — the trust evidence is
+  *didn't-break*, not *stress-tested* (E1 is uniform/post-hoc; see the caveat above), so the
+  wallet's own first runs become the forward, variance-bearing E1 the back-fill couldn't be.
+  **Now pullable** (was HOLD); `work/measurement-sprint/findings.md` + `work/T-014-03/findings.md`.
 - **Information architecture** — *captured* → `knowledge/information-architecture.md`
   (IA-1…IA-15): recommendation-first home, the cold-start arc, the Counter
   (Confirm→Run→Settle), the andon-as-successful-refusal stance, and the **Ledger
