@@ -129,19 +129,21 @@ Surfaced demand, deliberately un-elaborated until pulled:
   Read,Grep,Glob,mcp__codebase-memory-mcp --strict-mcp-config`; an undeclared play's argv is base-flags-
   only (byte-identical to today); an absent MCP → `{ok:false, missing:[…]}` → andon. 912 tests green.
   Skills declared-but-deferred (scope cut). *(Original signal + design read below, preserved.)*
-- **Second executor (P6)** — **active → E-035** (`second-executor`, pulled 2026-06-20). *Grounded
-  finding:* there is **no `Executor` interface today** — `castPlay` (`src/engine/cast.ts:188`) calls
-  Claude's `dispense` (`src/executor/claude.ts:296`) directly, so the engine is welded to Claude. E-035
-  extracts the seam the vision promised ("first executor … behind an interface so open models slot in
-  later") and proves it pluggable with a **second, non-Claude executor** (an OpenAI-compatible /
-  local-model adapter — Ollama/llama.cpp/vLLM speak `/v1/chat/completions`). The parse→gate→effect→log
-  pipeline is untouched (the abstraction's whole point). **Honest boundary (load-bearing — do not
-  over-claim):** a single-completion adapter proves interface + transport + token metering (IA-8), NOT
-  agentic open-model parity — read-repo/run-tools plays (survey/steer/work) need the downstream agentic
-  runner. T-035-01 the `Executor` interface + `ClaudeExecutor` + `executorFor` selector (default Claude,
-  byte-identical; stub proves the seam) → T-035-02 the OpenAI-compatible executor (SSE → StreamMessage +
-  ResultMessage with mapped usage, fixture-proven; live smoke + agentic gap deferred). Tickets carry a
-  codebase-memory-mcp coding-task note.
+- **Second executor (P6)** — **done → E-035** (`second-executor`, 2026-06-20). The vision's "first
+  executor … behind an interface so open models slot in later" is now real: the `Executor` interface
+  (`src/executor/executor.ts`) + `ExecutorTimeoutError` extracted from the seam `castPlay` was welded
+  to; `ClaudeExecutor` refactored behind it (byte-identical — `claude.test.ts` green); an `executorFor`
+  selector (`select.ts`) routing casts (precedence opts → `VEND_EXECUTOR` → default `claude`); and a
+  **second, non-Claude executor** — `OpenAICompatExecutor` (`openai-compat.ts`) speaking
+  `/v1/chat/completions` (Ollama/llama.cpp/vLLM), SSE → `StreamMessage`s + a `ResultMessage` with
+  API-mapped usage (IA-8). The parse→gate→effect→log pipeline is untouched — Vend is an orchestrator,
+  not a Claude wrapper. **Free proof:** `executorFor` → `claude` by default, `openai-compat` under env,
+  explicit-opts override, **unknown id = loud error** (not a silent Claude fallback); both implement
+  `dispense`; the adapter fixture-tested (usage map incl. NaN→0, ordered StreamMessages through
+  garbage/finish/[DONE], empty-stream throws). 985 tests. **Honest boundary held (NOT over-claimed):** a
+  single-completion adapter proves interface + transport + token metering, NOT agentic open-model parity
+  — read-repo/run-tools plays need the **downstream agentic runner**; the **live Ollama smoke** is the
+  one deferred human step (recorded in `work/T-035-02/`). Tickets carried a codebase-memory-mcp note.
 - **Per-play tool/MCP/skill provisioning** (surfaced 2026-06-20) — a play should **declare the
   MCPs / tools / skills it uses**, scoped to *that play*, not inherited from a global executor config.
   Concretely: `decompose-epic` should itself reference `codebase-memory-mcp` (the way we just wired it
