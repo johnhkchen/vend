@@ -111,6 +111,28 @@ export interface EffectResult {
   readonly produced?: string;
 }
 
+// ── Per-play tool provisioning (E-032) ────────────────────────────────────────────────
+
+/**
+ * What tooling a play REQUIRES to be cast under least privilege (E-032). All three fields
+ * are optional + `readonly`; an undeclared `tools` (the field absent on a {@link Play}) means
+ * "inherit the global MCP set" — byte-identical to today (back-compat). Declaring `tools` at
+ * all opts the cast into strict scoping (resolved by `resolveTools`, threaded to the seam by
+ * T-032-02).
+ *
+ * - `mcp` — the MCP server ids the play REQUIRES. At cast (T-032-02) the project's available
+ *   ids are matched against these; any required id absent raises the missing-MCP andon rather
+ *   than silently inheriting the wrong set.
+ * - `allow` — the built-in tool allowlist (e.g. `"Read"`, `"Grep"`) → `--allowedTools`.
+ * - `skills` — forward-compatible only. The field may exist, but THIS slice (T-032-01) injects
+ *   no skills: `resolveTools` carries it structurally and emits nothing for it (E-032 scope cut).
+ */
+export interface PlayTools {
+  readonly mcp?: readonly string[];
+  readonly allow?: readonly string[];
+  readonly skills?: readonly string[];
+}
+
 // ── The Play contract ─────────────────────────────────────────────────────────────────
 
 /**
@@ -155,6 +177,14 @@ export interface Play<I, O> {
    * (T-015-02). The cast loop resolves it via `resolveMaxTurns(opts.maxTurns, play.maxTurns)`.
    */
   readonly maxTurns?: number;
+  /**
+   * The per-play tool/MCP provisioning declaration (E-032) — the sibling of {@link maxTurns}:
+   * a per-play field resolved at cast (`resolveTools`) and threaded to the seam as the
+   * `--mcp-config` / `--allowedTools` / `--strict-mcp-config` scoping flags (T-032-02).
+   * Omitted ⇒ passthrough ⇒ the play inherits the global MCP set (byte-identical to today).
+   * Declaring it opts into strict least-privilege scoping. See {@link PlayTools}.
+   */
+  readonly tools?: PlayTools;
   /** Classification metadata (color / type / rarity). */
   readonly card: Card;
 }

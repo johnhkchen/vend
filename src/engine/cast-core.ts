@@ -22,7 +22,7 @@
 
 import type { StreamMessage } from "../executor/claude.ts";
 import type { BudgetOutcome } from "../budget/budget.ts";
-import type { GateVerdict } from "./play.ts";
+import type { GateVerdict, PlayTools } from "./play.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 
 /**
@@ -53,6 +53,44 @@ export function resolveLoggedModel(real: string | undefined, opt: string | undef
  */
 export function resolveMaxTurns(override: number | undefined, dflt: number | undefined): number | undefined {
   return override ?? dflt;
+}
+
+/**
+ * The tagged result of {@link resolveTools} — the three states the cast path (T-032-02) branches
+ * on. Discriminated first by `ok`, then (among the two successes) by `passthrough` vs `strict`:
+ * - `{ ok: true, passthrough: true }` — the play declared NO `tools` ⇒ inherit the global MCP
+ *   set, emit no scoping flags (byte-identical to today, back-compat).
+ * - `{ ok: true, mcp, allowedTools, strict: true }` — the play declared `tools` and every
+ *   required MCP id is present ⇒ emit `--mcp-config` (the `mcp` ids), `--allowedTools`, and
+ *   `--strict-mcp-config`. An empty declaration (`tools: {}`) lands here with empty arrays:
+ *   declaring the field opts into strict least-privilege, distinct from passthrough.
+ * - `{ ok: false, missing }` — the play declared `tools` but one or more REQUIRED `mcp` ids are
+ *   absent from `available` ⇒ the missing-MCP andon (T-032-02 refuses to dispense rather than
+ *   silently inherit the wrong tool set).
+ */
+export type ResolvedTools =
+  | { readonly ok: true; readonly passthrough: true }
+  | { readonly ok: true; readonly mcp: readonly string[]; readonly allowedTools: readonly string[]; readonly strict: true }
+  | { readonly ok: false; readonly missing: readonly string[] };
+
+/**
+ * Resolve a play's {@link PlayTools} against the MCP server ids the project provides (E-032,
+ * T-032-01). PURE — `available` is PASSED IN (the file read that produces it is T-032-02); this
+ * is a decision, not I/O, exactly as {@link resolveMaxTurns} takes its numbers rather than
+ * reaching for config. Three outcomes (see {@link ResolvedTools}): an UNDECLARED play (`declared`
+ * undefined) → passthrough; a DECLARED play whose required `mcp` are all present → the strict
+ * flags result; a DECLARED play missing one or more required `mcp` → the andon (`missing` lists
+ * the absent ids in declared order). `skills` is CARRIED on the contract but NOT consulted here
+ * (scope cut — this slice injects no skills). Returns fresh arrays so the result never aliases
+ * the play's frozen literals.
+ */
+export function resolveTools(declared: PlayTools | undefined, available: readonly string[]): ResolvedTools {
+  if (declared === undefined) return { ok: true, passthrough: true };
+  const required = declared.mcp ?? [];
+  const have = new Set(available);
+  const missing = required.filter((id) => !have.has(id));
+  if (missing.length > 0) return { ok: false, missing };
+  return { ok: true, mcp: [...required], allowedTools: [...(declared.allow ?? [])], strict: true };
 }
 
 /**

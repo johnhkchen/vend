@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BudgetOutcome } from "../budget/budget.ts";
 import type { GateVerdict } from "./play.ts";
 import type { StreamMessage } from "../executor/claude.ts";
+import type { PlayTools } from "./play.ts";
 import {
   castGateRows,
   classify,
@@ -10,6 +11,7 @@ import {
   makeStreamSink,
   resolveLoggedModel,
   resolveMaxTurns,
+  resolveTools,
   resolveTurnsUsed,
 } from "./cast-core.ts";
 
@@ -145,5 +147,58 @@ describe("resolveTurnsUsed — harvest num_turns, total, never lies (T-015-02 AC
     expect(resolveTurnsUsed(-1)).toBeUndefined();
     expect(resolveTurnsUsed(2.5)).toBeUndefined();
     expect(resolveTurnsUsed("3")).toBeUndefined();
+  });
+});
+
+describe("resolveTools — pure per-play MCP/tool resolution (T-032-01)", () => {
+  test("undeclared (tools undefined) ⇒ passthrough, no flags (back-compat)", () => {
+    expect(resolveTools(undefined, ["a", "b"])).toEqual({ ok: true, passthrough: true });
+    expect(resolveTools(undefined, [])).toEqual({ ok: true, passthrough: true });
+  });
+
+  test("declared + all required mcp present ⇒ strict flags result", () => {
+    const declared: PlayTools = { mcp: ["a"], allow: ["Read"] };
+    expect(resolveTools(declared, ["a", "b"])).toEqual({
+      ok: true,
+      mcp: ["a"],
+      allowedTools: ["Read"],
+      strict: true,
+    });
+  });
+
+  test("declared + a required mcp absent ⇒ andon listing the missing ids in declared order", () => {
+    expect(resolveTools({ mcp: ["a", "z"] }, ["a"])).toEqual({ ok: false, missing: ["z"] });
+    expect(resolveTools({ mcp: ["z", "a", "y"] }, ["a"])).toEqual({ ok: false, missing: ["z", "y"] });
+  });
+
+  test("empty declaration ({}) ⇒ strict with empty arrays (declared ≠ passthrough)", () => {
+    expect(resolveTools({}, ["a", "b"])).toEqual({ ok: true, mcp: [], allowedTools: [], strict: true });
+  });
+
+  test("allow only, no mcp ⇒ strict, nothing missing", () => {
+    expect(resolveTools({ allow: ["Read", "Grep"] }, [])).toEqual({
+      ok: true,
+      mcp: [],
+      allowedTools: ["Read", "Grep"],
+      strict: true,
+    });
+  });
+
+  test("skills carried on the contract but NOT emitted (scope cut) ⇒ strict-empty", () => {
+    expect(resolveTools({ skills: ["decompose-epic"] }, [])).toEqual({
+      ok: true,
+      mcp: [],
+      allowedTools: [],
+      strict: true,
+    });
+  });
+
+  test("returned arrays are fresh — not aliases of the play's frozen literals", () => {
+    const declared: PlayTools = { mcp: ["a"], allow: ["Read"] };
+    const r = resolveTools(declared, ["a"]);
+    if (!r.ok || !("strict" in r)) throw new Error("expected strict result");
+    expect(r.mcp).not.toBe(declared.mcp);
+    expect(r.allowedTools).not.toBe(declared.allow);
+    expect(r.mcp).toEqual(["a"]);
   });
 });
