@@ -30,6 +30,8 @@ import { join } from "node:path";
 import { b } from "../../baml_client/sync_client.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 import { extractPromptText } from "../baml/decompose-bridge.ts";
+import { renderClientFor } from "../baml/render-client.ts";
+import { DEFAULT_OPENAI_BASE_URL, OPENAI_BASE_URL_ENV } from "../executor/openai-compat.ts";
 import { clear } from "../gate/gates.ts";
 import {
   registry,
@@ -165,9 +167,25 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
 export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   name: PLAY,
   summary: "clear an epic into ready stories and tickets",
-  render: (i) => extractPromptText(b.request.DecomposeEpic(i.epic, i.charter, i.project) as unknown as {
-    body: { json: () => { messages?: unknown[] } };
-  }),
+  // Render FOLLOWS the executor selection (T-036-02): `VEND_EXECUTOR=openai-compat` ⇒ render via
+  // `OpenModelStub` (openai-generic), default ⇒ omit the option ⇒ `ClaudeStub`, byte-identical.
+  // Reuses E-035's `VEND_EXECUTOR` (the live selection) — `render` has no `CastContext`, so it
+  // reads env, the same env `cast.ts` resolves the executor from moments later. (The cast's explicit
+  // `executorId`/instance opts are test-injection seams that never render real BAML — accepted
+  // boundary, see work/T-036-02/design.md D5.)
+  render: (i) => {
+    const client = renderClientFor();
+    // openai-generic has no built-in endpoint, so a render against OpenModelStub needs base_url
+    // present. Default it to E-035's local default so render and dispatch AGREE (the executor
+    // defaults the same). `??=` respects a real endpoint a developer set. Render-only — BAML never
+    // dispatches; mirrors decompose-bridge.ts's entry guard.
+    if (client) process.env[OPENAI_BASE_URL_ENV] ??= DEFAULT_OPENAI_BASE_URL;
+    return extractPromptText(
+      b.request.DecomposeEpic(i.epic, i.charter, i.project, ...(client ? [{ client }] : [])) as unknown as {
+        body: { json: () => { messages?: unknown[] } };
+      },
+    );
+  },
   parse: (text) => b.parse.DecomposeEpic(text),
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,

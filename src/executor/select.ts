@@ -45,6 +45,19 @@ export interface ExecutorSelection {
 }
 
 /**
+ * Resolve the executor *id* by E-035 precedence: explicit `opts.executor` → `env.VEND_EXECUTOR`
+ * → {@link DEFAULT_EXECUTOR_ID} ("claude"). The single definition of "which executor is selected",
+ * factored out of {@link executorFor} so the BAML render client can FOLLOW the same selection
+ * (T-036-02, `src/baml/render-client.ts`) without inventing a parallel switch.
+ */
+export function resolveExecutorId(
+  opts: ExecutorSelection = {},
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return opts.executor ?? env[EXECUTOR_ENV] ?? DEFAULT_EXECUTOR_ID;
+}
+
+/**
  * Resolve the {@link Executor} for a cast. Precedence: explicit `opts.executor` →
  * `env.VEND_EXECUTOR` → {@link DEFAULT_EXECUTOR_ID} ("claude"). Looks the resolved id up in
  * `registry` (defaults to {@link builtinExecutors}) and constructs it. Throws a typed-message
@@ -57,7 +70,7 @@ export function executorFor(
   env: Record<string, string | undefined> = process.env,
   registry: ExecutorRegistry = builtinExecutors,
 ): Executor {
-  const id = opts.executor ?? env[EXECUTOR_ENV] ?? DEFAULT_EXECUTOR_ID;
+  const id = resolveExecutorId(opts, env);
   const make = registry[id];
   if (!make) {
     throw new Error(`unknown executor "${id}" — known: ${Object.keys(registry).join(", ") || "(none)"}`);
