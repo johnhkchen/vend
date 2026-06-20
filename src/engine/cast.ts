@@ -71,6 +71,15 @@ export interface CastOptions {
   readonly skipGates?: boolean;
 }
 
+/** The cast's MEASURED actuals (T-024-02) — what it actually cost, surfaced so the macro-wallet
+ *  spend loop (`spendDown`) debits the wallet by the real burn rather than the predicted envelope.
+ *  The two IA-8 denominations kept separate: `usage` (tokens — the seam's terminal `result.usage`,
+ *  `{}` ⇒ 0 on a timed-out run) and `wallMs` (wall-clock the cast took, `endedAt − startedAt`). */
+export interface CastActuals {
+  readonly usage: Usage;
+  readonly wallMs: number;
+}
+
 /** What a cast returns to its caller (which maps a non-`success` outcome to a non-zero exit). */
 export interface RunSummary {
   readonly runId: string;
@@ -84,6 +93,13 @@ export interface RunSummary {
    * surface nothing threadable). A `castChain` halts rather than thread an `undefined`.
    */
   readonly produced?: string;
+  /**
+   * The cast's measured cost (T-024-02). Populated on every REAL cast (`castPlay` always meters
+   * both denominations); optional only so a hand-built `RunSummary` fake (chain-core.test.ts)
+   * stays valid and so the spend loop's documented log-read fallback has a "surfaced none" case.
+   * The autonomous spend loop debits the wallet by this.
+   */
+  readonly actuals?: CastActuals;
 }
 
 /**
@@ -191,6 +207,10 @@ export async function castPlay<I, O>(
   const turnsUsed = resolveTurnsUsed(result?.num_turns);
   if (turnsUsed !== undefined) process.stdout.write(`· turns: ${turnsUsed}${maxTurns ? ` / ${maxTurns} cap` : ""}\n`);
 
+  // Stamp the end ONCE and reuse it for both the log record and the returned actuals (T-024-02),
+  // so the wall-clock the wallet debits is exactly the span the ledger records.
+  const endedAt = new Date().toISOString();
+
   await appendRunLog(
     {
       runId,
@@ -215,12 +235,18 @@ export async function castPlay<I, O>(
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
       gateResults: verdict.gateLog,
       startedAt,
-      endedAt: new Date().toISOString(),
+      endedAt,
     },
     opts.runLogPath ? { path: opts.runLogPath } : {},
   );
 
-  return { runId, outcome, materialized, produced };
+  // Surface the cast's measured actuals (T-024-02) for the macro-wallet spend loop: the tokens the
+  // seam reported (`{}` ⇒ 0 on a timed-out run, honestly nothing metered) and the wall-clock span
+  // (non-negative by construction). The wallet debits by this; the predicted envelope only gates
+  // authorization (P7).
+  const wallMs = Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
+  const usage = (result?.usage ?? {}) as Usage;
+  return { runId, outcome, materialized, produced, actuals: { usage, wallMs } };
 }
 
 /** A short andon suffix for stdout — names the gate/budget reason when there is one. Pure;
