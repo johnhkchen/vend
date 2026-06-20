@@ -132,9 +132,11 @@ Surfaced demand, deliberately un-elaborated until pulled:
   *didn't-break*, not *stress-tested* (E1 is uniform/post-hoc; see the caveat above), so the
   wallet's own first runs become the forward, variance-bearing E1 the back-fill couldn't be.
   **Now pullable** (was HOLD); `work/measurement-sprint/findings.md` + `work/T-014-03/findings.md`.
-  **→ pulled 2026-06-19: active → E-024** (`macro-wallet`) — the depleting wallet (T-024-01, P7) →
-  the autonomous spend loop (T-024-02, P4) → the `vend work` counter gesture (T-024-03). The rung
-  above E-013; its own autonomous runs become the forward variance-bearing E1.
+  **→ E-024 built 2026-06-19** (`macro-wallet`): the depleting wallet (T-024-01, P7) → the
+  autonomous spend loop (T-024-02, P4) → the `vend work --budget <ms>,<tokens>` counter gesture
+  (T-024-03). `vend work` is wired + green (825 tests); the full **live multi-cast spend** (≥1 real
+  cleared pull) is the one **deferred human sweep** — matches T-017/T-018's live-cast deferral. Its
+  own autonomous runs become the forward variance-bearing E1.
 - **Information architecture** — *captured* → `knowledge/information-architecture.md`
   (IA-1…IA-15): recommendation-first home, the cold-start arc, the Counter
   (Confirm→Run→Settle), the andon-as-successful-refusal stance, and the **Ledger
