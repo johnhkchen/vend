@@ -1,0 +1,114 @@
+=== E-025 re-sweep: vend work --budget 1200000,500000 (same as E-024's cleared-0 run) — Fri Jun 19 22:22:03 PDT 2026 ===
+=== epics BEFORE ===
+25
+▶ casting: Run the E1 measurement sprint: cast ≥10 real `vend run --intervened/--no-interv…
+    ◇ 0/500k · 500k left   ⏱ 0s/20m · 20m left
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· rate_limit_event
+· user
+· assistant
+· assistant
+· user
+· assistant
+· assistant
+· result (success)
+· effect ✓ minted E-026 → /Volumes/ext1/swe/repos/vend/docs/active/epic/E-026.md
+· turns: 4
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ lisa validate ✓
+· turns: 4 / 15 cap
+✓ done   : Run the E1 measurement sprint: cast ≥10 real `vend run --intervened/--no-interv…
+    ◇ 277.1k/500k · 222.9k left   ⏱ 2m/20m · 17m left
+═ vend work — receipt ═
+
+Cast 1, cleared 1:
+  ✓ Run the E1 measurement sprint: cast ≥10 real `vend run --intervened/--no-interv…   ◇ 277.1k   ⏱ 2m
+
+wallet: ◇ 277.1k/500k · 222.9k left   ⏱ 2m/20m · 17m left
+
+stopped: wallet exhausted — wallet can't afford the next pull (8 left on the board) — 222927 tokens / 1039884 ms left
+
+=== exit 0 · Fri Jun 19 22:24:43 PDT 2026 ===
