@@ -26,29 +26,25 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
-_(Processed 2026-06-19 — synthesized directly into `proposed-batch.md`: 6 ranked signals,
-recommended pull **`expand-fragment`**. The steering below produced it; gate stays down.)_
+_Gate down — **no active cycle.** The last processing cycle (articulation-cost, 2026-06-19)
+is closed and archived at `cycle-2026-06-19-articulation-cost/`; its batch was promoted and
+built (→ E-016/17/18, the articulation trilogy, all done). Raise the gate with fresh focus
+notes when you want the next batch synthesized._
 
-Synthesize **this cycle's articulation-cost discovery** into a ranked, pull-disciplined
-batch (≤6, leverage-ranked, signals **un-elaborated** per PE-6, each naming the charter
-invariant it advances, plus one recommended next pull). Desk source: `brainstorm-lower-
-articulation-cost.md`, `cognitive-overhead-articulation.md` (O1–O4 opportunity scores),
-`job-stories-articulation.md`, `Outcome-Roadmap-2026.md`, the `clearing-dynamics.md` lens.
+Current state for the next survey (so a new cycle doesn't re-propose done work):
 
-Steering:
-- **Honor trust-before-autonomy (the spine).** Articulation work (O1 articulate / O3) is
-  **not** trust-gated — it can advance **now** while E-014's **E1 (walk-away) = HOLD**. The
-  **macro-wallet stays gated** until walk-away goes green; route effort to the loads that
-  aren't trust-gated (articulation) and to making trust earnable/visible.
-- **Headline candidate:** the **demand-extraction primitive** (`expand-fragment`) + the
-  **Survey play** (IA-3 bootstrap) — turn "I can feel the work but can't formulate it" (O1,
-  0.72, the widest gap on the desk) into *edit a proposed move*, not compose from blank.
-- **Read, never invent** (PE-1): a flat gradient yields an **honest empty board** (IA-4),
-  not busywork.
-- Reflect the real-world correction this session surfaced: **envelopes are cold-start
-  guesses** (decompose recalibrated 50k→120k by hand) — the recalibration loop warming is
-  a candidate, and "pre-filled budget from measured data" underpins the low-decision pulls.
-
-_Carried forward (still staged, un-processed): the **macro-wallet** (gated by E1 HOLD), the
-**P6 second-executor** proof, and the **pricing/WTP** probe._
+- **The autonomy gate is open.** E-014's E1 (walk-away) HOLD was lifted to **go** (provisional,
+  forward-leaning at 2/10 genuine forward records); the **macro-wallet shipped** (E-024/E-025)
+  and is no longer gated. Live demand is now the **six frontiers** in `demand.md`; the keystone
+  is **Frontier 1 — prove the wallet live** (the one run that both demonstrates the headline
+  feature and accrues the forward-E1 it still needs).
+- **Carried forward, now cleared:** the P6 second-executor proof (→ E-035) and its BAML
+  authoring half (→ E-036) both shipped; cold-start envelopes recalibrated by hand on the
+  live plays.
+- **Still live / un-pulled** (candidates a fresh cycle may rank): the agentic open-model
+  runtime (Frontier 2), the multi-node DAG (Frontier 3), the Linear renderer + annotation
+  round-trip (Frontier 4 — visual-surface prep already at the desk root), the IA walk-away
+  UX threads (Frontier 5).
+- **Read, never invent** (PE-1): with the board this cleared, a flat gradient yields an
+  **honest empty batch** (IA-4), not busywork.
 

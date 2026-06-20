@@ -29,6 +29,11 @@ long as it needs without the orchestrator jumping to a pull.
 
 - **Evergreen (root):** `README.md` (this file) and `process-gate.md` (the control flag).
   The desk's durable scaffolding — maintained, not dated.
+- **Living anchors (root, by exception):** a few prep docs stay at root because shipped
+  code or a pending epic cites them — they're canonical, not closed-cycle drafts.
+  Today: `linear-surface-prep.md` / `linear-surface-mock.md` / `job-stories-visual-surface.md`
+  (the visual-surface design contract — cited by `src/present/*` and prep for the Linear
+  renderer, Frontier 4). When such a doc settles fully it graduates to `docs/knowledge/`.
 - **Time-based (`cycle-<date>-<slug>/`):** each completed discovery→processing cycle's
   artifacts (discovery, triage, strategy, batch, brief, PRD…), archived as dated snapshots
   with a per-cycle `README.md`. The live `proposed-batch.md` lives at root only while a
@@ -41,7 +46,8 @@ Operationalizes `playbooks/project-steering.md` (the 10 steering moves) as a del
 agent. Each run:
 
 **Reads** — `knowledge/charter.md` (the value function, P1–P7/N1–N4),
-`active/demand.md` (the board + what's done, E-001…E-013),
+`active/demand.md` (the board + what's done — cleared epics crystallized in
+`docs/archive/demand-cleared.md`; live demand is the six frontiers),
 `knowledge/information-architecture.md` (esp. the open threads),
 `knowledge/vision.md`, the playbooks (`project-steering.md`, `propose-epic.md`), and the
 **codebase-index** MCP (`get_architecture`, `query_graph`) to ground proposals in the
