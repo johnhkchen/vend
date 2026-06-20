@@ -207,6 +207,38 @@ describe("parseArgs", () => {
     expect(parseArgs(["steer", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
   });
 
+  // T-024-03: the `vend work` counter gesture — fund the macro-wallet, spend down the staged board.
+  test("work (no budget) → a work command, no budget (dispatch defaults the macro budget)", () => {
+    expect(parseArgs(["work"])).toEqual({ cmd: "work" });
+  });
+  test("work --budget carries the macro-wallet allocation", () => {
+    expect(parseArgs(["work", "--budget", "600000,120000"])).toEqual({
+      cmd: "work",
+      budget: { timeMs: 600000, tokens: 120000 },
+    });
+  });
+  test("work --board points at a specific staged board", () => {
+    expect(parseArgs(["work", "--board", "docs/active/pm/staged/survey-board.md"])).toEqual({
+      cmd: "work",
+      board: "docs/active/pm/staged/survey-board.md",
+    });
+    expect(parseArgs(["work", "--budget", "1,2", "--board", "b.md"])).toEqual({
+      cmd: "work",
+      budget: { timeMs: 1, tokens: 2 },
+      board: "b.md",
+    });
+  });
+  test("work --budget malformed / dangling → usage", () => {
+    expect(parseArgs(["work", "--budget", "nope"]).cmd).toBe("usage");
+    expect(parseArgs(["work", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
+  });
+  test("work --board with no value → usage", () => {
+    expect(parseArgs(["work", "--board"])).toEqual({ cmd: "usage", error: "missing --board <path>" });
+  });
+  test("work with an unexpected positional → usage (there is no subject to type)", () => {
+    expect(parseArgs(["work", "junk"])).toEqual({ cmd: "usage", error: "unexpected work argument: junk" });
+  });
+
   // T-013-02: the read-only Ledger envelope readout.
   test("envelope <play> (no tier) → default tier standard", () => {
     expect(parseArgs(["envelope", "decompose-epic"])).toEqual({

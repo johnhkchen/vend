@@ -19,6 +19,7 @@ export const USAGE =
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
   "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend steer [--budget <ms>,<tokens>]\n" +
+  "       vend work [--budget <ms>,<tokens>] [--board <path>]\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -47,6 +48,13 @@ export type ParsedCommand =
   | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
   | { readonly cmd: "survey"; readonly budget?: Budget }
   | { readonly cmd: "steer"; readonly budget?: Budget }
+  | {
+      readonly cmd: "work";
+      /** The macro-wallet allocation; absent ⇒ the dispatch defaults to the "two-hour" macro budget. */
+      readonly budget?: Budget;
+      /** An explicit staged-board path; absent ⇒ the steer→survey fallback at dispatch. */
+      readonly board?: string;
+    }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -114,6 +122,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "expand") return parseExpandArgs(argv);
   if (argv[0] === "survey") return parseSurveyArgs(argv);
   if (argv[0] === "steer") return parseSteerArgs(argv);
+  if (argv[0] === "work") return parseWorkArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -348,6 +357,47 @@ function parseSteerArgs(argv: readonly string[]): ParsedCommand {
   return budget ? { cmd: "steer", budget } : { cmd: "steer" };
 }
 
+/**
+ * Parse the `work [--budget <v>] [--board <path>]` path — the counter gesture (T-024-03): fund a
+ * macro-wallet and spend it down on the staged ranked board (the Confirm→Run→Settle spine, IA-6).
+ * PURE. Like `survey`/`steer`, work takes NO positional subject — it reads the staged board — so a
+ * positional token is an error. UNLIKE the others, `--budget` is OPTIONAL with a real default (the
+ * "two-hour" macro budget, IA-6 — adjust is the exception, applied at dispatch); a present-but-empty
+ * `--budget` or a malformed value is still a clean usage error. `--board` OPTIONALLY points at a
+ * specific staged board (default ⇒ the dispatch's steer→survey fallback).
+ */
+function parseWorkArgs(argv: readonly string[]): ParsedCommand {
+  let budgetVal: string | undefined;
+  let sawBudgetFlag = false;
+  let board: string | undefined;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--budget") {
+      sawBudgetFlag = true;
+      budgetVal = argv[++i];
+    } else if (a === "--board") {
+      const word = argv[++i];
+      if (!word || word.startsWith("--")) return { cmd: "usage", error: "missing --board <path>" };
+      board = word;
+    } else {
+      return { cmd: "usage", error: `unexpected work argument: ${a}` };
+    }
+  }
+
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
+  } else if (sawBudgetFlag) {
+    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  }
+
+  return { cmd: "work", ...(budget ? { budget } : {}), ...(board ? { board } : {}) };
+}
+
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
  *  verbatim (any non-flag token); an UNKNOWN name is not a parse error — it parses to a
  *  `run` command and is rejected at dispatch by the registry (`PlayNotFoundError`), so the
@@ -531,6 +581,38 @@ if (import.meta.main) {
     const summary = await castSteer({ budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
+  }
+
+  if (parsed.cmd === "work") {
+    // The counter gesture (T-024-03): fund the macro-wallet ONCE and spend it down on the staged
+    // ranked board — Confirm→Run→Settle at macro scale (IA-6). `castWork` reads the board, prices each
+    // pull, and drives the autonomous loop; the `onStep` callback streams the IA-7 production line
+    // (which pull is running against the two-denomination burn, IA-8) — never the raw executor stream.
+    // On a settled session it prints the receipt (cleared / per-cast cost / remaining / stop reason,
+    // the andon rendered amber per IA-9) and exits 0 — an andon is a SUCCESSFUL refusal, not a crash;
+    // only a missing/empty board (a broken precondition) exits non-zero. Lazy import keeps the shell
+    // (and its BAML addon) off the pure-parse path, exactly as the other arms.
+    const { castWork, DEFAULT_MACRO_BUDGET } = await import("./play/work.ts");
+    const { renderReceipt, formatStepSignal } = await import("./play/work-core.ts");
+    const funded = parsed.budget ?? DEFAULT_MACRO_BUDGET;
+    const result = await castWork({
+      budget: funded,
+      ...(parsed.board ? { boardPath: parsed.board } : {}),
+      onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded)}\n`),
+    });
+    if (result.kind === "no-board") {
+      process.stderr.write(
+        `no staged board found (tried ${result.tried.join(", ")}) — run \`vend steer\` or \`vend survey\` first\n`,
+      );
+      process.exit(1);
+    }
+    if (result.kind === "empty-board") {
+      process.stderr.write(`staged board ${result.boardPath} has no signals to spend on\n`);
+      process.exit(1);
+    }
+    const wallet = { funded, remaining: result.session.remaining };
+    process.stdout.write(`${renderReceipt(result.session, wallet, { color: true })}\n`);
+    process.exit(0);
   }
 
   if (parsed.cmd === "envelope") {
