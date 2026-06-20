@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { ClaudeExecutor, ClaudeTimeoutError, type DispenseOptions, type ResultMessage } from "./claude.ts";
 import { ExecutorTimeoutError, type Executor } from "./executor.ts";
+import { OpenAICompatExecutor } from "./openai-compat.ts";
 import { builtinExecutors, DEFAULT_EXECUTOR_ID, executorFor, type ExecutorRegistry } from "./select.ts";
 
 // Pure unit tests for the executor selector + the generalized timeout error (T-035-01). No
@@ -84,6 +85,25 @@ test("executorFor: empty registry throws with (none)", () => {
 
 test("builtinExecutors: claude factory yields a ClaudeExecutor", () => {
   expect(builtinExecutors.claude?.()).toBeInstanceOf(ClaudeExecutor);
+});
+
+// ── openai-compat (T-035-02): registered as a builtin, selected by env, Claude stays default ──
+
+test("builtinExecutors: openai-compat factory yields an OpenAICompatExecutor", () => {
+  const ex = builtinExecutors["openai-compat"]?.();
+  expect(ex).toBeInstanceOf(OpenAICompatExecutor);
+  expect(ex?.id).toBe("openai-compat");
+});
+
+test("executorFor: VEND_EXECUTOR=openai-compat selects the OpenAI-compatible executor (real registry)", () => {
+  const ex = executorFor({}, { VEND_EXECUTOR: "openai-compat" });
+  expect(ex).toBeInstanceOf(OpenAICompatExecutor);
+  expect(ex.id).toBe("openai-compat");
+});
+
+test("executorFor: with openai-compat registered, no env STILL defaults to Claude (AC2)", () => {
+  const ex = executorFor({}, {});
+  expect(ex).toBeInstanceOf(ClaudeExecutor);
 });
 
 // ── ExecutorTimeoutError generalization (the AC1 instanceof guarantee) ────────
