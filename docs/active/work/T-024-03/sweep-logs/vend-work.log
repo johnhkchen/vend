@@ -1,0 +1,103 @@
+=== vend work bounded live sweep — budget 1200000ms,500000tok (affords ~1 chain) — Fri Jun 19 22:04:29 PDT 2026 ===
+=== board BEFORE: epics present ===
+E-001.md
+E-002.md
+E-003.md
+E-004.md
+E-005.md
+E-006.md
+E-007.md
+E-008.md
+E-009.md
+E-010.md
+E-011.md
+E-012.md
+E-013.md
+E-014.md
+E-015.md
+E-016.md
+E-017.md
+E-018.md
+E-019.md
+E-020.md
+E-021.md
+E-022.md
+E-023.md
+E-024.md
+TEMPLATE.md
+=== RUN ===
+▶ casting: Run the E1 measurement sprint: cast ≥10 real `vend run --intervened/--no-interv…
+    ◇ 0/500k · 500k left   ⏱ 0s/20m · 20m left
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· system (notification)
+· result (success)
+· andon: budget-exhausted — spent 175146/150000 tokens (over by 25146)
+· turns: 4
+✓ done   : Run the E1 measurement sprint: cast ≥10 real `vend run --intervened/--no-interv…
+    ◇ 175.1k/500k · 324.9k left   ⏱ 1m/20m · 18m left
+═ vend work — receipt ═
+
+Cast 1, cleared 0:
+[33m  ⚠ Run the E1 measurement sprint: cast ≥10 real `vend run --intervened/--no-interv…   andon: budget-exhausted   ◇ 175.1k   ⏱ 1m[0m
+
+wallet: ◇ 175.1k/500k · 324.9k left   ⏱ 1m/20m · 18m left
+
+[33mstopped: andon — refused (a successful stop, not a crash) — andon 'budget-exhausted' — 324854 tokens / 1107595 ms left[0m
+
+=== exit: 0 · Fri Jun 19 22:06:01 PDT 2026 ===
