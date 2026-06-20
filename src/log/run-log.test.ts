@@ -405,6 +405,57 @@ describe("intervention bit — round-trip, absence, false-is-a-value, malformed 
   });
 });
 
+describe("intervention provenance — attested back-fill vs forward (T-028-01 AC #1)", () => {
+  /** A raw parsed line as `attest-intervention.ts` writes it: the bit PLUS the marker object. */
+  const attestedLine = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "bf", intervened: false })))),
+    intervenedAttestation: { by: "john", at: "2026-06-19T04:50:43.479Z", basis: "real clearing run" },
+    ...over,
+  });
+
+  test("a back-fill line carrying the intervenedAttestation marker revives as attested", () => {
+    const revived = reviveRecord(attestedLine());
+    expect(revived).not.toBeNull();
+    expect(revived!.intervenedAttested).toBe(true);
+    expect(revived!.intervened).toBe(false); // the bit itself is preserved, attested as a walk-away
+  });
+
+  test("a plain forward line (intervened set, no marker) is NOT attested — field omitted", () => {
+    const fwd = reviveRecord(JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "fw", intervened: true })))));
+    expect(fwd!.intervened).toBe(true);
+    expect("intervenedAttested" in fwd!).toBe(false);
+    expect(fwd!.intervenedAttested).toBeUndefined();
+  });
+
+  test("an explicit intervenedAttested: true on the line is surfaced (write-symmetry path)", () => {
+    const revived = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "fa", intervened: false })))),
+      intervenedAttested: true,
+    });
+    expect(revived!.intervenedAttested).toBe(true);
+  });
+
+  test("a non-object intervenedAttestation does not trip the flag (truthy-object check)", () => {
+    const revived = reviveRecord(attestedLine({ intervenedAttestation: "yes" }));
+    expect("intervenedAttested" in revived!).toBe(false);
+  });
+
+  test("a record with no intervened bit at all carries no provenance flag, stays valid", () => {
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "none" })))));
+    expect(revived).not.toBeNull();
+    expect("intervenedAttested" in revived!).toBe(false);
+  });
+
+  test("buildRunRecord round-trips intervenedAttested: true; false is omitted (one-way flag)", () => {
+    const attested = buildRunRecord(baseInput({ runId: "ba", intervened: false, intervenedAttested: true }));
+    expect(attested.intervenedAttested).toBe(true);
+    expect(reviveRecord(JSON.parse(serializeRunRecord(attested)))!.intervenedAttested).toBe(true);
+
+    const forward = buildRunRecord(baseInput({ runId: "bf2", intervened: true, intervenedAttested: false }));
+    expect("intervenedAttested" in forward).toBe(false); // false is never written — byte-identical to forward
+  });
+});
+
 describe("turnsUsed — round-trip, absence, normalization, malformed (T-015-02 AC #2)", () => {
   test("turnsUsed round-trips through build → serialize → revive", () => {
     const rec = buildRunRecord(baseInput({ runId: "tu1", turnsUsed: 7 }));

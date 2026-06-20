@@ -119,6 +119,12 @@ export interface RunRecordInput {
    *  the only legal "we don't know" value, so this coerces (non-boolean ⇒ omitted) rather
    *  than asserting. The forward-looking E1 walk-away instrument. */
   readonly intervened?: boolean;
+  /** Provenance of the {@link intervened} bit (T-028-01): `true` ⇒ this self-report is a
+   *  post-hoc ATTESTATION (back-fill via `attest-intervention.ts`), not a live forward capture.
+   *  Absent ⇒ forward/live (the real instrument) — the only road a verdict cites. A one-way flag:
+   *  only `true` is meaningful, so `false`/absent are identical (both not-attested) and `false`
+   *  is never written — keeping a forward record byte-identical to a pre-T-028-01 one. */
+  readonly intervenedAttested?: boolean;
   /** Agentic turns the cast took (T-015-02), harvested off the seam's `result.num_turns`.
    *  Absent ⇒ field omitted (unknown) — back-compat, exactly like {@link intervened}. The
    *  forward-looking signal the warranted turn cap is calibrated from (the cap is a judgment,
@@ -152,6 +158,13 @@ export interface RunRecord {
    *  omitted rather than written, exactly like {@link RunRecord.envelope}/`project`. `false`
    *  (a clean walk-away) is a real value and IS written; only absence reads as unknown. */
   readonly intervened?: boolean;
+  /** Present ONLY when `true` — the provenance of {@link RunRecord.intervened} (T-028-01).
+   *  `true` ⇒ the bit was ATTESTED post-hoc (back-fill); absent ⇒ forward/live. A one-way flag:
+   *  `false` is never written, so a forward record stays byte-identical to a pre-T-028-01 one.
+   *  {@link reviveRecord} derives it from the raw `intervenedAttestation` marker on read, so
+   *  existing back-fill records reclassify with NO ledger rewrite. The forward count is the one
+   *  a verdict cites — this is what keeps attested back-fill from being mistaken for it. */
+  readonly intervenedAttested?: boolean;
   /** Present ONLY when the cast supplied one — absence is meaningful (unknown), so it is
    *  omitted rather than written, exactly like {@link RunRecord.intervened}. The signal the
    *  warranted turn cap (T-015-02) is calibrated from. */
@@ -223,6 +236,14 @@ function normalizeIntervened(v: boolean | undefined): boolean | undefined {
   return typeof v === "boolean" ? v : undefined;
 }
 
+/** Normalize the attestation provenance flag (T-028-01): a ONE-WAY marker — only `true` is
+ *  meaningful (this self-report is a post-hoc back-fill). Anything else (`false`, absent, or a
+ *  non-boolean) ⇒ `undefined`, so the field is omitted and a forward record stays byte-identical
+ *  to a pre-T-028-01 one. Like {@link normalizeIntervened}, absence is LEGAL — coerce, don't assert. */
+function normalizeIntervenedAttested(v: boolean | undefined): true | undefined {
+  return v === true ? true : undefined;
+}
+
 /** Normalize turns-used (T-015-02): a finite, non-negative integer is taken verbatim;
  *  anything else (absent, non-finite, negative, or non-integer from a torn caller) ⇒
  *  `undefined`, so the field is omitted and reads as unknown. Like {@link normalizeIntervened},
@@ -260,6 +281,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const envelope = normalizeEnvelope(input.envelope);
   const project = normalizeProject(input.project);
   const intervened = normalizeIntervened(input.intervened);
+  const intervenedAttested = normalizeIntervenedAttested(input.intervenedAttested);
   const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
 
   return Object.freeze({
@@ -275,6 +297,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(envelope ? { envelope } : {}),
     ...(project ? { project } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
+    ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
@@ -365,6 +388,18 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // as unknown) rather than admitted or used to reject the record. `false` is kept.
   const intervened = typeof r.intervened === "boolean" ? r.intervened : undefined;
 
+  // Provenance (T-028-01): the bit is ATTESTED back-fill when the raw line carries a truthy
+  // `intervenedAttestation` MARKER (the `{ by, at, basis }` object `attest-intervention.ts`
+  // writes) OR an explicit `intervenedAttested === true` (write-symmetry). This is the
+  // root-cause fix — before T-028-01 the reviver read `intervened` but dropped its provenance,
+  // so the audit could not tell attested back-fill from a live forward capture. A truthy-OBJECT
+  // check (not a bare truthy) matches the attestor's shape and won't trip on a stray non-object.
+  // One-way: only `true` is surfaced (forward/unknown records leave the field omitted), so no
+  // ledger rewrite is needed — existing back-fill records reclassify purely on their marker.
+  const attestedByMarker = typeof r.intervenedAttestation === "object" && r.intervenedAttestation !== null;
+  const attestedByFlag = r.intervenedAttested === true;
+  const intervenedAttested = attestedByMarker || attestedByFlag ? true : undefined;
+
   // turns-used (T-015-02) is kept only when it is a finite non-negative integer; anything
   // else (absent — a pre-T-015-02 record — or a malformed value) is dropped (field omitted,
   // reads unknown) rather than admitted or used to reject the record. Mirrors `intervened`.
@@ -383,6 +418,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(envelope ? { envelope } : {}),
     ...(project ? { project } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
+    ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
