@@ -93,6 +93,7 @@ export function parseProposeEpic(text: string): EpicCard {
  */
 export const proposeEpicPlay: Play<ProposeEpicInputs, EpicCard> = {
   name: PLAY,
+  summary: "turn a signal into a proposed epic card",
   render: (i) => extractPromptText(b.request.ProposeEpic(i.signal, i.charter, i.project) as unknown as {
     body: { json: () => { messages?: unknown[] } };
   }),

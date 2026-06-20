@@ -23,6 +23,7 @@ const CLEAR: GateVerdict = { status: "clear" };
 function makeStubPlay(name: string): Play<unknown, unknown> {
   return {
     name,
+    summary: `stub ${name}`,
     render: () => "",
     parse: () => ({}),
     gates: () => CLEAR,

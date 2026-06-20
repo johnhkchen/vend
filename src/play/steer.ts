@@ -68,6 +68,7 @@ export function parseSteer(text: string): Steer {
  */
 export const steerProjectPlay: Play<SteerInputs, Steer> = {
   name: PLAY,
+  summary: "read the project and propose a course-correction",
   render: (i) => extractPromptText(b.request.SteerProject(i.project, i.charter) as unknown as {
     body: { json: () => { messages?: unknown[] } };
   }),

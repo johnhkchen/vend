@@ -164,6 +164,7 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
  */
 export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   name: PLAY,
+  summary: "clear an epic into ready stories and tickets",
   render: (i) => extractPromptText(b.request.DecomposeEpic(i.epic, i.charter, i.project) as unknown as {
     body: { json: () => { messages?: unknown[] } };
   }),

@@ -67,6 +67,7 @@ function parseNote(text: string): Note {
  */
 export const captureNotePlay: Play<NoteInputs, Note> = {
   name: PLAY,
+  summary: "capture a topic into a filed markdown note",
   render: (i) => extractPromptText(b.request.CaptureNote(i.topic, i.project) as unknown as {
     body: { json: () => { messages?: unknown[] } };
   }),

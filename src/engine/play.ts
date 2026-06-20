@@ -127,6 +127,15 @@ export interface EffectResult {
 export interface Play<I, O> {
   /** Stable name — the registry key and the value stamped on every run-log record. */
   readonly name: string;
+  /**
+   * One-line worth — what this playbook is FOR, role-level (e.g. survey → "read the
+   * project into a ranked demand board"). REQUIRED: `tsc` proves every play declares its
+   * worth, so a missing one is a compile error (an unworthed play shouldn't ship — the
+   * E-030 forcing function). The supply shelf pairs this with the warranted envelope
+   * (recalibrate, E-013) to form one `ShelfRow` (T-030-01). NOT a leverage tier — a
+   * play's worth is its role; the tier for recalibration is derived from `card.rarity`.
+   */
+  readonly summary: string;
   /** Render the typed inputs into the prompt string the seam dispenses. */
   readonly render: (inputs: I) => string;
   /** SAP-parse the model's reply text into the typed output. */

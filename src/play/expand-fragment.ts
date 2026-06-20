@@ -87,6 +87,7 @@ export function parseExpandFragment(text: string): Signal {
  */
 export const expandFragmentPlay: Play<ExpandFragmentInputs, Signal> = {
   name: PLAY,
+  summary: "grow a rough fragment into one board-ready signal",
   render: (i) => extractPromptText(b.request.ExpandFragment(i.fragment, i.charter, i.project) as unknown as {
     body: { json: () => { messages?: unknown[] } };
   }),

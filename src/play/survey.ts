@@ -78,6 +78,7 @@ export function parseSurvey(text: string): Board {
  */
 export const surveyPlay: Play<SurveyInputs, Board> = {
   name: PLAY,
+  summary: "read the project into a ranked demand board",
   render: (i) => extractPromptText(b.request.Survey(i.project, i.charter) as unknown as {
     body: { json: () => { messages?: unknown[] } };
   }),
