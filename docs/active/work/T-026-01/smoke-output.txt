@@ -1,0 +1,59 @@
+=== AUDIT BASELINE (all plays) ===
+E1 — walk-away trust · all plays · 23 runs [standard]
+  walk-away rate: 100% (13/13 ran untouched) · trend 100% → 100% (target → 100%)
+  andon rate: 35% vs 10% budget — ⚠ over (gates working, not defects)
+  outcome mix: 15 success · 5 censored (budget/timeout) · 3 gate-failed · 0 id-collision
+  cost vs envelope: tokens ×0.65 · time ×0.12 (median over 9 successful runs)
+
+=== baseline carriers (full ledger) ===
+reported(records with intervened key): 13
+intervened==true count: 0
+ledger lines:       23
+=== SMOKE CAST #1: --intervened ===
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· rate_limit_event
+· user
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 86455/1 tokens (over by 86454)
+· turns: 3 / 15 cap
+run run-2026-06-20T05-36-56-358Z: budget-exhausted (materialized: false)
+exit=
+=== SMOKE CAST #2: --no-intervened ===
+· assistant
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 85143/1 tokens (over by 85142)
+· turns: 2 / 15 cap
+run run-2026-06-20T05-37-34-956Z: budget-exhausted (materialized: false)
+
+=== WRITE CHECK: last 2 ledger lines ===
+{"runId":"run-2026-06-20T05-36-56-358Z","epic":"verify-e1-instrument-readiness","outcome":"budget-exhausted","intervened":true,"attested":false}
+{"runId":"run-2026-06-20T05-37-34-956Z","epic":"verify-e1-instrument-readiness","outcome":"budget-exhausted","intervened":false,"attested":false}
+
+=== READ CHECK: audit after 2 casts ===
+E1 — walk-away trust · all plays · 25 runs [standard]
+  walk-away rate: 93% (14/15 ran untouched) · trend 100% → 88% (target → 100%)
+  andon rate: 40% vs 10% budget — ⚠ over (gates working, not defects)
+
+after carriers (full ledger):
+reported(records with intervened key): 15
+intervened==true count: 1
+ledger lines:       25
+
+=== NO-POLLUTION CHECK: board dirs ===
+ M docs/active/tickets/T-026-01.md
+ M docs/active/tickets/T-027-01.md
+(empty above = no board writes)
