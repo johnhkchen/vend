@@ -13,6 +13,7 @@ import {
   resolveMaxTurns,
   resolveTools,
   resolveTurnsUsed,
+  toolFlags,
 } from "./cast-core.ts";
 
 // T-007-02 generic cast loop: the PURE decision core. We import ONLY ./cast-core.ts (never
@@ -200,5 +201,43 @@ describe("resolveTools — pure per-play MCP/tool resolution (T-032-01)", () => 
     expect(r.mcp).not.toBe(declared.mcp);
     expect(r.allowedTools).not.toBe(declared.allow);
     expect(r.mcp).toEqual(["a"]);
+  });
+});
+
+describe("toolFlags — resolved tools → seam argv flags (T-032-02)", () => {
+  const PATH = "/repo/.mcp.json";
+
+  test("passthrough ⇒ {} (no flags — byte-identical back-compat)", () => {
+    expect(toolFlags(resolveTools(undefined, ["a"]), PATH)).toEqual({});
+  });
+
+  test("missing-capability (!ok) ⇒ {} (defensive — castPlay andons before reaching here)", () => {
+    expect(toolFlags(resolveTools({ mcp: ["z"] }, ["a"]), PATH)).toEqual({});
+  });
+
+  test("strict w/ mcp+allow ⇒ mcpConfig + allow list PLUS mcp__<id> wildcards + strict", () => {
+    const r = toolFlags(resolveTools({ mcp: ["codebase-memory-mcp"], allow: ["Read", "Grep"] }, ["codebase-memory-mcp"]), PATH);
+    expect(r).toEqual({
+      mcpConfig: PATH,
+      allowedTools: ["Read", "Grep", "mcp__codebase-memory-mcp"],
+      strictMcp: true,
+    });
+  });
+
+  test("strict w/ allow only (no mcp) ⇒ strict + allow, NO mcpConfig, no mcp wildcard", () => {
+    const r = toolFlags(resolveTools({ allow: ["Read"] }, []), PATH);
+    expect(r).toEqual({ allowedTools: ["Read"], strictMcp: true });
+    expect(r.mcpConfig).toBeUndefined();
+  });
+
+  test("empty declaration ({}) ⇒ strict, empty allowedTools, no mcpConfig", () => {
+    const r = toolFlags(resolveTools({}, ["a"]), PATH);
+    expect(r).toEqual({ allowedTools: [], strictMcp: true });
+  });
+
+  test("multiple declared servers ⇒ one mcp__<id> wildcard each, in declared order", () => {
+    const r = toolFlags(resolveTools({ mcp: ["a", "b"], allow: ["Read"] }, ["a", "b"]), PATH);
+    expect(r.allowedTools).toEqual(["Read", "mcp__a", "mcp__b"]);
+    expect(r.mcpConfig).toBe(PATH);
   });
 });

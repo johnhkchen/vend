@@ -93,6 +93,44 @@ export function resolveTools(declared: PlayTools | undefined, available: readonl
   return { ok: true, mcp: [...required], allowedTools: [...(declared.allow ?? [])], strict: true };
 }
 
+/** The seam flags a resolved cast threads into `dispense`/`buildArgs` (E-032, T-032-02) — the
+ *  argv-shaped projection of a {@link ResolvedTools} strict result. All optional so the empty
+ *  `{}` (passthrough / andon) spreads into `dispense` adding nothing (byte-identical argv). */
+export interface ToolFlags {
+  readonly mcpConfig?: string;
+  readonly allowedTools?: readonly string[];
+  readonly strictMcp?: boolean;
+}
+
+/**
+ * Project a {@link resolveTools} result into the `buildArgs`/`dispense` tool flags (E-032,
+ * T-032-02). PURE — this is the DECISION "resolved tools → which argv flags," kept here (not in
+ * the impure `castPlay` shell) so the AC's live proof inspects it as an ordinary pure test.
+ *
+ * - PASSTHROUGH or `!ok` ⇒ `{}` — no flags. Passthrough is the undeclared back-compat path
+ *   (byte-identical to today); `!ok` is the missing-capability andon, which `castPlay` handles
+ *   BEFORE reaching here, so the `{}` is purely defensive.
+ * - STRICT ⇒ `strictMcp: true` (close the global firehose), `allowedTools` = the play's `allow`
+ *   list PLUS one `mcp__<id>` wildcard per declared server, and `mcpConfig` (the `.mcp.json`
+ *   path) ONLY when the play declares at least one MCP server.
+ *
+ * Why fold `mcp__<id>` into `allowedTools`: `--allowedTools` is an allowlist that, once present,
+ * gates ALL tools including MCP tools (named `mcp__<server>__*`). The wildcard entry per declared
+ * id is what lets the cast actually CALL its declared servers' tools — so the scoping admits
+ * "only its servers": strict closes global, `--mcp-config` loads the project file, the allowlist
+ * permits exactly the declared servers (+ the play's built-ins). A play declaring only built-ins
+ * (`allow`, no `mcp`) still opts into strict least-privilege but needs no `--mcp-config`.
+ */
+export function toolFlags(resolved: ResolvedTools, mcpConfigPath: string): ToolFlags {
+  if (!resolved.ok || "passthrough" in resolved) return {};
+  const allowedTools = [...resolved.allowedTools, ...resolved.mcp.map((id) => `mcp__${id}`)];
+  return {
+    ...(resolved.mcp.length > 0 ? { mcpConfig: mcpConfigPath } : {}),
+    allowedTools,
+    strictMcp: true,
+  };
+}
+
 /**
  * Harvest turns-used off the terminal result's `num_turns` (T-015-02, AC2). PURE & TOTAL —
  * keeps only a finite, non-negative integer; anything else (absent, NaN, negative, fractional,
