@@ -137,7 +137,7 @@ Surfaced demand, deliberately un-elaborated until pulled:
   E-013). The capped spine TUI epics anchor to. Remaining **open threads** (the
   detached/notify mechanism, the fleet/DAG andon board, Confirm's budget-adjust
   gesture) are the next design pulls.
-- **Survey-convergence** (E-022's one downstream pull) — *measured defect, lever unbuilt.* The
+- **Survey-convergence** — **active → E-023** (`survey-convergence`, pulled 2026-06-19). *measured defect, lever unbuilt.* The
   E-022 sweep proved the **survey** play genuinely disagrees run-to-run (`genuine-disagreement`
   0.00 over N=3) — and survey drives IA-1's single recommended pull, so an unstable board erodes
   the product's spine. **First slice = measure, not build:** isolate whether the load-bearing **#1
