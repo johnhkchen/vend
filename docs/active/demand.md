@@ -83,26 +83,39 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`macro-wallet-live-proof`** (Frontier 1) — cast the headline gesture for real: a fresh board, a bounded budget, `vend work --no-intervened`, spend down to a clean P7 stop; accrue forward-E1 off its 1/2 floor. A **metered** spend (real casts/tokens), bounded by P7 — not a free proof. | **Keystone** (P4/P7 + the trust gate) | **active → E-037** — pre-flight (free) → the live sweep (metered) → settle + honest verdict. Awaiting `lisa loop`. |
+*Nothing in flight — E-037 (Frontier 1's live proof) ran + settled; the frontier stays open with
+its residual below. Pull a frontier or a sub-signal.*
 
 ---
 
 ## Pullable signals (open demand)
 
-### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **pulled → E-037 (in flight)**
+### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 done; frontier open**
 
+- **`propose-epic` time-censors the board's top signal before it can mint** (surfaced by E-037's
+  live sweep, 2026-06-20) — the macro-wallet spent down cleanly but cleared **0**: `propose-epic`
+  hit its **72,785 ms p90 time envelope** on the board's heaviest signal and was censored *before*
+  materializing an epic (not a price problem — auth==exec/E-025 held; a **time**-envelope problem).
+  The cleared-forward cadence can't accrue until this clears. Two routes: **widen** the per-step time
+  envelope for heavy `propose-epic` signals (`recalibrate` — the p90 is fit from lighter history,
+  this signal is an outlier), or stage a board whose **#1 is a lighter pull** the current envelope can
+  mint. The E-013/E-015 cold-start-envelope-too-tight pattern again (rhymes with Frontier 6). **High**
+  (the concrete unblocker of the keystone) · **ready** · small (~1h — one recalibration lever).
+- **Accrue cleared forward-E1 to ≥10.** Once the censor clears, each `vend work --no-intervened`
+  sweep that *clears* a pull adds a genuine forward record (now **4/10**, censored). The ≥10-genuine
+  bar fully ungates the macro-wallet's provisional go — a **cadence**, not a single epic.
 - **Macro-wallet live proof + forward-E1 accrual.** E-024 wired `vend work --budget`
-  to spend a feature-block budget down across casts (green, 825 tests) but the
-  **real ≥1-cleared-pull live sweep is the one deferred step** — the headline
-  feature is a claim until watched. The same runs accrue the **forward-E1** trust
-  data: the go verdict that un-gated the wallet stands **provisional** at 2/10
-  genuine forward records (≥10 bar unmet). The preconditions are now in place —
-  the wallet is priced (E-025) and the **board-freshness gate (E-027)** stops it
-  spending down stale work — so the live sweep is unblocked. Proving the loop *is*
-  collecting the
-  evidence that confirms it. **Keystone.** (`work/T-025-01/`, `work/T-026-04/verdict.md`.)
+  to spend a feature-block budget down across casts (green, 825 tests). The headline
+  gesture is now **watched** (E-037, 2026-06-20): a real metered sweep demonstrated
+  **P4/P7 live** — bounded wallet, clean twin P7 `andon: timed-out` stop, truthful
+  receipt, auth==exec held (E-025). Forward-E1 moved **1/2 → 3/4 (sample 2/10 → 4/10)**
+  — but the +2 records are **censored** (`timed-out`), **not cleared pulls**: the
+  watched run was an **honest 0-clear**. So the go stays **provisional + forward-
+  leaning**, *not forward-confirmed*. **What remains to ungate:** (1) clear the
+  `propose-epic` per-step time-censor — its 72,785 ms p90 envelope censors the board's
+  top signal *before it can mint* (a recalibration fix, rhymes with Frontier 6); then
+  (2) accrue **cleared** forward records to **≥10**. **Keystone.**
+  (`work/T-037-03/verdict.md`, `work/T-037-02/sweep-log.md`, `work/T-026-04/verdict.md`.)
 
 ### Frontier 2 — Live open-model runtime (P6)
 

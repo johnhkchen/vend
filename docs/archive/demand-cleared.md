@@ -57,6 +57,10 @@ signal clears, crystallize it to one line here and delete its verbose board entr
 - **E-017 — survey play** — `vend survey`: read a rough project → a ranked staged demand board. `expand` at project scale; the cold-start bootstrap.
 - **E-018 — steer play** — `vend steer`: read a project → a ranked board *plus* the genuine human forks. The steer capstone; STEER automated end-to-end.
 
+## Autonomy proven live (P4/P7)
+
+- **E-037 — macro-wallet live proof** — cast the headline gesture for real, once, bounded: a fresh board staged, a bounded wallet funded, `vend work --no-intervened` spent down to a **clean twin P7 stop** (`andon: timed-out`, IA-9 amber — truthful receipt, zero partial state), auth==exec held (E-025, ~72.8s cast ≈ propose-epic's 72,785ms envelope, 0 tokens debited). **The gesture is now WATCHED — P4/P7 demonstrated live, not just wired.** Forward-E1 moved **1/2 → 3/4 (sample 2/10 → 4/10)** on 2 genuine `--no-intervened` records. **But an honest 0-clear:** `propose-epic` time-censored the board's top signal *before* it could mint, so nothing cleared and the go stays **provisional + forward-leaning, NOT forward-confirmed** (the verdict refused the T-026-04 over-count trap). *The epic is done (the proof ran + settled); Frontier 1 stays open — the residual is the propose-epic time-censor + the ≥10 cleared-forward cadence.* (`work/T-037-03/verdict.md`.)
+
 ## Executor-agnostic underneath (P6)
 
 - **E-035 — second executor** — extracted the `Executor` interface + `executorFor` selector; refactored Claude behind it (byte-identical) + added a non-Claude `OpenAICompatExecutor` (`/v1/chat/completions`). Vend is an orchestrator, not a Claude wrapper. (Single-completion adapter — *not* agentic open-model parity; that's a live signal.)
