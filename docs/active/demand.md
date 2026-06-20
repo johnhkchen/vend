@@ -83,8 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-037 (Frontier 1's live proof) ran + settled; the frontier stays open with
-its residual below. Pull a frontier or a sub-signal.*
+| Signal | Value | Status |
+|---|---|---|
+| **`per-cast-timeout-headroom`** (Frontier 1 unblocker) — the per-cast wall-clock timeout *is* the p90 envelope, so heavy signals are guillotined at p90 and censored out of their own sample (a ratchet). Give `timeoutMsFor` headroom above the price; keep the meter honest. | **High** (the concrete unblocker of the keystone) | **active → E-038** — single surgical ticket (`timeoutMsFor × HEADROOM`, kill-switch only) + deterministic proof. Awaiting `lisa loop`. |
 
 ---
 
@@ -92,15 +93,12 @@ its residual below. Pull a frontier or a sub-signal.*
 
 ### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 done; frontier open**
 
-- **`propose-epic` time-censors the board's top signal before it can mint** (surfaced by E-037's
-  live sweep, 2026-06-20) — the macro-wallet spent down cleanly but cleared **0**: `propose-epic`
-  hit its **72,785 ms p90 time envelope** on the board's heaviest signal and was censored *before*
-  materializing an epic (not a price problem — auth==exec/E-025 held; a **time**-envelope problem).
-  The cleared-forward cadence can't accrue until this clears. Two routes: **widen** the per-step time
-  envelope for heavy `propose-epic` signals (`recalibrate` — the p90 is fit from lighter history,
-  this signal is an outlier), or stage a board whose **#1 is a lighter pull** the current envelope can
-  mint. The E-013/E-015 cold-start-envelope-too-tight pattern again (rhymes with Frontier 6). **High**
-  (the concrete unblocker of the keystone) · **ready** · small (~1h — one recalibration lever).
+- **`propose-epic` time-censors the board's top signal before it can mint** → **pulled → E-038
+  (in flight).** E-037's sweep cleared 0 because the per-cast timeout *is* the p90 envelope, so a
+  signal heavier than p90 is guillotined and censored out of its own sample (a ratchet). Grounding
+  corrected E-037's own suggested fix: **raising the percentile can't work** (the tail is censored
+  from the sample); the fix is **timeout headroom** in `timeoutMsFor` (kill-switch only; the meter
+  stays the honest p90). E-038 is the surgical lever.
 - **Accrue cleared forward-E1 to ≥10.** Once the censor clears, each `vend work --no-intervened`
   sweep that *clears* a pull adds a genuine forward record (now **4/10**, censored). The ≥10-genuine
   bar fully ungates the macro-wallet's provisional go — a **cadence**, not a single epic.
