@@ -121,6 +121,16 @@ describe("renderHome — composes the three DL-6 regions (AC #2/#3, DL-1/DL-9)",
     expect(shelfAt).toBeLessThan(ledgerAt);
   });
 
+  test("cache-stability proxy: the board substring equals boardMenu byte-for-byte (no re-derivation)", () => {
+    // T-031-02 press contract: renderHome FRAMES the already-persisted board; it never re-renders or
+    // mutates it. So whatever browseShelf wrote to `.vend/menu.json` cannot be perturbed by the Home
+    // render — the board region is the input string verbatim, leading at column 0. (HomeRegions.boardMenu
+    // is a `string`: a MenuCache is unrepresentable here, so the cache is type-incapable of regressing.)
+    const out = renderHome({ boardMenu: board, shelfRows: rows, ledger });
+    expect(out.startsWith(board)).toBe(true);
+    expect(out).toContain(`${board}\n\n`);
+  });
+
   test("empty board → the renderMenu guidance line passes through untouched", () => {
     const out = renderHome({ boardMenu: renderMenu([]), shelfRows: rows, ledger });
     expect(out).toContain("(no actions)");

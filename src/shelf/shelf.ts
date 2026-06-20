@@ -29,8 +29,10 @@ import { surveyPlay } from "../play/survey.ts";
 import { renderShelf, shelfRows } from "./shelf-row.ts";
 
 /** The authored playbooks the shelf displays, leverage-descending (keystone → leaf). The single
- *  place a new play joins the supply catalog. Each is a registered {@link AnyPlay} literal. */
-const SHELF_PLAYS: readonly AnyPlay[] = [
+ *  place a new play joins the supply catalog — shared by `vend shelf` (here) AND the fused Home
+ *  (`home-shell.ts`, T-031-02), so the two supply surfaces can never drift. Each is a registered
+ *  {@link AnyPlay} literal. */
+export const SHELF_PLAYS: readonly AnyPlay[] = [
   decomposeEpicPlay,
   surveyPlay,
   steerProjectPlay,
