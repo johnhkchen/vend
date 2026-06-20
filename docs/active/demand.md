@@ -129,6 +129,20 @@ Surfaced demand, deliberately un-elaborated until pulled:
   Read,Grep,Glob,mcp__codebase-memory-mcp --strict-mcp-config`; an undeclared play's argv is base-flags-
   only (byte-identical to today); an absent MCP → `{ok:false, missing:[…]}` → andon. 912 tests green.
   Skills declared-but-deferred (scope cut). *(Original signal + design read below, preserved.)*
+- **Agentic open-model runner (P6)** — **first slice active → E-036** (`open-model-baml-support`,
+  pulled 2026-06-20, **scoped by the pull: "showing support via BAML should suffice"**). The
+  authoring-layer half of open-model support: BAML is render-only here (`clients.baml` — `b.request.*`
+  shapes the prompt, `b.parse.*` SAP-parses; dispense rides E-035's `Executor`), with one client today
+  (`ClaudeStub`, anthropic). E-036 adds `OpenModelStub` (provider `openai-generic` — the universal
+  OpenAI-compatible shape, matching E-035's executor), shows render targets it (openai-format request,
+  a real diff from anthropic), parse stays provider-agnostic, and ties render-client to E-035's
+  `VEND_EXECUTOR` so render→dispense→parse is one open-model path. **Honest boundary (the user's scope):**
+  this is config-level support at both layers (authoring + execution); the **live agentic RUNTIME**
+  (an open model autonomously reading the repo / running tools / materializing a ticket) is the
+  **deferred remainder**, named not claimed. T-036-01 the `OpenModelStub` client + render-targets-it
+  (baml:gen green, openai-format via the subprocess bridge) → T-036-02 render-client follows
+  `executorFor` + parse-is-agnostic + record the boundary in `stack.md`. Tickets carry a
+  codebase-memory-mcp note.
 - **Second executor (P6)** — **done → E-035** (`second-executor`, 2026-06-20). The vision's "first
   executor … behind an interface so open models slot in later" is now real: the `Executor` interface
   (`src/executor/executor.ts`) + `ExecutorTimeoutError` extracted from the seam `castPlay` was welded
