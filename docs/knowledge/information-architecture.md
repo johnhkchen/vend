@@ -201,6 +201,39 @@ envelopes are the prerequisite that makes the 2-hour gesture spend intelligently
 
 ---
 
+## The consistency contract — what repeatability is over
+
+The vision sells *repeatability over a natively probabilistic process* (`vision.md`). That
+raises a question the gates alone don't answer: repeatability of **what**? Run the same play
+twice on the same input and the wording differs (articulation dispersion 0.50–0.72, E-019/
+E-020). This principle names what Vend actually promises — settled by the E-022 measure-then-
+decide (the equivalence judge over the consistency probe).
+
+**IA-17 — Consistency is gated validity, not lexical identity.** Vend promises that *every
+cast yields a valid, grounded, gated output* — the gates are the contract (P3). It does **not**
+promise the same *wording* twice; the vision concedes "the same prompt does not give you the
+same result twice." Two axes, and only the first is the promise:
+
+- **Validity consistency** — every cast is valid/grounded/non-garbage/honestly-non-empty. The
+  gates' job, and **measured**: E-014 cut decompose variance ~21%, E-020 eliminated the
+  honest-empty over-fire. This is the contract.
+- **Lexical/content consistency** — repeated casts yield the *same* proposed work. Where the
+  0.50–0.72 dispersion lives. **Not promised globally**; adjudicated per play as
+  *equivalent-diversity* (acceptable — say so) or *genuine-disagreement* (a defect — converge).
+
+The per-play verdict (E-022 **recommendation**, pending the live equivalence sweep that is the
+human step): **expand → by-design** (the grounded fragment pins intent; divergence is rewording,
+0.50); **survey → converge-lean** (it drives the home's single recommended pull, IA-1 — a #1
+signal that flips run-to-run is genuine disagreement, 0.69); **steer → the human's call** (0.72,
+but many *valid* framings of one direction may be legitimate diversity). The rule is **not**
+"high dispersion ⇒ converge": stakes and the output's role decide, which is why survey's 0.69
+outranks steer's 0.72 as a convergence concern. A "converge" verdict pulls a **downstream**
+convergence lever (canonical-form gate / consensus cast / temperature) — it never re-litigates
+the validity axis, which the gates already own. Evidence + the fork:
+`docs/active/work/T-022-02/findings.md`.
+
+---
+
 ## Open threads (honestly unresolved)
 
 Named so they don't masquerade as settled. Pull one when it's worth designing.
@@ -222,4 +255,5 @@ Settle · IA-7 production-line-not-raw-stream · IA-8 meter-cannot-lie · IA-9
 andon-is-successful-refusal · IA-10 two-success-states · IA-11 andon-summons-success-
 quiet · IA-12 andon-budget-sets-the-percentile · IA-13 bound-from-successes-informative-
 censoring · IA-14 asymmetric-hysteresis-auto-widen-slow-tighten · IA-15 ledger-generates-
-demand · IA-16 reference-class-hierarchical-bias-corrected-estimate.
+demand · IA-16 reference-class-hierarchical-bias-corrected-estimate · IA-17 consistency-
+gated-validity-not-lexical-identity.
