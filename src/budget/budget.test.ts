@@ -4,8 +4,10 @@ import {
   type Budget,
   check,
   countTokens,
+  TIMEOUT_HEADROOM,
   timeoutMsFor,
 } from "./budget.ts";
+import { allocate, canAfford } from "./wallet.ts";
 
 // T-001-03 budget-control: pure module, fabricated inputs only — no spawn, no fs,
 // no clock (mirrors mc-design-eval's "fake inputs" test rule). Every function and
@@ -45,12 +47,38 @@ describe("countTokens", () => {
 });
 
 describe("timeoutMsFor", () => {
-  test("returns the wall-clock allowance verbatim", () => {
-    expect(timeoutMsFor(budget(30_000, 1))).toBe(30_000);
+  test("returns the wall-clock allowance × headroom (the runaway-guard, not the price)", () => {
+    expect(timeoutMsFor(budget(30_000, 1))).toBe(30_000 * TIMEOUT_HEADROOM);
   });
 
   test.each([0, -1, NaN, 1.5])("throws RangeError for invalid timeMs: %p", (t) => {
     expect(() => timeoutMsFor(budget(t, 1))).toThrow(RangeError);
+  });
+
+  test("TIMEOUT_HEADROOM is a warranted factor with real margin (≥2, integer)", () => {
+    // Pins the documented constant: a silent drift toward ~1.0 (no headroom) fails the gate.
+    expect(Number.isInteger(TIMEOUT_HEADROOM)).toBe(true);
+    expect(TIMEOUT_HEADROOM).toBeGreaterThanOrEqual(2);
+  });
+
+  // AC #3 — deterministic proof, NO live model. Map E-037's ~72–73 s censored `propose-epic`
+  // runs (work/T-037-02/sweep-log.md) onto the headroomed timeout: both would FINISH under the
+  // wall (no guillotine at 72.8 s), while affordability still gates on the bare price T.
+  test("E-037's censored runs would finish under the headroomed timeout; affordability gates on the price", () => {
+    const T = 72_785; // propose-epic's measured p90 envelope (the price)
+    const censoredActuals = [72_792, 72_805]; // the two timed-out runs, ~1% over the envelope
+
+    const timeout = timeoutMsFor(budget(T, 1));
+    expect(timeout).toBe(T * TIMEOUT_HEADROOM);
+    for (const actual of censoredActuals) {
+      // Each killed-at-72.8s run finishes well under the 2× wall — the guillotine is gone.
+      expect(actual).toBeLessThan(timeout);
+    }
+
+    // The price stays the honest p90: affordability reads the BARE T, not the headroomed value.
+    const wallet = allocate(budget(T, 1_000)); // exactly T ms funded
+    expect(canAfford(wallet, budget(T, 1))).toBe(true); // a cast priced at T fits in T
+    expect(canAfford(wallet, budget(T + 1, 1))).toBe(false); // one ms over the price does not
   });
 });
 

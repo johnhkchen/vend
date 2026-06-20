@@ -70,14 +70,42 @@ function assertPositiveInt(n: number, label: string): void {
 }
 
 /**
- * Derive the seam's `timeoutMs` from the budget's wall-clock allowance. Today an
- * identity-with-validation; the named seam gives time-policy one home if it ever
- * grows (e.g. reserving a shutdown margin). Budget cannot measure elapsed time —
- * it only hands the runner the number to give the seam.
+ * Headroom the per-cast wall-clock kill-switch gets ABOVE the measured price. The price
+ * (`budget.timeMs`, the value-tier p90 from `recalibrate.ts`) is what affordability
+ * (`canAfford`/`fitNext`) and the shelf/envelope surfaces read — IA-8, the meter must not
+ * lie, so the price is untouched. The kill-switch is only a runaway-guard, so it runs at
+ * `price × this factor`. Set to 2 (double the envelope) from E-037's censored-margin data:
+ * the censored `propose-epic` runs were within ~1% of their 72,785 ms p90, so even small
+ * slack clears THOSE — but 2× is chosen so the next heavier signal isn't immediately
+ * re-censored (one warranted factor for the class, not a patch for two data points).
+ *
+ * WHY THIS EXISTS — the censoring ratchet. The price is the tier percentile over SUCCESSFUL
+ * runs (`recalibrate`); a `timed-out` run is right-CENSORED (`CENSORED_OUTCOMES`,
+ * `recalibrate.ts`) — counted, but EXCLUDED from the percentile sample. So a cast killed AT
+ * the envelope can never enter the sample that would RAISE the envelope: p90-as-timeout caps
+ * itself and prevents the very data that would lift it. Raising `TIER_PERCENTILE` alone
+ * CANNOT fix this — the tail is censored out of its own sample (E-037's successes sit at
+ * 66.9–72.8 s, the killed runs at ~72–73 s), so a higher percentile only re-reads the same
+ * truncated sample with no observation above the wall to bind to. Giving the kill-switch
+ * headroom lets a heavy cast FINISH and land a SUCCESS that enters the sample honestly.
+ *
+ * DEFERRED (IA-14, the fuller rung this surgical fix sits beneath): auto-widen the envelope
+ * when the censored RATE is high (data-driven, possibly per-tier) instead of one constant.
+ */
+export const TIMEOUT_HEADROOM = 2;
+
+/**
+ * Derive the seam's `timeoutMs` from the budget's wall-clock allowance: the measured price
+ * (`budget.timeMs`) × {@link TIMEOUT_HEADROOM}. This is the per-cast runaway-guard, NOT the
+ * price — see TIMEOUT_HEADROOM for why the guard gets headroom (the censoring ratchet) while
+ * the price stays the honest p90. `assertPositiveInt` validates the PRICE (an invalid
+ * allocation is a caller error, surfaced loudly); `Math.ceil` keeps the headroomed result a
+ * positive integer (the budget-dimension contract) for any future fractional factor. Budget
+ * cannot measure elapsed time — it only hands the runner the number to give the seam.
  */
 export function timeoutMsFor(budget: Budget): number {
   assertPositiveInt(budget.timeMs, "timeMs");
-  return budget.timeMs;
+  return Math.ceil(budget.timeMs * TIMEOUT_HEADROOM);
 }
 
 /**

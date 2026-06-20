@@ -1,6 +1,6 @@
 ---
 ready: false          # ← flip to true when you're ready for the PM agent to process
-requested_at:
+requested_at: 2026-06-20   # raised + processed this cycle (one-shot), gate back down
 ---
 
 # Process gate — "I'm ready for you to process this"
@@ -26,12 +26,28 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
-_Gate down — **no active cycle.** The last processing cycle (articulation-cost, 2026-06-19)
-is closed and archived at `cycle-2026-06-19-articulation-cost/`; its batch was promoted and
-built (→ E-016/17/18, the articulation trilogy, all done). Raise the gate with fresh focus
-notes when you want the next batch synthesized._
+_**Processed 2026-06-20** — distribution & onboarding cycle synthesized into `proposed-batch.md`:
+6 ranked signals, recommended pull **`vend init`**. Gate consumed (one-shot) and back down. The
+batch ranks this session's deployability + onboarding discovery (`deployability-discovery.md`,
+`onboarding-examples-discovery.md`) against the six live frontiers. Promotion is still a human pull._
 
-Current state for the next survey (so a new cycle doesn't re-propose done work):
+Steering that produced it:
+- **The keystone (Frontier 1) is in motion, not pullable.** E-037 watched the wallet live; **E-038**
+  is in flight clearing the time-censor; forward-E1 is a **cadence** (4/10, censored) accrued by
+  **cleared runs**, not a fresh epic. Don't re-propose it.
+- **Route new leverage to distribution & onboarding** — the frontier the board was silent on. It's
+  high-leverage alone *and* compounds the keystone (more driveable projects → more cleared runs →
+  forward-E1 → wallet ungates). The `bun build --compile` + BAML spike is **green**; most of the
+  work is adopting lisa's toolchain (`dist`, `justfile`, `envinfo`).
+- **Foundation-first:** `vend init` (#1) before the hackathon example (#2) before delivery (#3/#4).
+- **Multi-node DAG (#5) is the standing architectural keystone but premature now** vs. proving and
+  adopting what's built.
+- **Read, never invent** (PE-1): the batch is 6, not a drain; X-2/X-3 + Frontiers 2/4/5 stay carried.
+
+Prior cycle (articulation-cost, 2026-06-19) is archived at `cycle-2026-06-19-articulation-cost/`
+(→ E-016/17/18, the articulation trilogy, all done).
+
+Reference state (so a new cycle doesn't re-propose done work):
 
 - **The autonomy gate is open.** E-014's E1 (walk-away) HOLD was lifted to **go** (provisional,
   forward-leaning at 2/10 genuine forward records); the **macro-wallet shipped** (E-024/E-025)
