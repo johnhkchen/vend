@@ -531,11 +531,13 @@ if (import.meta.main) {
     process.exit(2);
   }
   if (parsed.cmd === "browse") {
-    // Bare `vend`: gather → rank → render → persist `.vend/menu.json` → print. Instant,
-    // deterministic, no LLM. Lazy import keeps the browse deps off the pure-parse path.
-    const { browseShelf } = await import("./shelf/gather.ts");
-    const { menu } = await browseShelf({ all: parsed.all });
-    process.stdout.write(`${menu}\n`);
+    // Bare `vend`: the fused DL-6 Home — board (ranked pull, persisted to `.vend/menu.json`) leading,
+    // shelf (authored supply) receding beneath, ledger (E1 walk-away) at the foot. browseShelf stays
+    // THE single cache writer (the press contract `vend <sel>` resolves against); `--all` reveals
+    // hidden board rows. Instant, deterministic, no LLM. Lazy import keeps the Home deps (and their
+    // transitive BAML addon) off the pure-parse path, exactly as the browse arm kept gather lazy.
+    const { homeText } = await import("./shelf/home-shell.ts");
+    process.stdout.write(`${await homeText({ all: parsed.all })}\n`);
     process.exit(0);
   }
   if (parsed.cmd === "select") {
