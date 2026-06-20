@@ -21,10 +21,12 @@
 // plays (the BAML native addon), so NO `bun test` value-imports this module — its logic is the
 // tested `runChain` + the offline thread proof (chain-propose-decompose.test.ts, addon-free) + the
 // live sweep (AC#4). `castProposeDecomposeChain` is the IMPURE verb (assembles inputs, spawns);
-// `epicSubjectFromPath` is its one pure helper.
+// `epicSubjectFromPath` is its inline pure helper, and the per-step budget selection lives in the
+// addon-free `chain-propose-decompose-core.ts` (`resolveStepBudgets`) so it is unit-tested (E-025).
 
 import type { Budget } from "../budget/budget.ts";
 import { castChain, type ChainResult, type PlayStep } from "../engine/chain.ts";
+import { resolveStepBudgets } from "./chain-propose-decompose-core.ts";
 import { proposeEpicPlay, assembleProposeEpicInputs } from "./propose-epic.ts";
 import { decomposeEpicPlay } from "./decompose-epic.ts";
 import { assembleInputs } from "./project-context.ts";
@@ -33,8 +35,14 @@ import { assembleInputs } from "./project-context.ts";
 export interface ChainProposeDecomposeOptions {
   /** The ONE pulled demand signal to propose an epic from, then decompose (PE-1). */
   readonly signal: string;
-  /** Optional budget override applied to BOTH steps; omitted ⇒ each play's warranted default. */
+  /** Uniform budget override applied to a step when its per-step override is absent — the MIDDLE
+   *  fallback rung; omitted ⇒ each play's warranted default (`per-step ?? budget ?? play default`). */
   readonly budget?: Budget;
+  /** Per-step override for the propose step; wins over `budget`; omitted ⇒ `budget` ⇒ play default.
+   *  `vend work` threads the wallet-reserved propose envelope here (E-025 — authorization==execution). */
+  readonly proposeBudget?: Budget;
+  /** Per-step override for the decompose step; wins over `budget`; omitted ⇒ `budget` ⇒ play default. */
+  readonly decomposeBudget?: Budget;
   /** Repo root the snapshot/board are gathered from and artifacts are written under. */
   readonly projectRoot?: string;
   /** Pinned model id; omitted ⇒ CLI default (and the engine's `DEFAULT_MODEL` logged). */
@@ -69,8 +77,13 @@ export async function castProposeDecomposeChain(
   opts: ChainProposeDecomposeOptions,
 ): Promise<ChainResult> {
   const root = opts.projectRoot ?? process.cwd();
-  const proposeBudget = opts.budget ?? proposeEpicPlay.budget;
-  const decomposeBudget = opts.budget ?? decomposeEpicPlay.budget;
+  // Each step casts under: its per-step override ?? the uniform `budget` ?? the play's static default
+  // (the cold-start fallback). PURE selection lives in the addon-free core so it is unit-tested.
+  const { proposeBudget, decomposeBudget } = resolveStepBudgets(
+    opts,
+    proposeEpicPlay.budget,
+    decomposeEpicPlay.budget,
+  );
 
   const steps: PlayStep<any, any>[] = [
     {
