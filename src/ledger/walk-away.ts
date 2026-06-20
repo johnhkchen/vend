@@ -210,8 +210,10 @@ export function auditWalkAway(records: readonly RunRecord[], opts: AuditOptions 
   return { total, play: opts.play ?? null, tier, andonRate, andonBudget, withinBudget: andonRate <= andonBudget, outcomeMix, cost, intervention };
 }
 
-/** Render a 0..1 rate as a whole-number percent, or an em-dash when `null`. PURE. */
-function pct(r: number | null): string {
+/** Render a 0..1 rate as a whole-number percent, or an em-dash when `null`. PURE. The shared
+ *  Home/`vend audit` rounding seam (T-031-01): `homeLedgerLine` (`src/shelf/home.ts`) reuses this
+ *  so the DL-6 foot and the DL-8 readout can never round a trust percent differently. */
+export function pct(r: number | null): string {
   return r === null ? "—" : `${Math.round(r * 100)}%`;
 }
 
