@@ -117,16 +117,26 @@ export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
   // P7 authorization; the wallet still debits the cast's actuals, not this prediction.
   const { records } = await loadRunLog();
   const prior = budgetForTier(PRICE_TIER);
-  const price = sumBudgets(
-    recalibrate(proposeEpicPlay.name, records, PRICE_TIER, prior).envelope,
-    recalibrate(decomposeEpicPlay.name, records, PRICE_TIER, prior).envelope,
-  );
+  // Keep the two per-step envelopes the wallet authorizes on — they recalibrate separately and can
+  // diverge. `price` (their sum) gates `canAfford`; the individual envelopes are threaded into the
+  // cast PER STEP below so the chain RUNS under exactly what was authorized (E-025: the E-024 sweep
+  // authorized at 227k but cast at the 150k static default → budget-exhausted, cleared 0).
+  const proposeEnvelope = recalibrate(proposeEpicPlay.name, records, PRICE_TIER, prior).envelope;
+  const decomposeEnvelope = recalibrate(decomposeEpicPlay.name, records, PRICE_TIER, prior).envelope;
+  const price = sumBudgets(proposeEnvelope, decomposeEnvelope);
 
   const session = await spendDown<string>({
     wallet,
     candidates,
     priceOf: () => price,
-    castOne: (signal) => castProposeDecomposeChain({ signal, projectRoot: root, ...(opts.model ? { model: opts.model } : {}) }),
+    castOne: (signal) =>
+      castProposeDecomposeChain({
+        signal,
+        projectRoot: root,
+        proposeBudget: proposeEnvelope,
+        decomposeBudget: decomposeEnvelope,
+        ...(opts.model ? { model: opts.model } : {}),
+      }),
     labelOf: (signal) => labelForSignal(signal),
     ...(opts.onStep ? { onStep: opts.onStep } : {}),
   });
