@@ -117,6 +117,16 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
+- **Per-play tool/MCP/skill provisioning** — **active → E-032** (`per-play-tooling`, pulled 2026-06-20).
+  *Grounded finding:* today `buildArgs` (`src/executor/claude.ts:115`) passes **no**
+  `--mcp-config`/`--allowedTools`, so every cast inherits the **global** MCP set from `~/.claude.json` —
+  there is no project `.mcp.json` and no per-play scoping; E-032 builds both. The "project based?" call
+  resolved as captured: requirement on the `Play` contract (`tools?`, mirroring `maxTurns?`/E-015),
+  binding in a committed project `.mcp.json` (not global), resolution at cast under least-privilege
+  (`--strict-mcp-config` for declared plays only; undeclared = back-compat), missing required MCP →
+  amber andon (IA-9). T-032-01 `tools?` + `buildArgs` flags + pure `resolveTools` → T-032-02 project
+  `.mcp.json` + cast wiring + andon + `decompose-epic` declares `codebase-memory-mcp` (proof play).
+  Skills declared-but-deferred (scope cut). *(Original signal + design read below, preserved.)*
 - **Per-play tool/MCP/skill provisioning** (surfaced 2026-06-20) — a play should **declare the
   MCPs / tools / skills it uses**, scoped to *that play*, not inherited from a global executor config.
   Concretely: `decompose-epic` should itself reference `codebase-memory-mcp` (the way we just wired it
