@@ -151,6 +151,15 @@ Surfaced demand, deliberately un-elaborated until pulled:
   (T-024-03). `vend work` is wired + green (825 tests); the full **live multi-cast spend** (≥1 real
   cleared pull) is the one **deferred human sweep** — matches T-017/T-018's live-cast deferral. Its
   own autonomous runs become the forward variance-bearing E1.
+- **Board+shelf Home fusion** — **active → E-031** (`home-fusion`, pulled 2026-06-20). The single DL-6
+  Home screen: the pull board (demand) leads at column 0, the supply shelf (E-030) recedes beneath as
+  the inventory serving the recommendation, a one-line provenance-split ledger summary (E-028 — forward
+  vs attested) at the foot. Builds the `renderHome` composite DL-6 names as its one honest gap — by
+  composing the emitters we already have (`renderMenu` + `shelfRows`/`renderShelf` + the walk-away
+  split), not re-deriving. The press contract (`.vend/menu.json` + `vend <sel>`) preserved bit-for-bit:
+  Home enriches what `vend` *prints*, the board stays the selection namespace. T-031-01 pure
+  `homeLedgerLine` + `renderHome` → T-031-02 wire bare `vend`, press preserved (free live proof).
+  *(The downstream E-030 named out-of-scope; tickets carry a codebase-memory-mcp coding-task note.)*
 - **Information architecture** — *captured* → `knowledge/information-architecture.md`
   (IA-1…IA-15): recommendation-first home, the cold-start arc, the Counter
   (Confirm→Run→Settle), the andon-as-successful-refusal stance, and the **Ledger
