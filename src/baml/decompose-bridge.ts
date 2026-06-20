@@ -17,15 +17,58 @@
 import { b } from "../../baml_client/sync_client.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 
-/** A render op renders the prompt from the three inputs; a parse op SAP-parses a reply. */
+/**
+ * A render op renders the prompt from the three inputs; a parse op SAP-parses a reply. An optional
+ * `client` selects the BAML client at render time (the generated `{ client }` call option →
+ * `ClientRegistry.setPrimary`); absent ⇒ the function default (`ClaudeStub`), byte-identical.
+ */
 export type BridgeOp =
-  | { mode: "render"; epic: string; charter: string; project: string }
+  | { mode: "render"; epic: string; charter: string; project: string; client?: string }
   | { mode: "parse"; text: string };
 
 export type BridgeResult =
-  | { ok: true; mode: "render"; prompt: string }
+  | { ok: true; mode: "render"; prompt: string; shape: RequestShape }
   | { ok: true; mode: "parse"; plan: WorkPlan }
   | { ok: false; error: string };
+
+/**
+ * Structural fingerprint of a built request — the provider FORMAT, independent of prompt text (the
+ * text may be identical across clients; the SHAPE is what differs). openai-generic renders
+ * `POST {base}/chat/completions` with flat string content and no `max_tokens`; anthropic renders
+ * `/v1/messages` with content BLOCKS and a `max_tokens`. These four orthogonal fields pin that.
+ */
+export type RequestShape = {
+  /** Full endpoint URL. */
+  url: string;
+  /** openai-generic ⇒ true (`…/chat/completions`); anthropic ⇒ false (`…/v1/messages`). */
+  endsWithChatCompletions: boolean;
+  /** anthropic carries `max_tokens`; openai-generic omits it. */
+  hasMaxTokens: boolean;
+  /** First message role — anthropic `"user"`, openai-generic `"system"`. */
+  firstRole: string | undefined;
+  /** openai-generic content is a scalar string; anthropic content is a blocks array. */
+  contentIsString: boolean;
+};
+
+/**
+ * Read the format fingerprint off a built request. PURE — inspects the already-built request
+ * object (url + body), no native call. Narrowly typed reach-in, same discipline as
+ * {@link extractPromptText} (BAML does not publicly type the request body).
+ */
+export function requestShape(req: {
+  url: string;
+  body: { json: () => { max_tokens?: unknown; messages?: Array<{ role?: unknown; content?: unknown }> } };
+}): RequestShape {
+  const body = req.body.json();
+  const first = (body.messages ?? [])[0];
+  return {
+    url: req.url,
+    endsWithChatCompletions: req.url.endsWith("/chat/completions"),
+    hasMaxTokens: body.max_tokens !== undefined,
+    firstRole: typeof first?.role === "string" ? first.role : undefined,
+    contentIsString: typeof first?.content === "string",
+  };
+}
 
 /**
  * Pull the rendered prompt text out of a BAML request. PURE. Mirrors mc's bridge.mts:
@@ -49,10 +92,20 @@ export function runOp(op: BridgeOp): BridgeResult {
     if (op.mode === "parse") {
       return { ok: true, mode: "parse", plan: b.parse.DecomposeEpic(op.text) };
     }
-    const req = b.request.DecomposeEpic(op.epic, op.charter, op.project) as unknown as {
-      body: { json: () => { messages?: unknown[] } };
+    // The optional `client` selects the render client at runtime (verified contract: the generated
+    // `{ client }` call option, sync_request.ts — BAML builds a ClientRegistry + setPrimary under
+    // the hood). Absent ⇒ the function default (ClaudeStub). The cast reaches `url` + `body` for
+    // both the prompt text and the format fingerprint; neither dispatches anything.
+    const req = b.request.DecomposeEpic(
+      op.epic,
+      op.charter,
+      op.project,
+      ...(op.client ? [{ client: op.client }] : []),
+    ) as unknown as {
+      url: string;
+      body: { json: () => { max_tokens?: unknown; messages?: Array<{ role?: unknown; content?: unknown }> } };
     };
-    return { ok: true, mode: "render", prompt: extractPromptText(req) };
+    return { ok: true, mode: "render", prompt: extractPromptText(req), shape: requestShape(req) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -62,6 +115,12 @@ export function runOp(op: BridgeOp): BridgeResult {
 // pure helpers). Render-only key guard set process-wide for this short-lived child.
 if (import.meta.main) {
   process.env.ANTHROPIC_API_KEY ??= "baml-render-only";
+  // openai-generic has no built-in endpoint, so a render against OpenModelStub needs base_url
+  // present. Render-only dummies, confined to this short-lived child; `??=` respects any real env
+  // a developer set (a future live smoke needs no code change). Never dispatched.
+  process.env.VEND_OPENAI_BASE_URL ??= "http://localhost:11434/v1";
+  process.env.VEND_EXECUTOR_MODEL ??= "baml-render-only";
+  process.env.VEND_OPENAI_API_KEY ??= "baml-render-only";
   const input = JSON.parse(await Bun.stdin.text()) as { ops: BridgeOp[] };
   const results = (input.ops ?? []).map(runOp);
   await Bun.write(Bun.stdout, JSON.stringify({ results }));

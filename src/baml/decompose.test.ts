@@ -91,11 +91,14 @@ const EPIC = "EPIC_SENTINEL_dispense_slice_intent";
 const CHARTER = "CHARTER_SENTINEL_value_function_P1_P7";
 const PROJECT = "PROJECT_SENTINEL_go_and_see_snapshot";
 
-// One spawn covers every op the suite asserts on (the native-addon limit is per process).
+// One spawn covers every op the suite asserts on (the native-addon limit is per process). Op [3]
+// renders the SAME inputs against OpenModelStub (T-036-01) — the prompt text is identical to [2]'s,
+// the request SHAPE is openai-generic, which is the whole point.
 const RESULTS: Promise<BridgeResult[]> = runBridge([
   { mode: "parse", text: CANNED },
   { mode: "parse", text: "this is not a work plan at all" },
   { mode: "render", epic: EPIC, charter: CHARTER, project: PROJECT },
+  { mode: "render", epic: EPIC, charter: CHARTER, project: PROJECT, client: "OpenModelStub" },
 ]);
 
 describe("DecomposeEpic — parse (SAP, offline)", () => {
@@ -152,5 +155,43 @@ describe("DecomposeEpic — render (b.request, offline, render-only key)", () =>
     expect(prompt).toContain(PROJECT);
     // The clearing framing is rendered too (the authored judgment, paid once).
     expect(prompt).toContain("clearing function");
+  });
+});
+
+// T-036-01 open-model-baml-client: render can target a SELECTABLE client (the generated
+// `{ client }` call option). Rendering DecomposeEpic against OpenModelStub builds a request in
+// openai-generic FORMAT — asserted on the request SHAPE (the format fingerprint requestShape reads
+// off the real built request in the bridge child), NOT on prompt text, which is identical to the
+// default render. requestShape is exercised here on REAL BAML requests, the strongest coverage.
+type RenderResult = Extract<BridgeResult, { mode: "render" }>;
+
+describe("DecomposeEpic — render targets a selectable client (openai-generic format)", () => {
+  test("the default client renders the anthropic format (unchanged back-compat)", async () => {
+    const r = (await RESULTS)[2] as RenderResult;
+    expect(r.ok).toBe(true);
+    expect(r.shape.endsWithChatCompletions).toBe(false);
+    expect(r.shape.url.endsWith("/v1/messages")).toBe(true);
+    expect(r.shape.hasMaxTokens).toBe(true); // ClaudeStub's max_tokens 32000
+    expect(r.shape.firstRole).toBe("user");
+    expect(r.shape.contentIsString).toBe(false); // anthropic content is a blocks array
+  });
+
+  test("OpenModelStub renders the openai-generic format", async () => {
+    const r = (await RESULTS)[3] as RenderResult;
+    expect(r.ok).toBe(true);
+    expect(r.shape.endsWithChatCompletions).toBe(true);
+    expect(r.shape.url.endsWith("/chat/completions")).toBe(true);
+    expect(r.shape.hasMaxTokens).toBe(false); // openai-generic omits max_tokens
+    expect(r.shape.firstRole).toBe("system"); // instructions become a system message
+    expect(r.shape.contentIsString).toBe(true); // openai content is a flat string
+  });
+
+  test("the proof is on SHAPE, not text — the prompt is identical across clients", async () => {
+    const def = (await RESULTS)[2] as RenderResult;
+    const open = (await RESULTS)[3] as RenderResult;
+    // Same authored prompt text…
+    expect(open.prompt).toBe(def.prompt);
+    // …rendered into two distinct provider formats. The contract is the format, not the text.
+    expect(open.shape.endsWithChatCompletions).not.toBe(def.shape.endsWithChatCompletions);
   });
 });
