@@ -177,13 +177,16 @@ Surfaced demand, deliberately un-elaborated until pulled:
   emitter. Honest about its gaps (dim=indent-only, settle accent unbound, no `renderHome` composite,
   meter is distinct-glyphs-not-shapes) — named as contracts a TUI closes against, not hidden. The
   visual spine a TUI epic implements.
-- **Value/budget surface in Vend** — **active → E-030** (`value-budget-shelf`, pulled 2026-06-20).
+- **Value/budget surface in Vend** — **done → E-030** (`value-budget-shelf`, 2026-06-20).
   The supply shelf (IA-2): each authored playbook shown with its **worth** (role) + its **warranted
   budget** = the recalibrated envelope from the run log's actuals (E-013), with confidence (measured
   N vs cold-start default) — not the static `budgetForTier` guess. The E-025 lesson applied to the
   display the human reads before allocating; clean-typographic, no card chrome (E-029 DL-6/DL-9).
-  T-030-01 worth on `Play` + pure `shelfRows` core → T-030-02 render + `vend shelf` surface (free
-  proof). *(Now buildable: run-log data exists, the design language has a shelf to land on.)*
+  Shipped: `summary` worth on the `Play` contract (all six plays) → pure `shelfRows`/`renderShelf`
+  → read-only `vend shelf` verb. Free proof live: `vend shelf` lists the six with decompose-epic
+  `161s/227k (measured · 6 runs)` and propose-epic `73s/227k (measured · 5 runs)` earned from the
+  log; survey/steer/expand/note `default — no runs yet`, honestly labelled (E-026 lesson). 871 tests
+  green, +9 shelf-row units.
 - (friction from `go-and-see.md` and gaps against `charter.md` accrue here as
   one-liners when surfaced)
 
