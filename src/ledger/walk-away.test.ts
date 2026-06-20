@@ -157,3 +157,43 @@ describe("formatWalkAwayFindings — the E1 fragment (AC #3)", () => {
     expect(out).toContain("no envelope data");
   });
 });
+
+describe("auditWalkAway — intervention provenance split (T-028-01 AC #2)", () => {
+  // Mirrors the real ledger shape: attested back-fill all walk-away, forward 1-intervened.
+  const mixed = () => [
+    rec({ runId: "a1", intervened: false, intervenedAttested: true }),
+    rec({ runId: "a2", intervened: false, intervenedAttested: true }),
+    rec({ runId: "a3", intervened: false, intervenedAttested: true }),
+    rec({ runId: "f1", intervened: true }), // forward, intervened
+    rec({ runId: "f2", intervened: false }), // forward, walk-away
+  ];
+
+  test("forward and attested partition on intervenedAttested; combined is unchanged", () => {
+    const r = auditWalkAway(mixed());
+    // combined (back-compat) — pooled exactly as before the split
+    expect(r.intervention.reported).toBe(5);
+    expect(r.intervention.intervened).toBe(1);
+    expect(r.intervention.rate).toBeCloseTo(1 / 5, 5);
+    // attested: 3 back-fill, all walk-away
+    expect(r.intervention.attested).toEqual({ reported: 3, intervened: 0, rate: 0 });
+    // forward (live): the road a verdict cites — distinct from the combined rate
+    expect(r.intervention.forward).toEqual({ reported: 2, intervened: 1, rate: 0.5 });
+  });
+
+  test("a forward-only slice leaves attested empty (rate null, never a fabricated 0)", () => {
+    const r = auditWalkAway([rec({ intervened: true }), rec({ intervened: false })]);
+    expect(r.intervention.forward.reported).toBe(2);
+    expect(r.intervention.attested).toEqual({ reported: 0, intervened: 0, rate: null });
+  });
+
+  test("the fragment renders the forward vs attested split beside the combined rate", () => {
+    const out = formatWalkAwayFindings(auditWalkAway(mixed()));
+    expect(out).toContain("forward (live): 50% (1/2 untouched)");
+    expect(out).toContain("attested back-fill: 100% (3/3 untouched)");
+  });
+
+  test("the split sub-line shows 'none yet' for an empty partition", () => {
+    const out = formatWalkAwayFindings(auditWalkAway([rec({ intervened: true }), rec({ intervened: false })]));
+    expect(out).toContain("attested back-fill: none yet");
+  });
+});

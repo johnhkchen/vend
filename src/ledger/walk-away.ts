@@ -73,6 +73,26 @@ export interface InterventionStat {
   /** The rate over the earlier vs the recent half of the reported records (each `null` when
    *  its half is empty) — the → 0 trend the target (PRD KR2) is read against. */
   readonly trend: { readonly earlier: number | null; readonly recent: number | null };
+  /** FORWARD (live) sub-reading (T-028-01): the self-reports captured at run time — NOT attested
+   *  back-fill. This is the road a verdict cites; E-026's over-claim came from it being merged
+   *  with the attested pool. Always a sub-stat (its `reported` may be 0). */
+  readonly forward: InterventionSubStat;
+  /** ATTESTED back-fill sub-reading (T-028-01): the self-reports a human attested post-hoc
+   *  (carrying the `intervenedAttestation` marker). Real evidence, but a different KIND than
+   *  forward — kept distinct so the two are never conflated again. */
+  readonly attested: InterventionSubStat;
+}
+
+/** One provenance slice of the intervention sample (T-028-01) — the same three numbers as the
+ *  combined stat, with no trend (trend is a single combined-series read; per-split halving would
+ *  invite mis-citation). `reported` may be 0, in which case `rate` is `null`, never a fabricated 0. */
+export interface InterventionSubStat {
+  /** Self-reports in this provenance partition. */
+  readonly reported: number;
+  /** Of those, how many were intervened (`intervened === true`). */
+  readonly intervened: number;
+  /** `intervened / reported`, or `null` when this partition is empty. */
+  readonly rate: number | null;
 }
 
 /** The full E1 trust readout over a run-log slice. */
@@ -120,6 +140,15 @@ function rateOrNull(bits: readonly boolean[]): number | null {
   return bits.filter(Boolean).length / bits.length;
 }
 
+/** Reduce a provenance partition of reported records to its {@link InterventionSubStat} (T-028-01).
+ *  PURE. Every record passed already carries the `intervened` bit (the caller filters first), so
+ *  `reported` is just the length and the rate reuses {@link rateOrNull} — an empty partition ⇒
+ *  `rate: null`, never a fabricated 0. */
+function subStat(records: readonly RunRecord[]): InterventionSubStat {
+  const bits = records.map((r) => r.intervened as boolean);
+  return { reported: bits.length, intervened: bits.filter(Boolean).length, rate: rateOrNull(bits) };
+}
+
 /**
  * Audit a run-log slice for the E1 trust numbers. PURE. Optionally filters to one play and
  * windows to the most recent `window` records (the ledger is append-ordered, so the tail is
@@ -163,13 +192,19 @@ export function auditWalkAway(records: readonly RunRecord[], opts: AuditOptions 
 
   // Intervention: over records carrying the bit only (absence = unknown, excluded). Trend
   // splits those reports in half (earlier = first ⌊n/2⌋, recent = the rest) — the → 0 signal.
-  const reportedBits = scope.filter((r) => r.intervened !== undefined).map((r) => r.intervened as boolean);
+  const reportedRecs = scope.filter((r) => r.intervened !== undefined);
+  const reportedBits = reportedRecs.map((r) => r.intervened as boolean);
   const half = Math.floor(reportedBits.length / 2);
+  // Provenance split (T-028-01): partition the reported records on `intervenedAttested`. Forward
+  // = the live instrument (the road a verdict cites); attested = post-hoc back-fill. The combined
+  // numbers above are UNCHANGED (back-compat) — this is additive disaggregation, not a redefinition.
   const intervention: InterventionStat = {
     reported: reportedBits.length,
     intervened: reportedBits.filter(Boolean).length,
     rate: rateOrNull(reportedBits),
     trend: { earlier: rateOrNull(reportedBits.slice(0, half)), recent: rateOrNull(reportedBits.slice(half)) },
+    forward: subStat(reportedRecs.filter((r) => r.intervenedAttested !== true)),
+    attested: subStat(reportedRecs.filter((r) => r.intervenedAttested === true)),
   };
 
   return { total, play: opts.play ?? null, tier, andonRate, andonBudget, withinBudget: andonRate <= andonBudget, outcomeMix, cost, intervention };
@@ -183,6 +218,15 @@ function pct(r: number | null): string {
 /** Render a ratio to 2dp with a `×` prefix, or an em-dash when `null`. PURE. */
 function ratio(r: number | null): string {
   return r === null ? "—" : `×${r.toFixed(2)}`;
+}
+
+/** Render one provenance sub-stat (T-028-01) as its WALK-AWAY reading (`1 − intervention rate`),
+ *  with the untouched/reported fraction. "none yet" when the partition is empty — an honest label
+ *  (IA-8), never a fabricated 0%. PURE. */
+function subWalk(s: InterventionSubStat): string {
+  if (s.reported === 0) return "none yet";
+  const walkAway = s.rate === null ? null : 1 - s.rate;
+  return `${pct(walkAway)} (${s.reported - s.intervened}/${s.reported} untouched)`;
 }
 
 /**
@@ -208,6 +252,10 @@ export function formatWalkAwayFindings(report: WalkAwayReport): string {
       `  walk-away rate: ${pct(walkAway)} (${iv.reported - iv.intervened}/${iv.reported} ran untouched)` +
         ` · trend ${trendWalk(iv.trend.earlier)} → ${trendWalk(iv.trend.recent)} (target → 100%)`,
     );
+    // Provenance split (T-028-01): the combined rate above pools two different KINDS of evidence —
+    // forward (live) self-reports and attested back-fill. A verdict cites the FORWARD count; this
+    // sub-line keeps them legible so attested back-fill is never mistaken for the live instrument.
+    lines.push(`    └ forward (live): ${subWalk(iv.forward)} · attested back-fill: ${subWalk(iv.attested)}`);
   }
 
   const budgetMark = report.withinBudget ? "✓ within" : "⚠ over";
