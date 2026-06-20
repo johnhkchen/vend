@@ -117,15 +117,17 @@ revisit only if a hard token cap is ever needed.
 
 Surfaced demand, deliberately un-elaborated until pulled:
 
-- **Per-play tool/MCP/skill provisioning** — **active → E-032** (`per-play-tooling`, pulled 2026-06-20).
-  *Grounded finding:* today `buildArgs` (`src/executor/claude.ts:115`) passes **no**
-  `--mcp-config`/`--allowedTools`, so every cast inherits the **global** MCP set from `~/.claude.json` —
-  there is no project `.mcp.json` and no per-play scoping; E-032 builds both. The "project based?" call
-  resolved as captured: requirement on the `Play` contract (`tools?`, mirroring `maxTurns?`/E-015),
-  binding in a committed project `.mcp.json` (not global), resolution at cast under least-privilege
-  (`--strict-mcp-config` for declared plays only; undeclared = back-compat), missing required MCP →
-  amber andon (IA-9). T-032-01 `tools?` + `buildArgs` flags + pure `resolveTools` → T-032-02 project
-  `.mcp.json` + cast wiring + andon + `decompose-epic` declares `codebase-memory-mcp` (proof play).
+- **Per-play tool/MCP/skill provisioning** — **done → E-032** (`per-play-tooling`, 2026-06-20). A play
+  now declares the MCPs/tools it uses (`tools?` on the `Play` contract, mirroring `maxTurns?`/E-015);
+  the binding is a committed, portable project **`.mcp.json`** (`${CODEBASE_MEMORY_MCP_BIN:-…}`, no
+  machine paths/secrets — **not** the global `~/.claude.json`); the cast resolves declared `tools`
+  against the registry (pure `resolveTools`) and threads `--mcp-config`/`--allowedTools`/
+  `--strict-mcp-config` for **only** the declared servers (least-privilege); a required MCP absent from
+  the registry → amber missing-capability andon (IA-9), nothing cast. Undeclared plays unchanged
+  (back-compat). `decompose-epic` declares `{ mcp:["codebase-memory-mcp"], allow:["Read","Grep","Glob"] }`.
+  **Free proof (no cast):** decompose's argv carries `--mcp-config .mcp.json --allowedTools
+  Read,Grep,Glob,mcp__codebase-memory-mcp --strict-mcp-config`; an undeclared play's argv is base-flags-
+  only (byte-identical to today); an absent MCP → `{ok:false, missing:[…]}` → andon. 912 tests green.
   Skills declared-but-deferred (scope cut). *(Original signal + design read below, preserved.)*
 - **Per-play tool/MCP/skill provisioning** (surfaced 2026-06-20) — a play should **declare the
   MCPs / tools / skills it uses**, scoped to *that play*, not inherited from a global executor config.
