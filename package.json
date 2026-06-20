@@ -11,6 +11,7 @@
     "check:typecheck": "tsc --noEmit",
     "check:committed": "bun run src/ci/check-committed.ts",
     "check:head": "bun run src/ci/check-head.ts",
+    "check:history": "bun run src/ci/check-history.ts",
     "check:precommit": "bun run src/ci/check-precommit.ts",
     "check:hooks": "bun run src/ci/check-hooks.ts",
     "hooks:install": "bun run src/ci/install-hooks.ts",

@@ -29,6 +29,13 @@ export interface HeadBuildOptions {
   /** Repo whose committed HEAD to build. The real toplevel is resolved via `git rev-parse`. */
   root: string;
   /**
+   * The commit-ish to materialize in the worktree. Default `"HEAD"` — so every existing caller
+   * (and `check:head`) is unchanged. T-034-02's history sweep passes an arbitrary sha to build any
+   * commit in range. The `vend-head-` temp prefix is retained for any commit-ish (it names the
+   * builder, not the commit).
+   */
+  commitish?: string;
+  /**
    * Install command run in the worktree before the build; `null` SKIPS it. Default
    * `["bun", "install"]`. The integration test passes `null` (its synthetic repo has no deps),
    * keeping every test run offline and sub-second.
@@ -45,14 +52,17 @@ function tail(text: string, max = 500): string {
 }
 
 /**
- * Materialize the committed HEAD in an isolated git worktree, run install+check there, and report
- * a {@link BuildOutcome}. IMPURE (spawns git/bun, touches the fs). Removes the worktree and its
- * temp parent in ALL paths via `finally` — no leak on success, failure, or error. Decides nothing:
- * classification is {@link classifyBuildOutcome}'s job.
+ * Materialize a committed commit-ish (default `HEAD`) in an isolated git worktree, run install+check
+ * there, and report a {@link BuildOutcome}. IMPURE (spawns git/bun, touches the fs). Removes the
+ * worktree and its temp parent in ALL paths via `finally` — no leak on success, failure, or error.
+ * Decides nothing: classification is {@link classifyBuildOutcome}'s job. With the default commit-ish
+ * this is the E-010 `check:head` builder unchanged; with an arbitrary sha it is T-034-02's per-commit
+ * history-audit builder.
  */
 export async function buildCommittedHead(opts: HeadBuildOptions): Promise<BuildOutcome> {
   const install = opts.install === undefined ? (["bun", "install"] as const) : opts.install;
   const check = opts.check ?? (["bun", "run", "check"] as const);
+  const commitish = opts.commitish ?? "HEAD";
 
   // ── preflight: resolve the repo toplevel (also proves it is a git repo) ──────────────────────
   const top = Bun.spawnSync(["git", "-C", opts.root, "rev-parse", "--show-toplevel"]);
@@ -66,7 +76,7 @@ export async function buildCommittedHead(opts: HeadBuildOptions): Promise<BuildO
   // worktree lands in a `head` subdir git creates itself.
   const parent = await mkdtemp(join(tmpdir(), "vend-head-"));
   const worktree = join(parent, "head");
-  const added = Bun.spawnSync(["git", "-C", repoTop, "worktree", "add", "--detach", worktree, "HEAD"]);
+  const added = Bun.spawnSync(["git", "-C", repoTop, "worktree", "add", "--detach", worktree, commitish]);
   if (added.exitCode !== 0) {
     await rm(parent, { recursive: true, force: true });
     return { failedStep: "worktree", detail: tail(added.stderr.toString()) || "worktree add failed" };
