@@ -11,6 +11,9 @@
     "check:typecheck": "tsc --noEmit",
     "check:committed": "bun run src/ci/check-committed.ts",
     "check:head": "bun run src/ci/check-head.ts",
+    "check:precommit": "bun run src/ci/check-precommit.ts",
+    "check:hooks": "bun run src/ci/check-hooks.ts",
+    "hooks:install": "bun run src/ci/install-hooks.ts",
     "baml:gen": "baml-cli generate --from baml_src",
     "check": "bun run baml:gen && bun run check:typecheck && bun run check:test",
     "build": "tsc --noEmit"

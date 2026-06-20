@@ -1,0 +1,34 @@
+#!/bin/sh
+# T-033-02 git pre-commit gate (E-033) — the third commit-discipline layer, beside E-008
+# (`check:committed`, on-stop: source is committed) and E-010 (`check:head`, on-clear: committed
+# HEAD builds). This one answers "do the tests pass at THIS commit?" at the seam lisa has no hook of
+# its own: the git pre-commit hook.
+#
+# THE CENTRAL RULE (ci-strategy.md): this hook ONLY INVOKES. The verdict logic lives in
+# src/ci/precommit-core.ts (via `bun run check:precommit`), never here. Mirrors .lisa/hooks/on-stop.sh:
+# a thin POSIX-sh shell that runs the gate and translates its exit code.
+#
+# FAIL OPEN: any inability to run the check (no bun, not a repo) lets the commit proceed — a broken
+# checker must never wedge `git commit`. The runner emits ONLY 0 (allow) or 1 (BLOCK); any other code
+# means the runner couldn't even start, which we translate to allow (fail open), never blindly
+# propagate.
+
+# Fail open if the toolchain isn't usable — can't check is not the same as red.
+command -v bun >/dev/null 2>&1 || exit 0
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -n "$ROOT" ] || exit 0
+cd "$ROOT" || exit 0
+
+# Scrub the git env git exports to hooks. Without this, GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE
+# leak into child `git` processes the test suite spawns (e.g. head-build-core's `git worktree add`
+# on a synthetic repo), pinning them to THIS commit's index and breaking their isolation. The gate
+# must run the suite in a clean git environment, exactly as a plain `bun test` would.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_NAMESPACE GIT_QUARANTINE_PATH GIT_REFLOG_ACTION
+
+# Run the gate (spawns check:test, classifies, prints the verdict). 0=allow, 1=BLOCK.
+bun run check:precommit
+case "$?" in
+    0) exit 0 ;;   # allow — tests green, or a visible fail-open skip
+    1) exit 1 ;;   # BLOCK — red tests; the runner already named the failure on stderr
+    *) exit 0 ;;   # runner couldn't start (env error) → fail open (on-stop.sh discipline)
+esac
