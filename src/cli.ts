@@ -20,6 +20,7 @@ export const USAGE =
   "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend steer [--budget <ms>,<tokens>]\n" +
   "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
+  "       vend shelf\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -62,6 +63,7 @@ export type ParsedCommand =
        *  bare `work` keeps the same object shape. Forwarded to every chain cast in the sweep. */
       readonly intervened?: boolean;
     }
+  | { readonly cmd: "shelf" }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -130,9 +132,22 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "survey") return parseSurveyArgs(argv);
   if (argv[0] === "steer") return parseSteerArgs(argv);
   if (argv[0] === "work") return parseWorkArgs(argv);
+  if (argv[0] === "shelf") return parseShelfArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
+}
+
+/**
+ * Parse the read-only `shelf` path — the SUPPLY view (T-030-02): list the authored playbooks
+ * with their worth + warranted envelope (the shelf beside the demand board, DL-6). PURE. Like
+ * `audit` it is a no-actuation READ, and UNLIKE every other verb it takes NO arguments AT ALL
+ * — not even `--budget` (nothing is cast, so there is nothing to fund). Any token after `shelf`
+ * is therefore an error. The board (`vend`) is untouched; this is its own verb.
+ */
+function parseShelfArgs(argv: readonly string[]): ParsedCommand {
+  if (argv.length > 1) return { cmd: "usage", error: `unexpected shelf argument: ${argv[1]}` };
+  return { cmd: "shelf" };
 }
 
 /**
@@ -644,6 +659,16 @@ if (import.meta.main) {
     }
     const wallet = { funded, remaining: result.session.remaining };
     process.stdout.write(`${renderReceipt(result.session, wallet, { color: true })}\n`);
+    process.exit(0);
+  }
+
+  if (parsed.cmd === "shelf") {
+    // The supply view (T-030-02): gather the authored playbooks + the run ledger, pair each
+    // with its warranted envelope (shelfRows), render clean-typographic (renderShelf), print.
+    // Read-only — it DISPLAYS the shelf, never actuates — so it always exits 0. Lazy import
+    // keeps the play modules (and their BAML addon) off the pure-parse path, like the other arms.
+    const { shelfText } = await import("./shelf/shelf.ts");
+    process.stdout.write(`${await shelfText()}\n`);
     process.exit(0);
   }
 

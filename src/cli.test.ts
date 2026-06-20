@@ -395,3 +395,14 @@ describe("parseArgs — audit (T-014-01 walk-away readout)", () => {
     expect(parseArgs(["audit", "--bogus"]).cmd).toBe("usage");
   });
 });
+
+describe("parseArgs — shelf (T-030-02 supply view)", () => {
+  test("bare `shelf` parses to the read-only shelf command", () => {
+    expect(parseArgs(["shelf"])).toEqual({ cmd: "shelf" });
+  });
+  test("shelf takes no arguments — a positional or a flag is usage", () => {
+    expect(parseArgs(["shelf", "survey"]).cmd).toBe("usage");
+    expect(parseArgs(["shelf", "--budget", "1,2"]).cmd).toBe("usage");
+    expect(parseArgs(["shelf", "--all"]).cmd).toBe("usage");
+  });
+});
