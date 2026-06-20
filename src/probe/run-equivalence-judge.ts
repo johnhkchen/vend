@@ -48,6 +48,12 @@ import {
   formatEquivalenceReport,
   type EquivalenceVerdict,
 } from "./equivalence.ts";
+import {
+  classifyHeadStability,
+  formatHeadStabilityReport,
+  headVerdictsFromExactMatch,
+  topPick,
+} from "./head-stability.ts";
 
 /** Casts per sweep, default. Overridable via the CLI `N` arg. */
 const RUNS_DEFAULT = 5;
@@ -71,6 +77,10 @@ interface JudgeTarget {
   readonly subject: (root: string) => string;
   readonly outputDirs: readonly string[];
   readonly isAbstention: (output: string | null) => boolean;
+  /** Pull a board-shaped output's #1 ranked pull for the head-stability read (T-023-01), or `null`
+   *  when nothing is staged. Set ONLY for the board-shaped plays (survey + steer, identical board
+   *  shape); left undefined for expand (one signal, no ranked head) so the head pass skips it. */
+  readonly extractHead?: (output: string) => string | null;
 }
 
 /** Run `lisa init` in the temp root so each play's effect-stage `lisa validate` has the structure
@@ -142,6 +152,7 @@ function surveyTarget(): JudgeTarget {
     subject: (root) => `survey of ${basename(root)}`,
     outputDirs: ["docs/active/pm/staged"],
     isAbstention: (output) => output === null || output.includes("no demand staged"),
+    extractHead: (output) => topPick(output),
   };
 }
 
@@ -179,6 +190,7 @@ function steerTarget(): JudgeTarget {
       output === null ||
       output.includes("# Steer — nothing to stage") ||
       output.includes("honest empty steer"),
+    extractHead: (output) => topPick(output), // steer shares the survey board's `vend chain` shape
   };
 }
 
@@ -338,6 +350,24 @@ async function main(playName: string, srcFragmentPath: string | undefined, n: nu
   const verdicts = await judgeEquivalence(signalOutputs, budget);
   const equivalence = classifyEquivalence(verdicts, signalOutputs.length);
   process.stdout.write(`${formatEquivalenceReport(equivalence)}\n`);
+
+  // The HEAD read (T-023-01): for board-shaped plays, isolate each board's #1 pull and classify
+  // whether the LOAD-BEARING head is stable across the casts — INDEPENDENTLY of tail order (the
+  // head-vs-tail caveat work/T-022-02/findings.md raised). Printed BESIDE the whole-board reads
+  // above (AC#2). Additive — everything above is unchanged (AC#3).
+  if (target.extractHead) {
+    const heads = signalOutputs
+      .map(target.extractHead)
+      .filter((h): h is string => h !== null);
+    // The deterministic LEXICAL baseline — surface-form identity of the #1 pull (no judge cast).
+    const lexical = classifyHeadStability(headVerdictsFromExactMatch(heads), heads.length);
+    process.stdout.write(`${formatHeadStabilityReport(lexical)}  [lexical exact-match]\n`);
+    // The SEMANTIC head read — the authoritative one (two #1 picks reworded can be the same pull,
+    // IA-17): reuse the equivalence judge over JUST the heads, classify with the same core.
+    const headVerdicts = await judgeEquivalence(heads, budget);
+    const semantic = classifyHeadStability(headVerdicts, heads.length);
+    process.stdout.write(`${formatHeadStabilityReport(semantic)}  [semantic judge]\n`);
+  }
 }
 
 if (import.meta.main) {
