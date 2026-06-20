@@ -13,6 +13,7 @@
 
 import { ClaudeExecutor } from "./claude.ts";
 import type { Executor } from "./executor.ts";
+import { OpenAICompatExecutor } from "./openai-compat.ts";
 
 /** A nullary factory for an {@link Executor}. Lazy so an unselected executor is never built. */
 export type ExecutorFactory = () => Executor;
@@ -27,13 +28,14 @@ export const DEFAULT_EXECUTOR_ID = "claude";
 export const EXECUTOR_ENV = "VEND_EXECUTOR";
 
 /**
- * The built-in registry. Claude only in this slice (T-035-01); T-035-02 adds `openai`.
- * A factory (not a singleton instance) so each `executorFor` call yields a fresh executor
- * — executors carry no shared mutable state, but lazy construction also means an unselected
- * adapter never spins up.
+ * The built-in registry. Claude is the default; T-035-02 adds the `openai-compat` adapter
+ * (selected by `VEND_EXECUTOR=openai-compat`). A factory (not a singleton instance) so each
+ * `executorFor` call yields a fresh executor — executors carry no shared mutable state, but
+ * lazy construction also means an unselected adapter never spins up (no stray fetch/spawn).
  */
 export const builtinExecutors: ExecutorRegistry = {
   claude: () => new ClaudeExecutor(),
+  "openai-compat": () => new OpenAICompatExecutor(),
 };
 
 /** Selection inputs for {@link executorFor}. `executor` is an explicit id that wins over env. */
