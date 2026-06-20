@@ -80,6 +80,15 @@ export interface DispenseOptions {
   /** Agentic turn cap → `--max-turns <n>`. Omitted ⇒ no flag ⇒ turns unbounded. */
   maxTurns?: number;
   /**
+   * Per-play MCP config path → `--mcp-config <path>` (E-032, T-032-02). The committed project
+   * `.mcp.json`. Omitted ⇒ no flag ⇒ the global MCP set is inherited (passthrough).
+   */
+  mcpConfig?: string;
+  /** Per-play tool allowlist → `--allowedTools` (E-032). Empty/omitted ⇒ no flag. */
+  allowedTools?: readonly string[];
+  /** Close the global MCP firehose → `--strict-mcp-config` (E-032). Omitted/false ⇒ no flag. */
+  strictMcp?: boolean;
+  /**
    * Called once per stream-json message in order, before any throw, so the runner
    * can capture the transcript and per-turn usage. Must not mutate the message.
    */
@@ -284,8 +293,8 @@ export function awaitChildClose(
  * `subtype` — including error subtypes — so the caller can meter and branch on it;
  * only a genuinely absent terminal result (the process emitted none) throws.
  */
-export async function dispense({ prompt, model, effort, system, maxTurns, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
-  const args = buildArgs({ model, effort, system, maxTurns });
+export async function dispense({ prompt, model, effort, system, maxTurns, mcpConfig, allowedTools, strictMcp, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
+  const args = buildArgs({ model, effort, system, maxTurns, mcpConfig, allowedTools, strictMcp });
   const child = spawn(CLAUDE_CLI, args, { stdio: ["pipe", "pipe", "pipe"] });
   child.stdin?.end(prompt);
 

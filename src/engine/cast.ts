@@ -25,7 +25,8 @@ import { ClaudeTimeoutError, dispense, type ResultMessage } from "../executor/cl
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import type { CastContext, GateVerdict, Play } from "./play.ts";
-import { classify, makeStreamSink, resolveLoggedModel, resolveMaxTurns, resolveTurnsUsed } from "./cast-core.ts";
+import { classify, makeStreamSink, resolveLoggedModel, resolveMaxTurns, resolveTools, resolveTurnsUsed, toolFlags } from "./cast-core.ts";
+import { readProjectMcpServers } from "./mcp-registry.ts";
 
 // Re-export the pure core so callers (T-007-03) have one engine entry for the cast surface.
 export * from "./cast-core.ts";
@@ -120,6 +121,48 @@ export async function castPlay<I, O>(
   const startedAt = new Date().toISOString();
   const runId = opts.runId ?? `run-${startedAt.replace(/[:.]/g, "-")}`;
 
+  // Per-play tool provisioning (E-032, T-032-02): resolve the play's declared `tools` against the
+  // project MCP registry (`<root>/.mcp.json`) BEFORE rendering or dispensing. An UNDECLARED play
+  // → passthrough (no flags, byte-identical to today). A DECLARED play missing a required MCP
+  // server → the missing-capability ANDON: an IA-9 amber refusal that halts the cast here —
+  // nothing rendered, nothing dispensed, nothing materialized. A required capability absent is a
+  // STOP, not a silent blind run on the wrong tool set (IA-17).
+  const { available, path: mcpConfigPath } = await readProjectMcpServers(root);
+  const resolved = resolveTools(play.tools, available);
+  if (!resolved.ok) {
+    const endedAt = new Date().toISOString();
+    process.stdout.write(`· andon: missing-capability — required MCP absent from project registry: ${resolved.missing.join(", ")}\n`);
+    // Log the refusal so it is countable in the ledger (IA-10 — the andon rate is gates working),
+    // surfaced exactly like the other honest refusals. Nothing was metered: usage {}, cost 0, no
+    // gates. This early-return is the ONLY log call on this path (the end-of-cast append is below).
+    await appendRunLog(
+      {
+        runId,
+        play: play.name,
+        epic: opts.subject,
+        model: resolveLoggedModel(undefined, opts.model),
+        envelope: budget,
+        project,
+        ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
+        outcome: "missing-capability",
+        usage: {} as Usage,
+        costUsd: 0,
+        gateResults: [],
+        startedAt,
+        endedAt,
+      },
+      opts.runLogPath ? { path: opts.runLogPath } : {},
+    );
+    return {
+      runId,
+      outcome: "missing-capability",
+      materialized: false,
+      actuals: { usage: {} as Usage, wallMs: Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) },
+    };
+  }
+  // The resolved scoping flags threaded into `dispense` below (passthrough ⇒ {} ⇒ no flags).
+  const tflags = toolFlags(resolved, mcpConfigPath);
+
   // Render the prompt from the play's typed inputs — never the transport, just the text.
   const prompt = play.render(inputs);
 
@@ -146,6 +189,7 @@ export async function castPlay<I, O>(
       prompt,
       model: opts.model, // undefined ⇒ no --model flag ⇒ CLI default
       maxTurns, // override ?? play default ?? undefined (no flag ⇒ unbounded turns)
+      ...tflags, // E-032 scoping flags — {} for a passthrough (undeclared) play ⇒ argv unchanged
       onMessage,
       timeoutMs: timeoutMsFor(budget),
     });
