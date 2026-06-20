@@ -32,6 +32,7 @@ signal clears, crystallize it to one line here and delete its verbose board entr
 - **E-032 — per-play tooling** — a play declares its MCPs/tools (`tools?` on `Play`); binding via a committed portable `.mcp.json`; cast wires only-declared servers (least-privilege); missing required MCP → amber andon.
 - **E-033 — per-commit green gate** — `.githooks/pre-commit` runs `check:test`, blocks a red commit naming the failure (fail-closed on red, fail-open on can't-run). Per-commit layer of the frame.
 - **E-034 — red-commit audit** — `check:history`: a bounded linear sweep rebuilding+testing each commit in a range to flag any that wasn't green. The post-hoc backstop to E-033; on its first run it found + corrected a real red commit (`a14d96a`).
+- **E-027 — board-freshness gate** — `vend work` refuses a board staged before the project last moved (pure `isBoardStale` + amber `renderStaleBoard` andon, IA-9 "successful refusal not a crash") with a `--stale-ok` override (IA-5); the refusal lands *before* funding the wallet — exit 1, no cast, no ledger append. Stops the loop clearing already-done/superseded work (the E-025/E-026 stale-board escape). Live proof free + deterministic (`work/T-027-01/stale-board-proof.md`). *(Implementation + proof landed 2026-06-19; the board/frontmatter sweep was completed 2026-06-20 — the prior commit message had over-claimed "done" without flipping them.)*
 
 ## The budget contract — budget is a hard contract (P7)
 

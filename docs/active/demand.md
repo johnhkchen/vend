@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`board-freshness-gate`** — `vend work` refuses a board staged before the project last moved (amber andon, IA-9) + `--stale-ok` override (IA-5). Stops the wallet clearing already-done/superseded work. | **High** (correctness of the autonomous loop) | **active → E-027** — built; live proof is free + deterministic. Awaiting verify/sweep. |
+*Nothing in flight — the board is clear. Pull a frontier below.*
 
 ---
 
@@ -98,7 +96,10 @@ named by the charter principle it advances and the gap it closes:
   **real ≥1-cleared-pull live sweep is the one deferred step** — the headline
   feature is a claim until watched. The same runs accrue the **forward-E1** trust
   data: the go verdict that un-gated the wallet stands **provisional** at 2/10
-  genuine forward records (≥10 bar unmet). Proving the loop *is* collecting the
+  genuine forward records (≥10 bar unmet). The preconditions are now in place —
+  the wallet is priced (E-025) and the **board-freshness gate (E-027)** stops it
+  spending down stale work — so the live sweep is unblocked. Proving the loop *is*
+  collecting the
   evidence that confirms it. **Keystone.** (`work/T-025-01/`, `work/T-026-04/verdict.md`.)
 
 ### Frontier 2 — Live open-model runtime (P6)
