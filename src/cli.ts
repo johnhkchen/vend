@@ -57,6 +57,10 @@ export type ParsedCommand =
       /** Spend even when the staged board is stale (IA-5 override, T-027-01); absent ⇒ the freshness
        *  gate refuses a board older than the project's live state. */
       readonly staleOk?: boolean;
+      /** The E1 trust self-report for the walk-away session (T-026-02): `--intervened` ⇒ true,
+       *  `--no-intervened` ⇒ false, neither ⇒ absent (unknown). Spread only when supplied, so a
+       *  bare `work` keeps the same object shape. Forwarded to every chain cast in the sweep. */
+      readonly intervened?: boolean;
     }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
@@ -374,6 +378,7 @@ function parseWorkArgs(argv: readonly string[]): ParsedCommand {
   let sawBudgetFlag = false;
   let board: string | undefined;
   let staleOk = false;
+  let intervened: boolean | undefined;
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i] as string;
     if (a === "--budget") {
@@ -386,6 +391,11 @@ function parseWorkArgs(argv: readonly string[]): ParsedCommand {
     } else if (a === "--stale-ok") {
       // The freshness-gate override (T-027-01, IA-5) — a presence flag, like `run`'s `--no-gates`.
       staleOk = true;
+    } else if (a === "--intervened") {
+      // The E1 trust self-report (T-014-01/T-026-02) — a presence-flag pair, order-independent.
+      intervened = true;
+    } else if (a === "--no-intervened") {
+      intervened = false;
     } else {
       return { cmd: "usage", error: `unexpected work argument: ${a}` };
     }
@@ -402,7 +412,13 @@ function parseWorkArgs(argv: readonly string[]): ParsedCommand {
     return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
   }
 
-  return { cmd: "work", ...(budget ? { budget } : {}), ...(board ? { board } : {}), ...(staleOk ? { staleOk: true } : {}) };
+  return {
+    cmd: "work",
+    ...(budget ? { budget } : {}),
+    ...(board ? { board } : {}),
+    ...(staleOk ? { staleOk: true } : {}),
+    ...(intervened !== undefined ? { intervened } : {}),
+  };
 }
 
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
@@ -606,6 +622,7 @@ if (import.meta.main) {
       budget: funded,
       ...(parsed.board ? { boardPath: parsed.board } : {}),
       ...(parsed.staleOk ? { staleOk: true } : {}),
+      ...(parsed.intervened !== undefined ? { intervened: parsed.intervened } : {}),
       onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded)}\n`),
     });
     if (result.kind === "no-board") {

@@ -45,6 +45,11 @@ export interface ChainProposeDecomposeOptions {
   readonly decomposeBudget?: Budget;
   /** Repo root the snapshot/board are gathered from and artifacts are written under. */
   readonly projectRoot?: string;
+  /** The E1 trust self-report (T-014-01) threaded SESSION-LEVEL through `vend work` (T-026-02):
+   *  did the author step in (`true`) or let the sweep clear (`false`)? Stamped on BOTH chain
+   *  records (propose + decompose), so a walk-away sweep produces genuine forward E1 evidence.
+   *  Absent ⇒ field omitted ⇒ unknown — pass-through data, exactly like `model`. */
+  readonly intervened?: boolean;
   /** Pinned model id; omitted ⇒ CLI default (and the engine's `DEFAULT_MODEL` logged). */
   readonly model?: string;
   /** Override the transcript dir (default `<root>/.vend/transcripts`). */
@@ -90,7 +95,7 @@ export async function castProposeDecomposeChain(
       // Step 1 — ProposeEpic: turn the pulled signal into a gated, minted EpicCard. No upstream.
       play: proposeEpicPlay,
       budget: proposeBudget,
-      opts: { subject: opts.signal, projectRoot: root, model: opts.model, transcriptDir: opts.transcriptDir },
+      opts: { subject: opts.signal, projectRoot: root, model: opts.model, intervened: opts.intervened, transcriptDir: opts.transcriptDir },
       adapt: () =>
         assembleProposeEpicInputs({
           signal: opts.signal,
@@ -112,6 +117,7 @@ export async function castProposeDecomposeChain(
         subject: epicSubjectFromPath(upstream ?? ""),
         projectRoot: root,
         model: opts.model,
+        intervened: opts.intervened,
         transcriptDir: opts.transcriptDir,
       }),
       adapt: async (upstream) => assembleInputs({ epicPath: upstream as string, projectRoot: root }),

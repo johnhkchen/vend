@@ -54,6 +54,11 @@ export interface WorkOptions {
   readonly projectRoot?: string;
   /** Pinned model id threaded to each cast; omitted ⇒ the engine default. */
   readonly model?: string;
+  /** The E1 trust self-report for this walk-away session (T-026-02): forwarded to every chain
+   *  cast so the sweep's records carry the `intervened` bit — turning a genuine `vend work` sweep
+   *  into forward E1 evidence (E-026). `--intervened` ⇒ true (author stepped in), `--no-intervened`
+   *  ⇒ false (let it clear), absent ⇒ unknown (unreported — the rate is never fabricated). */
+  readonly intervened?: boolean;
   /** The IA-7 production-line emit, forwarded to `spendDown` (the CLI renders it). */
   readonly onStep?: (s: StepSignal) => void;
   /** Spend even when the staged board is stale — the human override (IA-5, T-027-01). Default
@@ -190,6 +195,9 @@ export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
         proposeBudget: proposeEnvelope,
         decomposeBudget: decomposeEnvelope,
         ...(opts.model ? { model: opts.model } : {}),
+        // The E1 self-report (T-026-02) — session-level, spread only when reported so an
+        // unreported sweep keeps the bit unknown (never a fabricated walk-away), exactly like model.
+        ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
       }),
     labelOf: (signal) => labelForSignal(signal),
     ...(opts.onStep ? { onStep: opts.onStep } : {}),

@@ -253,6 +253,26 @@ describe("parseArgs", () => {
   test("bare work carries no staleOk key (the default object shape is unchanged)", () => {
     expect(parseArgs(["work"])).toEqual({ cmd: "work" });
   });
+  // T-026-02: the E1 walk-away self-report on the macro-wallet gesture — a presence-flag pair,
+  // spread only when given, so a genuine `vend work` sweep records the `intervened` bit.
+  test("work --intervened sets intervened:true", () => {
+    expect(parseArgs(["work", "--intervened"])).toEqual({ cmd: "work", intervened: true });
+  });
+  test("work --no-intervened sets intervened:false (a clean walk-away is a value)", () => {
+    expect(parseArgs(["work", "--no-intervened"])).toEqual({ cmd: "work", intervened: false });
+  });
+  test("bare work omits the intervened key (unknown — back-compat shape)", () => {
+    expect(parseArgs(["work"])).not.toHaveProperty("intervened");
+  });
+  test("work --no-intervened composes with --budget, --board, and --stale-ok", () => {
+    expect(parseArgs(["work", "--budget", "1,2", "--board", "b.md", "--stale-ok", "--no-intervened"])).toEqual({
+      cmd: "work",
+      budget: { timeMs: 1, tokens: 2 },
+      board: "b.md",
+      staleOk: true,
+      intervened: false,
+    });
+  });
 
   // T-013-02: the read-only Ledger envelope readout.
   test("envelope <play> (no tier) → default tier standard", () => {
