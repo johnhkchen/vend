@@ -19,7 +19,7 @@ export const USAGE =
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
   "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend steer [--budget <ms>,<tokens>]\n" +
-  "       vend work [--budget <ms>,<tokens>] [--board <path>]\n" +
+  "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -54,6 +54,9 @@ export type ParsedCommand =
       readonly budget?: Budget;
       /** An explicit staged-board path; absent ⇒ the steer→survey fallback at dispatch. */
       readonly board?: string;
+      /** Spend even when the staged board is stale (IA-5 override, T-027-01); absent ⇒ the freshness
+       *  gate refuses a board older than the project's live state. */
+      readonly staleOk?: boolean;
     }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
@@ -370,6 +373,7 @@ function parseWorkArgs(argv: readonly string[]): ParsedCommand {
   let budgetVal: string | undefined;
   let sawBudgetFlag = false;
   let board: string | undefined;
+  let staleOk = false;
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i] as string;
     if (a === "--budget") {
@@ -379,6 +383,9 @@ function parseWorkArgs(argv: readonly string[]): ParsedCommand {
       const word = argv[++i];
       if (!word || word.startsWith("--")) return { cmd: "usage", error: "missing --board <path>" };
       board = word;
+    } else if (a === "--stale-ok") {
+      // The freshness-gate override (T-027-01, IA-5) — a presence flag, like `run`'s `--no-gates`.
+      staleOk = true;
     } else {
       return { cmd: "usage", error: `unexpected work argument: ${a}` };
     }
@@ -395,7 +402,7 @@ function parseWorkArgs(argv: readonly string[]): ParsedCommand {
     return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
   }
 
-  return { cmd: "work", ...(budget ? { budget } : {}), ...(board ? { board } : {}) };
+  return { cmd: "work", ...(budget ? { budget } : {}), ...(board ? { board } : {}), ...(staleOk ? { staleOk: true } : {}) };
 }
 
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
@@ -593,11 +600,12 @@ if (import.meta.main) {
     // only a missing/empty board (a broken precondition) exits non-zero. Lazy import keeps the shell
     // (and its BAML addon) off the pure-parse path, exactly as the other arms.
     const { castWork, DEFAULT_MACRO_BUDGET } = await import("./play/work.ts");
-    const { renderReceipt, formatStepSignal } = await import("./play/work-core.ts");
+    const { renderReceipt, formatStepSignal, renderStaleBoard } = await import("./play/work-core.ts");
     const funded = parsed.budget ?? DEFAULT_MACRO_BUDGET;
     const result = await castWork({
       budget: funded,
       ...(parsed.board ? { boardPath: parsed.board } : {}),
+      ...(parsed.staleOk ? { staleOk: true } : {}),
       onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded)}\n`),
     });
     if (result.kind === "no-board") {
@@ -608,6 +616,13 @@ if (import.meta.main) {
     }
     if (result.kind === "empty-board") {
       process.stderr.write(`staged board ${result.boardPath} has no signals to spend on\n`);
+      process.exit(1);
+    }
+    if (result.kind === "stale-board") {
+      // The freshness gate refused (T-027-01, IA-9): the board predates the project's live state. An
+      // amber andon — a SUCCESSFUL refusal — handed back with the re-survey move, exiting like the
+      // other broken-precondition outcomes (no-board/empty-board), NOT a crash. `--stale-ok` overrides.
+      process.stderr.write(`${renderStaleBoard(result, { color: true })}\n`);
       process.exit(1);
     }
     const wallet = { funded, remaining: result.session.remaining };

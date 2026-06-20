@@ -238,6 +238,21 @@ describe("parseArgs", () => {
   test("work with an unexpected positional → usage (there is no subject to type)", () => {
     expect(parseArgs(["work", "junk"])).toEqual({ cmd: "usage", error: "unexpected work argument: junk" });
   });
+  // T-027-01: the freshness-gate override — a presence flag, spread only when given (shape preserved).
+  test("work --stale-ok carries the override (IA-5)", () => {
+    expect(parseArgs(["work", "--stale-ok"])).toEqual({ cmd: "work", staleOk: true });
+  });
+  test("work --stale-ok composes with --budget and --board", () => {
+    expect(parseArgs(["work", "--budget", "1,2", "--board", "b.md", "--stale-ok"])).toEqual({
+      cmd: "work",
+      budget: { timeMs: 1, tokens: 2 },
+      board: "b.md",
+      staleOk: true,
+    });
+  });
+  test("bare work carries no staleOk key (the default object shape is unchanged)", () => {
+    expect(parseArgs(["work"])).toEqual({ cmd: "work" });
+  });
 
   // T-013-02: the read-only Ledger envelope readout.
   test("envelope <play> (no tier) → default tier standard", () => {
