@@ -20,6 +20,8 @@
 // it is the single untested function (mirrors the reference's test rule).
 
 import { spawn } from "node:child_process";
+import { ExecutorTimeoutError } from "./executor.ts";
+import type { Executor } from "./executor.ts";
 
 /** The Claude headless CLI binary; overridable for tests / non-standard installs. */
 export const CLAUDE_CLI = process.env.CLAUDE_CLI || "claude";
@@ -105,14 +107,18 @@ export interface DispenseOptions {
  * killed. A CLASS (not a string sniff) so a caller can branch its degrade path
  * cleanly — `e.code === "ETIMEDOUT_CLAUDE"` distinguishes an infra hang from any
  * other failure. Carries the budget that was exceeded.
+ *
+ * As of T-035-01 it is the Claude-specific SUBCLASS of the generalized
+ * {@link ExecutorTimeoutError}: a `ClaudeTimeoutError` IS an `ExecutorTimeoutError`, so
+ * `castPlay`'s timeout `instanceof` keys on the base and still catches this. Its identity
+ * is byte-preserved — the historical `ETIMEDOUT_CLAUDE` code, `name`, message, and the
+ * `(timeoutMs, cli)` constructor are unchanged (the existing tests are the oracle).
  */
-export class ClaudeTimeoutError extends Error {
-  readonly code = "ETIMEDOUT_CLAUDE";
-  readonly timeoutMs: number;
+export class ClaudeTimeoutError extends ExecutorTimeoutError {
+  override readonly code = "ETIMEDOUT_CLAUDE";
   constructor(timeoutMs: number, cli: string) {
-    super(`\`${cli} -p\` exceeded ${timeoutMs}ms wall-clock and was killed (non-returning subprocess)`);
+    super(timeoutMs, `\`${cli} -p\` exceeded ${timeoutMs}ms wall-clock and was killed (non-returning subprocess)`);
     this.name = "ClaudeTimeoutError";
-    this.timeoutMs = timeoutMs;
   }
 }
 
@@ -322,4 +328,21 @@ export async function dispense({ prompt, model, effort, system, maxTurns, mcpCon
     state.result = { ...state.result, model: state.model };
   }
   return state.result;
+}
+
+/**
+ * The first {@link Executor} (T-035-01): Claude via the `claude -p` subscription shim. A
+ * pure DELEGATE over the free {@link dispense} function — `dispense` stays exported (other
+ * callers, e.g. the equivalence-judge harness, still use it directly), and this class is the
+ * one-line wrapper `castPlay` selects through `executorFor`. No behavior change: the spawn,
+ * the stream consume, and the result surfacing are all `dispense`'s, unchanged. It honors
+ * every agentic option on {@link DispenseOptions} (they map to `claude -p` flags via
+ * {@link buildArgs}) — it is the agentic executor the interface's "honor when able" hint
+ * refers to.
+ */
+export class ClaudeExecutor implements Executor {
+  readonly id = "claude";
+  dispense(opts: DispenseOptions): Promise<ResultMessage> {
+    return dispense(opts);
+  }
 }
