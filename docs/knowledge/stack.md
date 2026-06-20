@@ -18,6 +18,36 @@ two is wrong — surface it.
 
 ---
 
+## Open-model support — where it stands (E-035 + E-036)
+
+The "Executor (first)" row promises open models "slot in later." Here is the honest current state,
+so the promise is never read as more than it is.
+
+**Config-level at both layers, today:**
+
+- **Authoring (E-036).** A second BAML client, `OpenModelStub` (`provider openai-generic`), sits
+  beside `ClaudeStub` in `baml_src/clients.baml`. The render can target it
+  (`b.request.*(..., { client: "OpenModelStub" })` → `POST {base}/chat/completions`, openai format),
+  and the render client **follows the executor selection**: `VEND_EXECUTOR=openai-compat` ⇒ render
+  via `OpenModelStub`, default ⇒ `ClaudeStub` (byte-identical). The **parse half is
+  provider-agnostic** — `b.parse.*` SAP-parses an open-model-style reply into the same typed output
+  as a Claude reply (it parses text, not a provider). BAML remains **render/parse only**; it is not
+  the transport.
+- **Execution (E-035).** An `Executor` interface with `OpenAICompatExecutor` behind it, selected by
+  the same `VEND_EXECUTOR` env. This is the seam that actually dispatches.
+
+These are tied together by one switch (`VEND_EXECUTOR`), giving one coherent open-model path:
+**render (BAML, open-model client) → dispense (E-035 `OpenAICompatExecutor`) → parse (BAML)**.
+
+**Deferred remainder (named, not over-claimed):** the **live agentic open-model runtime** — an open
+model autonomously reading the repo, running tools, iterating turns, and materializing a ticket (a
+local agent loop behind E-035's `Executor`, or an open-source agent framework) — is **not built**.
+"Open-model support" here means the stack *targets* open models at the config layer; it does **not**
+claim proven open-model parity on the agentic plays. That live runtime is the heaviest remaining
+lift and is intentionally out of scope for E-035/E-036.
+
+---
+
 ## Available toolchain (verified on this machine)
 
 | Category | Available |

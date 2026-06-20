@@ -87,6 +87,16 @@ const CANNED = JSON.stringify({
   ],
 });
 
+// The SAME logical reply as CANNED, styled the way an OPEN model emits it (T-036-02): a chatty
+// preamble, the JSON in a ```json fence, a trailing remark. The data is held byte-for-byte
+// identical to CANNED (it wraps the exact CANNED text) on purpose — so b.parse producing the SAME
+// typed WorkPlan proves parse keys on the embedded structure (SAP), not on a provider or its
+// styling. No live model: the bridge SAP-parses this canned text exactly as it does a Claude reply.
+const OPEN_MODEL_CANNED =
+  "Sure — here's the decomposition you asked for:\n\n```json\n" +
+  CANNED +
+  "\n```\n\nLet me know if you'd like me to adjust the story/ticket split.";
+
 const EPIC = "EPIC_SENTINEL_dispense_slice_intent";
 const CHARTER = "CHARTER_SENTINEL_value_function_P1_P7";
 const PROJECT = "PROJECT_SENTINEL_go_and_see_snapshot";
@@ -94,11 +104,14 @@ const PROJECT = "PROJECT_SENTINEL_go_and_see_snapshot";
 // One spawn covers every op the suite asserts on (the native-addon limit is per process). Op [3]
 // renders the SAME inputs against OpenModelStub (T-036-01) — the prompt text is identical to [2]'s,
 // the request SHAPE is openai-generic, which is the whole point.
+// Op [4] (T-036-02) parses an OPEN-MODEL-STYLE reply — the provider-agnosticism proof. Same single
+// spawn (the native-addon limit is per process); appended last so [0]–[3]'s indices are unchanged.
 const RESULTS: Promise<BridgeResult[]> = runBridge([
   { mode: "parse", text: CANNED },
   { mode: "parse", text: "this is not a work plan at all" },
   { mode: "render", epic: EPIC, charter: CHARTER, project: PROJECT },
   { mode: "render", epic: EPIC, charter: CHARTER, project: PROJECT, client: "OpenModelStub" },
+  { mode: "parse", text: OPEN_MODEL_CANNED },
 ]);
 
 describe("DecomposeEpic — parse (SAP, offline)", () => {
@@ -193,5 +206,51 @@ describe("DecomposeEpic — render targets a selectable client (openai-generic f
     expect(open.prompt).toBe(def.prompt);
     // …rendered into two distinct provider formats. The contract is the format, not the text.
     expect(open.shape.endsWithChatCompletions).not.toBe(def.shape.endsWithChatCompletions);
+  });
+});
+
+// T-036-02 part 2 — parse is PROVIDER-AGNOSTIC: `b.parse.DecomposeEpic` SAP-parses text, not a
+// provider. A canned OPEN-model-style reply (chatty preamble + ```json fence + trailing remark,
+// same data as the Claude reply) parses into the SAME typed WorkPlan as the Claude reply. This is
+// the half of the open-model path that needs NO code change — the test makes the neutrality
+// explicit, run through the same subprocess bridge, with no live model.
+describe("DecomposeEpic — parse is provider-agnostic (open-model reply, offline)", () => {
+  test("an open-model-style reply parses into the SAME typed WorkPlan as the Claude reply", async () => {
+    const claude = (await RESULTS)[0]!;
+    const open = (await RESULTS)[4]!;
+    expect(claude.ok).toBe(true);
+    expect(open.ok).toBe(true);
+    const claudePlan = (claude as { plan: WorkPlan }).plan;
+    const openPlan = (open as { plan: WorkPlan }).plan;
+
+    // Same counts, same story identity, same ordered ticket ids — provider styling did not change
+    // the parsed structure (the proof: parse reads the embedded data, not the wrapping).
+    expect(openPlan.stories).toHaveLength(claudePlan.stories.length);
+    expect(openPlan.tickets).toHaveLength(claudePlan.tickets.length);
+    expect(openPlan.stories[0]!.id).toBe(claudePlan.stories[0]!.id);
+    expect(openPlan.stories[0]!.type).toBe(claudePlan.stories[0]!.type);
+    expect(openPlan.stories[0]!.status).toBe(claudePlan.stories[0]!.status);
+    expect(openPlan.tickets.map((t) => t.id)).toEqual(claudePlan.tickets.map((t) => t.id));
+
+    // The full value triplet + the depends_on edge survive identically across providers.
+    const [oFirst, oSecond] = openPlan.tickets;
+    const [cFirst, cSecond] = claudePlan.tickets;
+    expect(oFirst!.type).toBe(cFirst!.type);
+    expect(oFirst!.status).toBe(cFirst!.status);
+    expect(oFirst!.phase).toBe(cFirst!.phase);
+    expect(oFirst!.priority).toBe(cFirst!.priority);
+    expect(oFirst!.advances).toEqual(cFirst!.advances);
+    expect(oFirst!.depends_on).toEqual(cFirst!.depends_on);
+    expect(oSecond!.priority).toBe(cSecond!.priority);
+    expect(oSecond!.depends_on).toEqual(cSecond!.depends_on);
+  });
+
+  test("the open-model parse is a real plan, not the empty-degrade (it actually parsed)", async () => {
+    // Guards the proof above against vacuously passing on two empty plans (the malformed-degrade
+    // path): the open-model reply must yield the populated plan, not [].
+    const open = (await RESULTS)[4]!;
+    const plan = (open as { plan: WorkPlan }).plan;
+    expect(plan.stories.length).toBeGreaterThan(0);
+    expect(plan.tickets.length).toBeGreaterThan(0);
   });
 });
