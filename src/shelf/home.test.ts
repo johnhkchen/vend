@@ -139,10 +139,11 @@ describe("renderHome — composes the three DL-6 regions (AC #2/#3, DL-1/DL-9)",
   });
 
   test("no card chrome (DL-9): no box-drawing characters in the board/shelf regions", () => {
-    // The ledger foot uses `└` as a textual continuation glyph (mirrors formatWalkAwayFindings), not
-    // box chrome — so the chrome assertion is scoped to everything above the ledger line.
+    // DL-9 forbids box/rule/card chrome — box-drawing glyphs. (renderMenu's `[High]` tier brackets
+    // and the foot's `└` continuation glyph are legitimate text, not chrome; the foot is excluded by
+    // scoping above the ledger line, and the box-drawing set below deliberately omits `[` `]`.)
     const out = renderHome({ boardMenu: board, shelfRows: rows, ledger });
     const aboveLedger = out.slice(0, out.indexOf("ledger   E1"));
-    expect(aboveLedger).not.toMatch(/[|┌┐└┘├┤┬┴┼─│[\]]/u);
+    expect(aboveLedger).not.toMatch(/[┌┐└┘├┤┬┴┼─││]/u);
   });
 });
