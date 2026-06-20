@@ -168,10 +168,13 @@ Surfaced demand, deliberately un-elaborated until pulled:
   move — the E-014/E-022 discipline paying off a second time). All three articulation plays now
   resolved **by-design**; the E-019 dispersion thread is closed. Re-measure trigger: once `src/**`
   is no longer empty (the keystone resolves, a new #1 must emerge). `work/T-023-02/findings.md`.
-- **Design-language session** — assemble the project-wide *look* (the visual surface:
-  palette — amber andon per IA-9, run-stream, budget meter, shelf cards); output a
-  capped design charter, downstream of the IA spine. High; precedes any TUI epic.
-  Generative, not an audit. (Inherits IA-9's amber-not-red andon family.)
+- **Design-language session** — **active → E-029** (`design-language`, pulled 2026-06-20).
+  Capture the project-wide *look* as a capped `design-language.md` charter (DL-1…, the visual
+  complement to the IA spine). **Direction set by the human: clean typographic** — type/whitespace
+  carry it, amber reserved for the andon, the card/mana model stays a *lens* (docs), **not** TUI
+  chrome. T-029-01 the visual atoms (restraint principle, palette, type hierarchy, honest meter IA-8
+  + andon IA-9) → T-029-02 the surfaces (Home/Counter/Ledger/run-stream mocks) + the card-as-lens
+  decision. Generative, capped, anti-stale; precedes any TUI epic.
 - **Value/budget surface in Vend** — the shelf showing each playbook's worth and
   warranted budget, with the run log feeding *actuals* back to recalibrate
   envelopes. Standard; needs run-log data + a shelf to land on.
