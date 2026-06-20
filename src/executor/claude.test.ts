@@ -72,6 +72,58 @@ test("buildArgs: max-turns 0 is treated as absent (falsy guard)", () => {
   expect(buildArgs({ maxTurns: 0 })).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
 });
 
+// ── buildArgs tool scoping (E-032, T-032-01) ─────────────────────────────────
+
+test("buildArgs: mcpConfig alone appends --mcp-config <path>", () => {
+  expect(buildArgs({ mcpConfig: ".vend/mcp.json" })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose", "--mcp-config", ".vend/mcp.json",
+  ]);
+});
+
+test("buildArgs: allowedTools comma-joins into ONE argv element", () => {
+  expect(buildArgs({ allowedTools: ["Read", "Grep"] })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose", "--allowedTools", "Read,Grep",
+  ]);
+});
+
+test("buildArgs: empty allowedTools array emits no flag (length guard)", () => {
+  expect(buildArgs({ allowedTools: [] })).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+  expect(buildArgs({ allowedTools: [] })).not.toContain("--allowedTools");
+});
+
+test("buildArgs: strictMcp true appends --strict-mcp-config; false omits it", () => {
+  expect(buildArgs({ strictMcp: true })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config",
+  ]);
+  expect(buildArgs({ strictMcp: false })).not.toContain("--strict-mcp-config");
+});
+
+test("buildArgs: all tool flags compose after model/effort/system/max-turns, in order", () => {
+  expect(
+    buildArgs({
+      model: "m",
+      effort: "low",
+      system: "s",
+      maxTurns: 5,
+      mcpConfig: "cfg.json",
+      allowedTools: ["Read", "Bash(git *)"],
+      strictMcp: true,
+    }),
+  ).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose",
+    "--model", "m", "--effort", "low", "--system-prompt", "s", "--max-turns", "5",
+    "--mcp-config", "cfg.json", "--allowedTools", "Read,Bash(git *)", "--strict-mcp-config",
+  ]);
+});
+
+test("buildArgs: no tool options ⇒ argv byte-identical to today (back-compat)", () => {
+  const base = buildArgs({ model: "m" });
+  expect(base).not.toContain("--mcp-config");
+  expect(base).not.toContain("--allowedTools");
+  expect(base).not.toContain("--strict-mcp-config");
+  expect(buildArgs()).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+});
+
 // ── parseStreamJsonLine ──────────────────────────────────────────────────────
 
 test("parseStreamJsonLine: parses a valid JSON object", () => {

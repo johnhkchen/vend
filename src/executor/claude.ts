@@ -109,17 +109,45 @@ export class ClaudeTimeoutError extends Error {
 
 /**
  * Build the `claude -p` argv for the text path. PURE. Base flags always present;
- * `--model`/`--effort`/`--system-prompt` are appended only when supplied (omitting a
- * flag leaves the CLI default path unchanged).
+ * `--model`/`--effort`/`--system-prompt`/`--max-turns` are appended only when supplied
+ * (omitting a flag leaves the CLI default path unchanged).
+ *
+ * Per-play tool scoping (E-032, T-032-01): `mcpConfig` → `--mcp-config <path>`,
+ * `allowedTools` → `--allowedTools <comma-joined list>`, `strictMcp` → `--strict-mcp-config`
+ * (flag spellings verified against `claude -p --help`; `--allowedTools` accepts a comma- or
+ * space-separated list — we comma-join into ONE argv element so the variadic flag cannot
+ * swallow a following flag). All three are appended after `--max-turns` and guarded so that
+ * when none are supplied the argv is BYTE-IDENTICAL to before E-032 (the no-tools path; the
+ * resolved values are threaded in at cast by T-032-02). An empty `allowedTools` array emits
+ * no flag.
  */
 export function buildArgs(
-  { model, effort, system, maxTurns }: { model?: string; effort?: string; system?: string; maxTurns?: number } = {},
+  {
+    model,
+    effort,
+    system,
+    maxTurns,
+    mcpConfig,
+    allowedTools,
+    strictMcp,
+  }: {
+    model?: string;
+    effort?: string;
+    system?: string;
+    maxTurns?: number;
+    mcpConfig?: string;
+    allowedTools?: readonly string[];
+    strictMcp?: boolean;
+  } = {},
 ): string[] {
   const args = ["-p", "--output-format", "stream-json", "--verbose"];
   if (model) args.push("--model", model);
   if (effort) args.push("--effort", String(effort));
   if (system) args.push("--system-prompt", system);
   if (maxTurns) args.push("--max-turns", String(maxTurns));
+  if (mcpConfig) args.push("--mcp-config", mcpConfig);
+  if (allowedTools && allowedTools.length > 0) args.push("--allowedTools", allowedTools.join(","));
+  if (strictMcp) args.push("--strict-mcp-config");
   return args;
 }
 
