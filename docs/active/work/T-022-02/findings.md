@@ -30,6 +30,38 @@ decided **per play**:
 - **steer → the human's call.** Highest dispersion (0.72) but inherently open — many *valid*
   framings of one direction can be diversity, or it can be flip-flopping. The genuine fork.
 
+## Live sweep results (2026-06-19) — the human step, run
+
+The equivalence sweep ran (`run-equivalence-judge.ts <play> 3`, disposable temp ledgers, logs in
+`sweep-logs/`). It **resolves the fork with data** — and overturns two of the three recommendations:
+
+| Play | Jaccard dispersion | Judge class | Score | Recommendation was | **Measured verdict** |
+|---|---|---|---|---|---|
+| **expand** | 0.50 | **equivalent-diversity** | 1.00 (3/3 pairs equiv) | by-design | **by-design ✓ confirmed** |
+| **survey** | 0.68 | **genuine-disagreement** | 0.00 (0/3 pairs equiv) | converge-lean | **converge — confirmed, hard** |
+| **steer** | 0.80 | **equivalent-diversity** | 1.00 (3/3 pairs equiv) | human's call | **by-design ← surprise** |
+
+**The headline: dispersion magnitude did not predict meaning.** Steer — the *highest* lexical
+dispersion (0.80) — is *pure equivalent-diversity*: three valid framings of the same direction.
+Survey — *lower* dispersion (0.68) — is *pure genuine-disagreement*: 0/3 pairs agree. The Jaccard
+number is necessary but **not sufficient**; the meaning axis (the judge) is what the contract
+needed — which is exactly the case for having built T-022-01. The findings' own asymmetry
+prediction ("steer's 0.72 may be *more* tolerable than survey's 0.69") is vindicated emphatically.
+
+Corroborations worth noting: expand staged the **identical filename** on casts 1 and 3
+(`thread-castplay-s-structured-stop-reason-gate-name-unit-or-s.md`) — same intent, near-verbatim;
+strong independent support for the judge's 1.00.
+
+**Honest nuance on survey (the sharp sub-question the whole-board judge does *not* isolate).** The
+judge compared **whole boards** and found them genuinely different rankings (0/3). But the
+contract's *specific* concern is narrower: **does the #1 recommended pull flip?** A board can
+disagree in the *tail* while agreeing on the *head*. The one surviving board's #1 was the obvious
+keystone ("Scaffold the Bun/TS project — src/** is empty against 62 tickets"), which a reasonable
+survey would pick every time. So the live read establishes **survey boards disagree as full
+rankings**; whether the *load-bearing #1 pull* itself is unstable is a sharper question — and the
+first job of any downstream survey-convergence epic is to **measure head-vs-tail disagreement
+before building a lever** (you converge what's actually unstable, not the whole board).
+
 ## The two axes (and who owns each)
 
 | Axis | What it means | Owner | Status / evidence |
@@ -60,16 +92,19 @@ head-on. That asymmetry is the substance of the contract — and exactly what th
 ## The fork (recommendation-first — the human's call)
 
 The deciding gesture is the human's; the evidence and recommendation are ours (IA-5 /
-E-018 fork-genuineness). Per play:
+E-018 fork-genuineness). **The sweep has now run, so each fork carries its live datum:**
 
-- **expand — recommend by-design.** *Assent ⇒* record "expand divergence is equivalent-diversity,
-  accepted; no convergence lever." *Dissent (sweep shows genuine-disagreement) ⇒* pull the lever.
-- **survey — recommend converge.** *Assent ⇒* mint the downstream convergence epic for survey
-  (the lever, below). *Dissent ⇒* record by-design and say so. **This is the load-bearing call** —
-  survey feeds the home's single recommendation.
-- **steer — no recommendation; genuinely the human's.** The sweep's `equivalent-diversity` vs
-  `genuine-disagreement` read *is* the decision input; until then the contract says "steer is the
-  open fork," which is itself an honest output (the E-014 andon-at-the-roadmap precedent).
+- **expand — by-design, confirmed.** Sweep: `equivalent-diversity` (1.00). Record "expand
+  divergence is equivalent-diversity, accepted; no convergence lever." *Fork closed by evidence.*
+- **survey — converge, confirmed (hard).** Sweep: `genuine-disagreement` (0.00) — the boards
+  genuinely differ run-to-run. The recommended human gesture: **assent ⇒ mint the downstream
+  survey-convergence epic** (the lever, below), whose *first* slice measures head-vs-tail (does the
+  #1 pull flip, or just the tail order?) before building anything. **The load-bearing call** —
+  survey feeds the home's single recommendation (IA-1).
+- **steer — by-design, resolved by surprise.** Sweep: `equivalent-diversity` (1.00) *despite* the
+  highest dispersion (0.80). The open fork the contract left for the human **closes toward
+  by-design with live evidence**: many valid framings of one direction are legitimate diversity,
+  not flip-flopping. No convergence lever for steer.
 
 **The downstream lever (named, NOT built here — E-022 non-goal).** If "converge" is chosen for
 any play, the *mechanism* is a separate downstream epic. Candidates to choose among there:
@@ -100,12 +135,15 @@ clean equivalent-diversity) re-opens that play's fork with the live datum.
 
 ## Honest about the sample
 
-- **The equivalence reads are recommendations, not measurements.** Per Design D1, the live sweep
-  is the human step; nothing in this note is a logged judge classification. The reasoning is from
-  *what each play's output drives*, not from a run.
-- **The by-design recommendations are the *less* certain ones.** "Accept the divergence" is a
-  claim the sweep could refute with a single genuine-disagreement pair; "converge" is the safer
-  default under uncertainty. Survey's converge-lean and steer's open-fork reflect this.
+- **The equivalence reads are now measured (N=3), not just reasoned.** The live sweep ran
+  (`sweep-logs/`); each per-play class is a logged judge classification over 3 casts on a fixed
+  input. Still **N=3 → directional, not proof**: three casts is a small sample, one judge, one
+  model. A 9-cast or 5×-judge re-run could shift a borderline read — though 1.00 / 0.00 / 1.00 are
+  unambiguous, not borderline.
+- **The whole-board judge over-counts survey's problem for the contract's purpose.** It scored
+  *full-ranking* disagreement; the contract cares about *#1-pull* stability. So "survey → converge"
+  is sound for board-ranking, but the lever's first job is to isolate whether the head or only the
+  tail is unstable (above). Don't converge what isn't actually moving.
 - **The contract spine is solid; the per-play leaves are directional.** *Validity-not-lexical* is
   grounded in E-014 + E-020 (measured) and `vision.md` (the stated promise). The per-play
   converge/by-design split rests on N=3 dispersion + reasoning about stakes — directional.

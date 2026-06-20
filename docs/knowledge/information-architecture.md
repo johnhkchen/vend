@@ -221,16 +221,18 @@ same result twice." Two axes, and only the first is the promise:
   0.50–0.72 dispersion lives. **Not promised globally**; adjudicated per play as
   *equivalent-diversity* (acceptable — say so) or *genuine-disagreement* (a defect — converge).
 
-The per-play verdict (E-022 **recommendation**, pending the live equivalence sweep that is the
-human step): **expand → by-design** (the grounded fragment pins intent; divergence is rewording,
-0.50); **survey → converge-lean** (it drives the home's single recommended pull, IA-1 — a #1
-signal that flips run-to-run is genuine disagreement, 0.69); **steer → the human's call** (0.72,
-but many *valid* framings of one direction may be legitimate diversity). The rule is **not**
-"high dispersion ⇒ converge": stakes and the output's role decide, which is why survey's 0.69
-outranks steer's 0.72 as a convergence concern. A "converge" verdict pulls a **downstream**
-convergence lever (canonical-form gate / consensus cast / temperature) — it never re-litigates
-the validity axis, which the gates already own. Evidence + the fork:
-`docs/active/work/T-022-02/findings.md`.
+The per-play verdict, **measured by the E-022 equivalence sweep (N=3, 2026-06-19)**: **expand →
+by-design** (`equivalent-diversity`, 1.00 — the grounded fragment pins intent; divergence is
+rewording, Jaccard 0.50); **survey → converge** (`genuine-disagreement`, 0.00 — the boards
+genuinely differ run-to-run, and survey drives the home's single recommended pull, IA-1); **steer
+→ by-design** (`equivalent-diversity`, 1.00 *despite* the highest dispersion, 0.80 — many valid
+framings of one direction, not flip-flopping). The decisive lesson: **dispersion magnitude does
+not predict meaning** — steer's 0.80 is pure diversity while survey's 0.68 is pure disagreement,
+so the *meaning* axis (the judge), not Jaccard, adjudicates the contract. A "converge" verdict
+pulls a **downstream** convergence lever (canonical-form gate / consensus cast / temperature) —
+never re-litigating the validity axis, which the gates already own; survey's lever must first
+isolate whether the load-bearing #1 pull flips or only the tail re-orders. Evidence + the resolved
+fork: `docs/active/work/T-022-02/findings.md`.
 
 ---
 
