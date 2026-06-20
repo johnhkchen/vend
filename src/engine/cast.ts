@@ -21,7 +21,10 @@
 
 import { appendFile, mkdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { ClaudeTimeoutError, dispense, type ResultMessage } from "../executor/claude.ts";
+import { type ResultMessage } from "../executor/claude.ts";
+import { ExecutorTimeoutError } from "../executor/executor.ts";
+import type { Executor } from "../executor/executor.ts";
+import { executorFor } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import type { CastContext, GateVerdict, Play } from "./play.ts";
@@ -70,6 +73,19 @@ export interface CastOptions {
    * variance reduction. NOT a quality bypass for normal use.
    */
   readonly skipGates?: boolean;
+  /**
+   * An explicit {@link Executor} INSTANCE to cast through (T-035-01) — highest precedence,
+   * bypassing {@link executorFor}. The injection seam: a test casts a play through a stub
+   * executor to prove the parse→gate→effect→log pipeline is executor-agnostic, and a caller
+   * that pre-resolved an executor can hand it straight in. Absent ⇒ resolved via the selector.
+   */
+  readonly executor?: Executor;
+  /**
+   * An executor id to resolve via {@link executorFor} (T-035-01) — the env/opt selection path.
+   * Lower precedence than {@link executor} (the instance). Absent ⇒ `executorFor()` ⇒
+   * `VEND_EXECUTOR` ⇒ Claude (so no opt and no env ⇒ Claude ⇒ byte-identical to today).
+   */
+  readonly executorId?: string;
 }
 
 /** The cast's MEASURED actuals (T-024-02) — what it actually cost, surfaced so the macro-wallet
@@ -182,10 +198,16 @@ export async function castPlay<I, O>(
   // (turnsUsed, logged below), not frozen.
   const maxTurns = resolveMaxTurns(opts.maxTurns, play.maxTurns);
 
+  // Resolve the executor for this cast (T-035-01): an explicit instance wins; else the
+  // selector picks by id/env, defaulting to Claude. No instance, no id, no env ⇒
+  // `executorFor()` ⇒ `ClaudeExecutor` ⇒ the same `dispense` with the same args ⇒
+  // byte-identical to before the interface existed.
+  const executor = opts.executor ?? executorFor(opts.executorId ? { executor: opts.executorId } : {});
+
   let timedOut = false;
   let result: ResultMessage | null = null;
   try {
-    result = await dispense({
+    result = await executor.dispense({
       prompt,
       model: opts.model, // undefined ⇒ no --model flag ⇒ CLI default
       maxTurns, // override ?? play default ?? undefined (no flag ⇒ unbounded turns)
@@ -194,7 +216,9 @@ export async function castPlay<I, O>(
       timeoutMs: timeoutMsFor(budget),
     });
   } catch (e) {
-    if (e instanceof ClaudeTimeoutError) timedOut = true;
+    // The generalized timeout (T-035-01): a Claude timeout is a `ClaudeTimeoutError`, an
+    // `ExecutorTimeoutError` subclass, so keying on the base catches every executor's timeout.
+    if (e instanceof ExecutorTimeoutError) timedOut = true;
     else throw e; // a genuine launch/absent-result failure is not a clean outcome
   }
 
