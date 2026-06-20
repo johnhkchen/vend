@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { BudgetOutcome } from "../budget/budget.ts";
 import type { GateVerdict } from "./play.ts";
 import type { StreamMessage } from "../executor/claude.ts";
+import { buildArgs } from "../executor/claude.ts";
 import type { PlayTools } from "./play.ts";
+import { DECOMPOSE_TOOLS } from "../play/decompose-epic-core.ts";
 import {
   castGateRows,
   classify,
@@ -239,5 +241,33 @@ describe("toolFlags — resolved tools → seam argv flags (T-032-02)", () => {
     const r = toolFlags(resolveTools({ mcp: ["a", "b"], allow: ["Read"] }, ["a", "b"]), PATH);
     expect(r.allowedTools).toEqual(["Read", "mcp__a", "mcp__b"]);
     expect(r.mcpConfig).toBe(PATH);
+  });
+});
+
+describe("decompose-epic tool-scoping LIVE PROOF — built argv, no cast (T-032-02 AC #5)", () => {
+  const PATH = "/repo/.mcp.json";
+  const AVAILABLE = ["codebase-memory-mcp"]; // what the committed .mcp.json yields
+
+  test("DECLARED play (codebase-memory present) ⇒ argv carries all three scoping flags", () => {
+    const argv = buildArgs(toolFlags(resolveTools(DECOMPOSE_TOOLS, AVAILABLE), PATH));
+    expect(argv).toContain("--mcp-config");
+    expect(argv).toContain(PATH);
+    expect(argv).toContain("--strict-mcp-config");
+    const i = argv.indexOf("--allowedTools");
+    expect(i).toBeGreaterThan(-1);
+    // one comma-joined element: the play's read built-ins + the codebase-memory wildcard
+    expect(argv[i + 1]).toBe("Read,Grep,Glob,mcp__codebase-memory-mcp");
+  });
+
+  test("UNDECLARED play ⇒ passthrough ⇒ argv is the base, byte-identical to today", () => {
+    const argv = buildArgs(toolFlags(resolveTools(undefined, AVAILABLE), PATH));
+    expect(argv).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+  });
+
+  test("ABSENT MCP (registry lacks codebase-memory) ⇒ the missing-capability andon, no flags", () => {
+    const resolved = resolveTools(DECOMPOSE_TOOLS, []); // empty/unbound project registry
+    expect(resolved).toEqual({ ok: false, missing: ["codebase-memory-mcp"] });
+    // and the defensive projection emits nothing (castPlay andons before dispense)
+    expect(buildArgs(toolFlags(resolved, PATH))).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
   });
 });

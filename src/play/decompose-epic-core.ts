@@ -17,6 +17,7 @@ import type { StreamMessage } from "../executor/claude.ts";
 import type { BudgetOutcome } from "../budget/budget.ts";
 import { isStop, type GateResult } from "../gate/gates.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
+import type { PlayTools } from "../engine/play.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned
@@ -45,6 +46,25 @@ export const DEFAULT_MODEL = "claude-cli-default";
  * ledger (the E-014 / IA-14 measure-then-tighten discipline). See work/T-015-02/design.md D2.
  */
 export const DECOMPOSE_MAX_TURNS = 15;
+
+/**
+ * DecomposeEpic's per-play TOOL declaration (E-032, T-032-02) — set on `decomposeEpicPlay.tools`
+ * and resolved at cast by `resolveTools(play.tools, available)` against the project `.mcp.json`.
+ * Lives in the addon-free core (the `DECOMPOSE_MAX_TURNS` precedent) so the live-proof argv test
+ * reads it WITHOUT loading the BAML addon.
+ *
+ *  - `mcp: ["codebase-memory-mcp"]` — the codebase-memory server the E-031 tickets wired by hand
+ *    into context; the play now DECLARES it, so the cast scopes exactly it in (and andons if the
+ *    project registry lacks it). With strict scoping this admits ONLY this server.
+ *  - `allow: ["Read", "Grep", "Glob"]` — read-only built-ins. The decompose agent reasons by
+ *    READING the board/epic/charter and searching the codebase ("go and see"); the play's WRITES
+ *    are its own `effect` (materialize), not the agent's. Least privilege: read to reason, the
+ *    harness writes.
+ */
+export const DECOMPOSE_TOOLS: PlayTools = {
+  mcp: ["codebase-memory-mcp"],
+  allow: ["Read", "Grep", "Glob"],
+};
 
 /**
  * Pick the model id to stamp on the run log: the REAL id observed on the dispense
