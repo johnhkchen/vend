@@ -83,10 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-045 settled: the **≥10 forward-E1 bar is MET** (go upgraded provisional →
-bar-met; hardening E-043/E-044 confirmed live). The sweep minted the typed-DAG epic **E-046** (sound,
-but un-decomposed — decompose hit `budget-exhausted`); **resuming its decompose** is a ready pull
-under Frontier 3. Pull below.*
+| Signal | Value | Status |
+|---|---|---|
+| **`typed-dag-fan-out-join-substrate`** (Frontier 3 — the v1 vision's centerpiece) — generalize the linear chain into a typed DAG: a node/edge model + a topological executor with the first non-linear shapes (**fan-out** + **join**). E-046 (autonomously minted by E-045), **decompose resumed by HAND** (the architectural keystone warrants careful node/edge slicing). | **High/Keystone** (P1/P6 — the composition substrate everything downstream sits on) | **active → E-046** — hand-decomposed into S-046-01 (T-046-01 graph model + topoSort → T-046-02 `runGraph` pure core → T-046-03 `castGraph` shell + worked example + fails-vs-linear test). Free/deterministic (stub nodes; a live real-play graph is downstream). Awaiting `lisa loop`. |
 
 ---
 
@@ -143,11 +142,11 @@ under Frontier 3. Pull below.*
   the concrete board #1 E-044 surfaced). **Decompose hit `budget-exhausted` (clean P7) ⇒ epic exists
   but is un-decomposed (no stories/tickets yet) — a partial chain.** A future pull resumes
   `decompose-epic` to clear it; until then E-046 is open and childless by budget, not by orphaning.
-  - **Resume E-046's decompose** — `decompose-epic` on E-046 (the DAG epic) — **ready.** The DAG is
-    the architectural keystone, so this likely warrants a *hand* decompose (careful node/edge slicing)
-    over a fat-budget autonomous re-cast. Either way: a real, grounded epic awaiting its tickets.
-    *(Finding: the macro-wallet had depleted by the decompose step — heavy epics may want a fatter
-    macro budget or a per-step floor; a mild echo of the E-038 envelope thread, noted not pulled.)*
+  - ~~Resume E-046's decompose~~ → **done (hand-decomposed) → in flight:** S-046-01 (T-046-01 graph
+    model + topoSort → T-046-02 `runGraph` pure core → T-046-03 `castGraph` shell + worked example),
+    mirroring the chain's pure-core ⊥ shell split. *(Finding kept: the macro-wallet had depleted by the
+    decompose step — heavy epics may want a fatter macro budget or a per-step floor; a mild echo of the
+    E-038 envelope thread, noted not pulled.)*
 - **Per-play executor / BAML-client selection.** A play declares *which model* it
   runs on — the natural successor to E-032 (per-play tooling) + E-035/E-036's
   selection seams. **Standard.** ~1 block.
