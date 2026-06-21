@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { detectCollisions } from "./id-guard.ts";
+import { detectCollisions, findExistingByTitle } from "./id-guard.ts";
 
 // T-004-01 id-guard: the PURE cross-board collision detector, covered to every branch.
 // No baml imports at all (the module sees only string arrays) — this is the purest test
@@ -61,5 +61,55 @@ describe("purity — inputs are not mutated", () => {
     expect(detectCollisions(generated, existing)).toEqual(["T-004-01"]);
     expect(generated).toEqual(["S-004", "T-004-01"]);
     expect(existing).toEqual(["T-004-01"]);
+  });
+});
+
+// T-043-01: the title-keyed adoption oracle — the sibling that catches a duplicate PROPOSAL
+// (same title, fresh re-minted id) that `detectCollisions` (id-reuse only) cannot. Same pure-test
+// discipline: no BAML import, exact `toBe`/`toEqual`, `Object.freeze` to prove non-mutation.
+
+describe("findExistingByTitle — title-keyed adoption oracle", () => {
+  test("an existing same-title epic → its id (the E-041/E-042 incident: adopt E-042, mint nothing)", () => {
+    // a board where the doctor epic is already minted as E-042; a retry proposing the SAME title
+    // must ADOPT E-042 rather than mint a fresh E-043 orphan (what E-041 was).
+    const board = [
+      { id: "E-040", title: "macro-wallet" },
+      { id: "E-042", title: "vend-doctor-preflight" },
+    ];
+    expect(findExistingByTitle("vend-doctor-preflight", board)).toBe("E-042");
+  });
+
+  test("a genuinely new title → null (mint as usual)", () => {
+    const board = [{ id: "E-001", title: "ramp-the-shelf" }];
+    expect(findExistingByTitle("brand-new-epic", board)).toBeNull();
+  });
+
+  test("normalization: differing case and surrounding whitespace still match", () => {
+    const board = [{ id: "E-007", title: "Stand-Up-The-Shelf" }];
+    expect(findExistingByTitle("  stand-up-the-shelf  ", board)).toBe("E-007");
+  });
+
+  test("a blank target never adopts — even against a blank-titled entry", () => {
+    const board = [{ id: "E-005", title: "" }];
+    expect(findExistingByTitle("", board)).toBeNull();
+    expect(findExistingByTitle("   ", board)).toBeNull();
+  });
+
+  test("an empty board → null (nothing to adopt)", () => {
+    expect(findExistingByTitle("anything", [])).toBeNull();
+  });
+
+  test("first match wins (input order) when two entries share a title", () => {
+    const board = [
+      { id: "E-002", title: "dup-title" },
+      { id: "E-009", title: "dup-title" },
+    ];
+    expect(findExistingByTitle("dup-title", board)).toBe("E-002");
+  });
+
+  test("purity — frozen inputs survive the call unchanged", () => {
+    const board = Object.freeze([Object.freeze({ id: "E-042", title: "vend-doctor-preflight" })]);
+    expect(findExistingByTitle("vend-doctor-preflight", board)).toBe("E-042");
+    expect(board).toEqual([{ id: "E-042", title: "vend-doctor-preflight" }]);
   });
 });

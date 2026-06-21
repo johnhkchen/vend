@@ -104,6 +104,45 @@ async function listIds(root: string, dir: string): Promise<string[]> {
   return listIdsIn(join(root, dir));
 }
 
+/** An epic on the board paired with its frontmatter title — the unit
+ *  {@link listEpicIdTitlesIn} yields and {@link import("./id-guard.ts").findExistingByTitle} reads. */
+export interface EpicIdTitle {
+  readonly id: string;
+  readonly title: string;
+}
+
+/**
+ * List each `*.md` on the board paired with its frontmatter `title:` (T-043-01) — the titled sibling
+ * of {@link listIdsIn}, for the propose-epic effect's title-keyed adoption guard. `id` is the
+ * BASENAME (so `pairs.map(p => p.id)` is byte-identical to {@link listIdsIn} — the new-title mint
+ * path is unchanged), and `title` is greped from the file with the `epicIdOf` regex aimed at
+ * `title:` (no YAML parser in the repo — frontmatter is string-matched), or `""` when absent.
+ * Tolerates a missing dir → `[]` and skips an unreadable file, never throwing — the {@link listIdsIn}
+ * discipline. `node:fs` only: this module imports no native addon, so the effect stays addon-free.
+ */
+export async function listEpicIdTitlesIn(dir: string): Promise<EpicIdTitle[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: EpicIdTitle[] = [];
+  for (const name of entries) {
+    if (!name.endsWith(".md")) continue;
+    const id = name.slice(0, -3);
+    let body: string;
+    try {
+      body = await readFile(join(dir, name), "utf8");
+    } catch {
+      continue;
+    }
+    const m = body.match(/^\s*title:\s*(\S+)/m);
+    out.push({ id, title: m?.[1] ?? "" });
+  }
+  return out;
+}
+
 /**
  * Read + assemble the three DecomposeEpic inputs. The IMPURE verb. Reads the epic and
  * charter files verbatim (the charter MUST be the real one — bounds gate greps it),

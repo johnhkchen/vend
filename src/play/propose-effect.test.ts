@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CardColor, CardRarity, CardType, EpicCard } from "../../baml_client/index.ts";
@@ -149,5 +149,75 @@ describe("clear → classify wiring — a clear materializes; a gate STOP writes
     const v = classify({ timedOut: false, budgetOutcome: inBudget, gateVerdict: stop });
     expect(v.outcome).toBe("gate-failed");
     expect(v.materialize).toBe(false);
+  });
+});
+
+// T-043-01 AC#3: the DETERMINISTIC, no-live-model proof of title-keyed idempotency. Driving the real
+// effect end-to-end against a temp-dir board (its first run writes a real card via `renderCard`, so
+// the on-disk `title:` is the genuine one), running TWICE with the same card mints ONCE — the second
+// run adopts the first. This is precisely the E-041/E-042 incident (a retry of the doctor proposal):
+// before this change the retry minted a fresh childless E-041 orphan; now it adopts and mints nothing.
+describe("proposeEpicEffect — title-keyed idempotency (AC#3)", () => {
+  /** Count the minted epic cards (`E-*.md`) on a board dir. */
+  async function countEpicCards(dir: string): Promise<number> {
+    const names = await readdir(dir);
+    return names.filter((n) => /^E-\d+\.md$/.test(n)).length;
+  }
+
+  test("running the SAME card twice mints once — the second run adopts the first (no orphan)", async () => {
+    const root = await seedRoot([]); // empty board → first run mints E-001
+    const dir = join(root, EPIC_DIR);
+    try {
+      const first = await proposeEpicEffect(FULL_CARD, ctxFor(root, []));
+      expect(first.ok).toBe(true);
+      expect(first.produced).toBe(join(dir, "E-001.md"));
+      expect(await countEpicCards(dir)).toBe(1);
+
+      // the retry: the model re-mints card.id blind (still E-999), same TITLE — must ADOPT E-001.
+      const second = await proposeEpicEffect(FULL_CARD, ctxFor(root, ["E-001"]));
+      expect(second.ok).toBe(true);
+      expect(second.outcome).toBeUndefined(); // a success, not a relabeled failure
+      expect(second.produced).toBe(first.produced); // same card handed downstream
+      expect(second.artifacts).toEqual([join(dir, "E-001.md")]);
+      expect(second.detail).toContain("idempotent");
+      expect(second.detail).toContain("E-001");
+      // the proof: the board still holds exactly ONE card — no E-002 orphan was minted.
+      expect(await countEpicCards(dir)).toBe(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("two DISTINCT-title cards still mint two epics (new-title path / back-compat intact)", async () => {
+    const root = await seedRoot([]);
+    const dir = join(root, EPIC_DIR);
+    try {
+      const a = await proposeEpicEffect(FULL_CARD, ctxFor(root, []));
+      const b = await proposeEpicEffect({ ...FULL_CARD, title: "a-different-epic" }, ctxFor(root, ["E-001"]));
+      expect(a.produced).toBe(join(dir, "E-001.md"));
+      expect(b.produced).toBe(join(dir, "E-002.md"));
+      expect(a.produced).not.toBe(b.produced);
+      expect(await countEpicCards(dir)).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("adopts a same-title epic already on a POPULATED board, minting nothing", async () => {
+    const root = await seedRoot([]);
+    const dir = join(root, EPIC_DIR);
+    try {
+      // seed a populated board where E-040 already carries FULL_CARD's title.
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "E-039.md"), `---\nid: E-039\ntitle: some-other\n---\n`, "utf8");
+      await writeFile(join(dir, "E-040.md"), `---\nid: E-040\ntitle: ${FULL_CARD.title}\n---\n`, "utf8");
+      const res = await proposeEpicEffect(FULL_CARD, ctxFor(root, ["E-039", "E-040"]));
+      expect(res.ok).toBe(true);
+      expect(res.produced).toBe(join(dir, "E-040.md")); // adopted, not a fresh E-041
+      expect(res.detail).toContain("E-040");
+      expect(await countEpicCards(dir)).toBe(2); // no third card minted
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

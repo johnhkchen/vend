@@ -22,14 +22,24 @@
 // cannot clobber). The structural gate's `card.id` check stays a quality pre-flight on the
 // model's output; THIS is the authoritative assignment. The mirror of materialize.ts's
 // final cross-board guard before any write.
+//
+// IDEMPOTENCY (T-043-01): the re-mint is TOCTOU-safe against clobbering but NOT against a RETRY of
+// the same proposal — a second run for one proposal grabs the NEXT free slot and writes a second
+// card with the same title (E-039's E-041/E-042 double-mint; verdict in work/T-039-02). The id is
+// re-minted blind each run, so the stable identity across a retry is the TITLE. Before minting, the
+// effect now ADOPTS an existing same-title epic via `findExistingByTitle` — returning ok with its
+// path and minting nothing — so a retried chain proceeds idempotently on the one card. A genuinely
+// NEW title still mints `nextEpicId` exactly as before (back-compat). This makes the EFFECT
+// idempotent on title; it does not change WHY the effect re-ran (the chain retry — a separate
+// observation), and `detectCollisions` / E-004 (id-REUSE, a different failure) stay unchanged.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { EpicCard } from "../../baml_client/index.ts";
 import type { CastContext, EffectResult } from "../engine/play.ts";
 import { nextEpicId, renderCard } from "./propose-core.ts";
-import { detectCollisions } from "./id-guard.ts";
-import { listIdsIn } from "./project-context.ts";
+import { detectCollisions, findExistingByTitle } from "./id-guard.ts";
+import { listEpicIdTitlesIn } from "./project-context.ts";
 
 /** Where a minted epic card lands, relative to the cast's `projectRoot`. The real board dir
  *  (singular `epic`, matching `docs/active/epic/`), so a proposed card joins the live board. */
@@ -67,8 +77,25 @@ export async function proposeEpicEffect(
   ctx: CastContext<ProposeEpicInputs>,
 ): Promise<EffectResult> {
   const dir = join(ctx.projectRoot, EPIC_DIR);
-  const live = await listIdsIn(dir);
+  const liveEpics = await listEpicIdTitlesIn(dir);
 
+  // ADOPT-BEFORE-MINT (T-043-01): if this proposal's title is already on the board, this run is a
+  // retry of an already-minted proposal — adopt the existing card (no second mint, no orphan) and
+  // hand its path downstream so the chain decomposes the one epic. Idempotent on title.
+  const adopted = findExistingByTitle(card.title, liveEpics);
+  if (adopted !== null) {
+    const path = join(dir, `${adopted}.md`);
+    return {
+      ok: true,
+      detail: `idempotent — '${card.title}' already minted as ${adopted}`,
+      artifacts: [path],
+      produced: path,
+    };
+  }
+
+  // A genuinely new title — mint as before. `live` is byte-identical to the old `listIdsIn(dir)`
+  // (same `*.md` filter, same basename rule), so the re-mint policy is unchanged.
+  const live = liveEpics.map((e) => e.id);
   const minted = nextEpicId(live);
   const collisions = detectCollisions([minted], live);
   if (collisions.length > 0) {

@@ -35,3 +35,42 @@ export function detectCollisions(generated: readonly string[], existing: readonl
   }
   return collisions;
 }
+
+// Title-keyed adoption oracle (T-043-01) — the sibling of `detectCollisions`, one axis over.
+//
+// `detectCollisions` catches id REUSE (a generated id already on the board). It cannot catch a
+// duplicate PROPOSAL: a retried propose-epic run re-mints a FRESH max+1 id, so two cards with the
+// SAME TITLE both pass the collision guard (E-039's E-041/E-042 double-mint — verdict in
+// work/T-039-02). The stable identity across a retry is the TITLE (the model re-mints `card.id`
+// blind each run); this oracle is what lets `proposeEpicEffect` ADOPT an existing same-title epic
+// instead of minting a second one.
+//
+// PURE and TOTAL — like `detectCollisions`, it never touches fs/clock/addon and never throws. It
+// sees only `{id, title}` (structural, no BAML import), so the module stays the purest in the tree.
+
+/** Normalize a title to its identity for matching — trim + lowercase. `renderCard` writes
+ *  `title: <card.title>` verbatim, so the on-disk title already equals the card's; this is a cheap,
+ *  total guard against incidental whitespace/case drift, not a slugifier the data doesn't need. */
+function normalizeTitle(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+/**
+ * Return the id of the first existing epic whose (normalized) title matches `title`, else `null`.
+ * PURE and TOTAL. A non-null result is the id to ADOPT (the proposal was already minted — idempotent
+ * retry); `null` means the title is new and the effect should mint `nextEpicId` as usual. A blank
+ * target never adopts (returns `null` even against a blank-titled entry) — the structural gate already
+ * requires a non-empty title; this is defense in depth. First-match (input order) is deterministic.
+ * `existing` is a membership oracle only; inputs are not mutated.
+ */
+export function findExistingByTitle(
+  title: string,
+  existing: ReadonlyArray<{ readonly id: string; readonly title: string }>,
+): string | null {
+  const target = normalizeTitle(title);
+  if (target === "") return null;
+  for (const epic of existing) {
+    if (normalizeTitle(epic.title) === target) return epic.id;
+  }
+  return null;
+}
