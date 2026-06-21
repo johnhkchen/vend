@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`prove-live-join-shared-wallet`** (Frontier 3 / P7·P4·P6) — close E-047's last stub-only gap: prove the 2-upstream JOIN runs LIVE end-to-end under ONE shared wallet (thread E-048's wallet through `castRealPlayGraph`, re-cast the diamond, prove `capture-note` runs + receives both proposes). E-052, **minted + decomposed live by `vend chain`** (best autonomous output yet — cited `graph-real-play.ts:168`, split free-wiring from live-cast). | **High** (the single remaining stub-only property on the E-046/47/48 substrate) | **active → E-052** — T-052-01 thread ONE shared wallet through `castRealPlayGraph` (FREE/deterministic wiring) → T-052-02 re-cast the diamond **LIVE** + settle the join verdict (capture-note ran, 2-entry NodeUpstreams, concurrency held, single wallet). **NOTE: T-052-02 is a LIVE metered cast (~4 `claude -p`, ~$2)** — the loop authorizes the spend. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -166,10 +164,15 @@ live-join re-cast remain.) **High.**
     through `castGraph`. Absent `when` ⇒ unconditional fan-out (back-compat). 1162 tests. **Dogfood
     milestone: the first epic Vend both self-PROPOSED and self-DECOMPOSED via `vend chain`** (propose
     clean; decompose needed 120k→350k — the warranted envelope under-bounds decompose).
-  - ~~Live multi-upstream join re-cast (unblocked by E-048)~~ → **pulled → E-052 (`prove-live-join-shared-wallet`),
-    in flight.** Thread E-048's shared wallet through `castRealPlayGraph` (per-node budgets → ONE envelope,
-    the `graph-real-play.ts:168` gap) and re-cast the diamond LIVE so `capture-note` runs + receives both
-    proposes' produced (the 2-entry `NodeUpstreams` join). T-052-02 is the live metered cast. See **In flight**.
+  - ~~Live multi-upstream join re-cast~~ → **done → E-052 (cleared, crystallized).** Cast the diamond LIVE
+    under E-048's ONE shared wallet; `capture-note` ran + MATERIALIZED a note consolidating both proposes'
+    epics — the 2-upstream join proven live (took 4 metered runs; the live join also needed per-CAST
+    budgets sized to real burn — a calibration note, not a substrate gap). **The DAG substrate (E-046→052)
+    is now proven LIVE in full — no stub-gated property left.**
+  - **Remaining on the substrate: cycle detection + error/halt semantics.** The wave dispatcher has no
+    cycle guard / deterministic error verdict (the live cast's own consolidation note flagged this as the
+    "single remaining graph primitive"). The last Frontier-3 follow-on. **Standard** (~1 block, substrate
+    proven beneath it).
 - ~~**Decompose-envelope under-bounds (E-045, E-049).**~~ → **done → E-050 (`measurement-funding-headroom`,
   cleared, crystallized).** Broke the censoring ratchet — `fundingEnvelope` funds early/under-calibrated
   runs above the lower bound censored runs already log (`max(priced, maxCensoredActual × headroom)`), so
