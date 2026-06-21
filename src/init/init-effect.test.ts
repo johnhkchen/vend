@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { countDemandRows, SCAFFOLD_MANIFEST, type ScaffoldEntry } from "./init-core.ts";
-import { applyInitScaffold } from "./init-effect.ts";
+import { applyInitScaffold, runInit } from "./init-effect.ts";
 
 // T-040-02: the guarded-live proof for the scaffold WRITE EFFECT — an ordinary `bun test`
 // against a REAL temp-dir projectRoot (the propose-effect.test.ts / expand-effect.test.ts
@@ -125,6 +125,67 @@ describe("applyInitScaffold — idempotent second apply", () => {
       for (const entry of SCAFFOLD_MANIFEST) {
         expect(await exists(join(root, entry.path))).toBe(true);
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// T-040-03: the refuse-or-apply composition the CLI `vend init` arm calls. Guarded-live, same
+// temp-dir discipline as the apply tests: detection gates on the project root's top-level markers,
+// a `not-lisa` refusal writes NOTHING, and a lisa root scaffolds (idempotently on a second run).
+describe("runInit — refuse-or-apply composition", () => {
+  test("a non-lisa root is refused as a typed andon and writes nothing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-init-nolisa-"));
+    try {
+      const outcome = await runInit(root);
+      expect(outcome).toEqual({ kind: "not-lisa", root });
+      // the refusal is inert — no manifest path materialized.
+      for (const entry of SCAFFOLD_MANIFEST) {
+        expect(await exists(join(root, entry.path))).toBe(false);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a bare lisa root (CLAUDE.md) scaffolds the full tree with a truthful tally", async () => {
+    const root = await seedBareLisa();
+    try {
+      const outcome = await runInit(root);
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      expect(outcome.result.created.length).toBe(SCAFFOLD_MANIFEST.length);
+      expect(outcome.result.skipped).toEqual([]);
+      for (const entry of SCAFFOLD_MANIFEST) {
+        expect(await exists(join(root, entry.path))).toBe(true);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a second runInit is idempotent — scaffolded, zero created, all skipped", async () => {
+    const root = await seedBareLisa();
+    try {
+      await runInit(root);
+      const outcome = await runInit(root);
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      expect(outcome.result.created).toEqual([]);
+      expect(outcome.result.skipped.length).toBe(SCAFFOLD_MANIFEST.length);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("either marker suffices — a root with only .lisa.toml is detected as lisa", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-init-toml-"));
+    try {
+      await writeFile(join(root, ".lisa.toml"), "# generated lisa project\n", "utf8");
+      const outcome = await runInit(root);
+      expect(outcome.kind).toBe("scaffolded");
+      expect(await exists(join(root, "docs/active/demand.md"))).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
