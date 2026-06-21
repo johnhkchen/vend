@@ -18,6 +18,7 @@ import type { BudgetOutcome } from "../budget/budget.ts";
 import { isStop, type GateResult } from "../gate/gates.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 import type { PlayTools } from "../engine/play.ts";
+import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned
@@ -60,10 +61,14 @@ export const DECOMPOSE_MAX_TURNS = 15;
  *    READING the board/epic/charter and searching the codebase ("go and see"); the play's WRITES
  *    are its own `effect` (materialize), not the agent's. Least privilege: read to reason, the
  *    harness writes.
+ *  - `deny: AUTONOMOUS_DENY` (E-051) — make AskUserQuestion UNAVAILABLE: decompose is an autonomous
+ *    cast run headless via `claude -p` with no answerer, and E-049 stalled when the agent improvised
+ *    a mid-decompose question. The subtractive denylist rides alongside the strict allowlist above.
  */
 export const DECOMPOSE_TOOLS: PlayTools = {
   mcp: ["codebase-memory-mcp"],
   allow: ["Read", "Grep", "Glob"],
+  deny: AUTONOMOUS_DENY,
 };
 
 /**

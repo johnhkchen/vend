@@ -29,6 +29,7 @@ import { registry, type Card, type Play } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
 import type { Budget } from "../budget/budget.ts";
 import { clear } from "./propose-core.ts";
+import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 import { buildProjectSnapshot, listIdsIn, CHARTER_PATH } from "./project-context.ts";
 import { EPIC_DIR, proposeEpicEffect, type ProposeEpicInputs } from "./propose-effect.ts";
 
@@ -104,6 +105,13 @@ export const proposeEpicPlay: Play<ProposeEpicInputs, EpicCard> = {
   // under-shot — a live chain cast spent ~109k (budget-exhausted at 60k). 150k clears the
   // observed spend with headroom. (E-013's loop sets this from the real log once it warms.)
   budget: { timeMs: 1_800_000, tokens: 150_000 },
+  // Per-play tool provisioning (E-051): propose-epic is an autonomous cast run headless via
+  // `claude -p`, so deny AskUserQuestion — it has no answerer on a piped cast and would hang the
+  // cast (the E-049 failure mode). A deny-ONLY declaration: `resolveTools` keeps this play
+  // scoping-PASSTHROUGH (no `mcp`/`allow` ⇒ no `--allowedTools`/`--strict-mcp-config`), so it
+  // retains its global MCP set and gains exactly `--disallowedTools AskUserQuestion`. Interactive
+  // plays declare no `tools` and stay flag-free.
+  tools: { deny: AUTONOMOUS_DENY },
   card: { color: ["blue"], type: "permanent", rarity: "rare" } satisfies Card,
 };
 

@@ -362,4 +362,13 @@ describe("autonomous-deny LIVE PROOF — built argv carries --disallowedTools (T
     expect(argv).not.toContain("--disallowedTools");
     expect(argv).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
   });
+
+  test("WIRING GUARD: the policy and the decompose declaration actually carry AskUserQuestion", () => {
+    // Pins the source of truth and the one play that declares tools directly (decompose). propose's
+    // play object loads BAML, so its deny-only shape is proven by the deny-only argv test above.
+    expect([...AUTONOMOUS_DENY]).toEqual(["AskUserQuestion"]);
+    expect(DECOMPOSE_TOOLS.deny).toContain("AskUserQuestion");
+    // and the real decompose tool-set resolves to an argv carrying the deny flag.
+    carriesDeny(buildArgs(toolFlags(resolveTools(DECOMPOSE_TOOLS, AVAILABLE), PATH)));
+  });
 });
