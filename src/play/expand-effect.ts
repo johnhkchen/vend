@@ -102,6 +102,54 @@ export function renderStagedSignal(signal: Signal): string {
 }
 
 /**
+ * A non-dev's feedback on a rendered work-graph node — the inbound half of E-057's round-trip.
+ * Captured ONCE, at annotation, as data (P1): the feedback `text` (the fragment the expand clearing
+ * prices into a Signal), the `nodeId` it was left on (a board work-item id from the rendered view —
+ * `E-…`/`S-…`/`T-…`), and the `seat` that left it. An Annotation mints no id and carries no Signal
+ * fields (tier/budget/advances are DERIVED by the clearing, not stated here) — it is the raw
+ * fragment + provenance, exactly the E-016 "annotation = fragment plus provenance" reuse contract.
+ */
+export interface Annotation {
+  readonly text: string;
+  readonly nodeId: string;
+  readonly seat: string;
+}
+
+/** Map a work-item node id to a board-relative back-link href, as seen from a staged file under
+ *  {@link STAGING_DIR} (`docs/active/pm/staged/`). PURE: id-prefix → board dir (`E-`→epic,
+ *  `S-`→stories, `T-`→tickets); an unknown prefix → an in-doc anchor `#<id>` so the link is never
+ *  broken and the helper never throws on odd input. Local to this module (the {@link slugify}
+ *  copied-not-imported idiom — no shared util, the gates.ts no-shared-util rule). */
+function workItemHref(nodeId: string): string {
+  const dir = nodeId.startsWith("E-")
+    ? "epic"
+    : nodeId.startsWith("S-")
+      ? "stories"
+      : nodeId.startsWith("T-")
+        ? "tickets"
+        : null;
+  return dir ? `../../${dir}/${nodeId}.md` : `#${nodeId}`;
+}
+
+/**
+ * Render an Annotation's PROVENANCE TRAILER + BACK-LINK for a staged signal — the sibling of
+ * {@link renderStagedSignal}'s origin trailer, naming the HUMAN source (seat X on node Y) rather
+ * than the play source. PURE (the `renderStagedSignal`/`slugify` pattern): deterministic, no clock,
+ * no fs, no BAML — `Signal` is a type-only import. Two italic-underscore lines:
+ *  - a provenance line quoting the priced `signal.what`, naming the `seat` and the `nodeId`,
+ *  - a back-link referencing the annotated work item ({@link workItemHref} gives the board-relative
+ *    path).
+ * T-057-02 threads this into `renderStagedSignal`; here it is the standalone pure building block.
+ */
+export function renderAnnotationProvenance(signal: Signal, annotation: Annotation): string {
+  const { nodeId, seat } = annotation;
+  return [
+    `_Provenance: “${signal.what}” — raised by **${seat}** annotating node \`${nodeId}\` on the rendered work-graph._`,
+    `_↩ Back to the annotated work item: [\`${nodeId}\`](${workItemHref(nodeId)})._`,
+  ].join("\n");
+}
+
+/**
  * The play's EFFECT — STAGE the cleared signal under the PM desk. The one async, impure member of
  * the contract: it `mkdir -p`s `docs/active/pm/staged/` under `ctx.projectRoot` and writes the
  * rendered markdown to `<slug>.md`. NO BAML, NO spawn — so it is testable against a real temp-dir

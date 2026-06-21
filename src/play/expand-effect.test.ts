@@ -9,8 +9,10 @@ import { clear, EXPAND_GATE_NAMES, renderSignalRow, type ExpandClearContext } fr
 import {
   STAGING_DIR,
   expandFragmentEffect,
+  renderAnnotationProvenance,
   renderStagedSignal,
   slugify,
+  type Annotation,
   type ExpandFragmentInputs,
 } from "./expand-effect.ts";
 
@@ -162,5 +164,48 @@ describe("slugify + renderStagedSignal — pure helpers", () => {
     const body = renderStagedSignal(FULL_SIGNAL);
     expect(body.startsWith(`# ${FULL_SIGNAL.what}`)).toBe(true);
     expect(body).toContain(renderSignalRow(FULL_SIGNAL));
+  });
+});
+
+describe("renderAnnotationProvenance — provenance trailer + back-link (pure)", () => {
+  // A complete Annotation — the non-dev feedback the expand clearing prices into FULL_SIGNAL.
+  const FULL_ANNOTATION: Annotation = {
+    text: "this card's blocked edge is hard to spot on the board",
+    nodeId: "T-055-01",
+    seat: "designer",
+  };
+
+  test("the provenance line names the seat and the annotated node id (AC clause a)", () => {
+    const out = renderAnnotationProvenance(FULL_SIGNAL, FULL_ANNOTATION);
+    expect(out).toContain("Provenance:");
+    expect(out).toContain("designer"); // the seat
+    expect(out).toContain("T-055-01"); // the node id
+  });
+
+  test("the back-link references the annotated work item with a board-relative href (AC clause b)", () => {
+    const out = renderAnnotationProvenance(FULL_SIGNAL, FULL_ANNOTATION);
+    expect(out).toContain("Back to the annotated work item");
+    expect(out).toContain("[`T-055-01`]"); // the link names the work item
+    expect(out).toContain("../../tickets/T-055-01.md"); // a `T-…` id resolves under tickets/
+  });
+
+  test("uses the Signal param — the trailer quotes the priced signal's `what`", () => {
+    const out = renderAnnotationProvenance(FULL_SIGNAL, FULL_ANNOTATION);
+    expect(out).toContain(FULL_SIGNAL.what);
+  });
+
+  test("is deterministic across repeat calls (no clock, no random)", () => {
+    expect(renderAnnotationProvenance(FULL_SIGNAL, FULL_ANNOTATION)).toBe(
+      renderAnnotationProvenance(FULL_SIGNAL, FULL_ANNOTATION),
+    );
+  });
+
+  test("the back-link href maps the id prefix to its board dir; unknown prefix → an anchor", () => {
+    const onEpic = renderAnnotationProvenance(FULL_SIGNAL, { ...FULL_ANNOTATION, nodeId: "E-057" });
+    expect(onEpic).toContain("../../epic/E-057.md");
+    const onStory = renderAnnotationProvenance(FULL_SIGNAL, { ...FULL_ANNOTATION, nodeId: "S-057-01" });
+    expect(onStory).toContain("../../stories/S-057-01.md");
+    const onUnknown = renderAnnotationProvenance(FULL_SIGNAL, { ...FULL_ANNOTATION, nodeId: "node42" });
+    expect(onUnknown).toContain("(#node42)"); // unrecognized prefix falls back to an in-doc anchor
   });
 });
