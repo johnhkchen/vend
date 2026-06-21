@@ -60,6 +60,10 @@ export interface ProjectionLink {
   readonly from: string;
   readonly to: string;
   readonly kind: "depends_on";
+  /** Status-derived decision weight (E-056 edges-as-payload): `true` when the `from` ticket is not
+   *  done (its `stateKey` ≠ `"done"`), so a renderer can give blocking edges visual weight. Purely
+   *  derived from the frozen graph — no new data authority; same graph → same flag. */
+  readonly blocked: boolean;
 }
 
 /** The whole graph projected through one spec: ordered groups of colored cards + the link set, with
@@ -181,13 +185,16 @@ function colorFor(ticket: TicketNode, spec: PresentationSpec): string {
 /** Project every ticket's `dependsOn` into `(from → to)` links, `(from,to)`-sorted for determinism.
  *  Load-time integrity guarantees each `to` is a real ticket; the `ticketIds` guard keeps the
  *  function correct on a hand-built fixture too. Only `depends_on` is emitted — `blocks` is its
- *  inverse and would double every edge. */
+ *  inverse and would double every edge. Each link carries a `blocked` flag (E-056): since `from` is
+ *  always the loop ticket `t`, it is true exactly when `t` is not done (`stateKey(t) !== "done"`,
+ *  the same done-authority the rest of the layer uses) — a per-source property, hoisted accordingly. */
 function buildLinks(tickets: readonly TicketNode[]): ProjectionLink[] {
   const ticketIds = new Set(tickets.map((t) => t.id));
   const links: ProjectionLink[] = [];
   for (const t of tickets) {
+    const blocked = stateKey(t) !== "done"; // `from` is `t`; reuse the done-authority, no lookup
     for (const dep of t.dependsOn) {
-      if (ticketIds.has(dep)) links.push({ from: t.id, to: dep, kind: "depends_on" });
+      if (ticketIds.has(dep)) links.push({ from: t.id, to: dep, kind: "depends_on", blocked });
     }
   }
   links.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));

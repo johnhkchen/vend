@@ -114,11 +114,58 @@ describe("projectGraph — links (depends_on → edges; design D4)", () => {
   const p = projectGraph(graph, DESIGNER_PRESET);
 
   test("the one cross-story depends_on edge appears once, (from→to)-correct", () => {
-    expect(p.links).toEqual([{ from: "T-002-01", to: "T-001-03", kind: "depends_on" }]);
+    // `from` (T-002-01) is `open` → not done → the edge carries blocked:true (T-056-02).
+    expect(p.links).toEqual([{ from: "T-002-01", to: "T-001-03", kind: "depends_on", blocked: true }]);
   });
 
   test("blocks is NOT double-emitted as a reverse link", () => {
     expect(p.links.some((l) => l.from === "T-001-03")).toBe(false);
+  });
+});
+
+// ── T-056-02: edges-as-payload — the status-derived `blocked` flag on each ProjectionLink ──────────
+// A small local graph (kept separate from miniGraph so its assertions stay byte-unchanged) yields
+// BOTH polarities at once: A (done) → B (done) is a satisfied edge (blocked:false); C (open) → B is
+// a blocking edge (blocked:true). The flag keys off the `from` ticket's done-state, per the AC.
+
+describe("projectGraph — blocked flag (edges-as-payload; T-056-02)", () => {
+  function blockedGraph(): WorkGraph {
+    return buildGraph(
+      [epic("E-009")],
+      [story("S-009-01", ["T-009-A", "T-009-B", "T-009-C"])],
+      [
+        ticket("T-009-B", "S-009-01", { status: "done", phase: "done" }),
+        // A is done and depends on B → its outgoing edge is satisfied (blocked:false).
+        ticket("T-009-A", "S-009-01", { status: "done", phase: "done", depends_on: ["T-009-B"] }),
+        // C is open and depends on B → its outgoing edge is blocking (blocked:true).
+        ticket("T-009-C", "S-009-01", { status: "open", depends_on: ["T-009-B"] }),
+      ],
+    );
+  }
+  const linkFrom = (p: ReturnType<typeof projectGraph>, from: string) =>
+    p.links.find((l) => l.from === from)!;
+
+  test("a link whose `from` is NOT done carries blocked:true", () => {
+    const p = projectGraph(blockedGraph(), DESIGNER_PRESET);
+    expect(linkFrom(p, "T-009-C")).toEqual({ from: "T-009-C", to: "T-009-B", kind: "depends_on", blocked: true });
+  });
+
+  test("a link whose `from` IS done carries blocked:false", () => {
+    const p = projectGraph(blockedGraph(), DESIGNER_PRESET);
+    expect(linkFrom(p, "T-009-A")).toEqual({ from: "T-009-A", to: "T-009-B", kind: "depends_on", blocked: false });
+  });
+
+  test("authority guard: the input graph is returned reference-unchanged and stays frozen", () => {
+    const graph = blockedGraph();
+    const ticketsRefBefore = graph.tickets;
+    projectGraph(graph, DESIGNER_PRESET);
+    expect(graph.tickets).toBe(ticketsRefBefore);
+    expect(Object.isFrozen(graph)).toBe(true);
+  });
+
+  test("determinism: same graph → byte-identical links, blocked flag included (no clock/random)", () => {
+    const graph = blockedGraph();
+    expect(projectGraph(graph, DESIGNER_PRESET).links).toEqual(projectGraph(graph, DESIGNER_PRESET).links);
   });
 });
 
