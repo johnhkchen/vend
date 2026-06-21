@@ -196,11 +196,12 @@ live-join re-cast remain.) **High.**
   Linear MCP (not connected).** E-021 built the MCP-independent presentation layer per
   `pm/linear-surface-prep.md`, which defers live issue-creation to "the MCP stage." The SVG renderer above
   covers the visual-surface need without it; revisit Linear when an MCP is connected.
-- **Annotation → demand round-trip** — a teammate's annotation flows back as a priced demand signal via
-  `expand-fragment` (E-016), provenance + back-link, one-way-authority guarded. MCP-independent (the
-  annotation is text input; live fetch deferred). The complement to the SVG surface — what teammates do
-  *with* the rendered board. **Maya's "telephone-killer" — her deepest need (steer without a developer
-  translating); the originating designer request that spawned this whole line.** **High.**
+- **Annotation → demand round-trip** → **PULLING (staged).** A teammate leaves feedback on the rendered
+  view → comes back as a PROPOSED, priced demand signal (reuses `expand-fragment`'s clearing + its
+  `pm/staged/` "stage-not-promote" one-way-authority contract, E-016) stamped with provenance + a back-link
+  to the annotated node; a `vend annotate <node> "<text>"` seam, MCP-independent (text input; live Linear/
+  SVG comment fetch deferred). **Maya's "telephone-killer" — steer without a developer translating; the
+  originating designer request, and what a non-dev DOES with the now-glanceable board.** **High.**
 
 **SVG surface design-inputs (boarded from `pm/persona-research.md` — WIP, not committed). The glanceability +
 edges fix is in flight (above); these are the rest the personas sharpened:**
