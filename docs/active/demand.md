@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`disallow-askuserquestion-on-autonomous-casts`** (Frontier 6 / P4) — an unattended `claude -p` cast must not hang on `AskUserQuestion` (no answerer on a piped cast). E-051, **minted + decomposed live by `vend chain`** (the dogfood fixing the dogfood's own failure mode; decompose self-funded via E-050 — no manual budget, no hang). | **Standard→High** (P4 — the last manual-babysit failure mode; unblocks fully-unattended `vend chain`) | **active → E-051** — T-051-01 add `disallowedTools` to `buildArgs` (symmetric denylist beside `--allowedTools`, empty-omitted-emits-nothing) → T-051-02 route the `AskUserQuestion` denylist through the autonomous plays only (propose/decompose/work); interactive/TUI byte-identical. Deterministic (`buildArgs` PURE). Human-augmented (codebase-memory notes). Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -204,11 +202,11 @@ live-join re-cast remain.) **High.**
   honest-empty into `budget-exhausted` (stdout-only today), so the probe + `vend
   audit` can't split them; thread the stop-reason so it's countable. **Standard**
   (unblocks clean consistency/trust measurement). **Ready** — small (~1h).
-- ~~**Restrict autonomous casts' tool-set — no `AskUserQuestion` in a headless `claude -p`.**~~ → **pulled
-  → E-051 (`disallow-askuserquestion-on-autonomous-casts`), in flight.** Minted + decomposed live by
-  `vend chain` (the dogfood fixing its own failure mode — and the decompose self-funded via E-050, no
-  manual budget, no hang this time). `buildArgs` gains a symmetric `disallowedTools` denylist beside
-  `--allowedTools`, routed through the autonomous plays only. See **In flight** above.
+- ~~**Restrict autonomous casts' tool-set — no `AskUserQuestion` in a headless `claude -p`.**~~ → **done →
+  E-051 (cleared, crystallized).** `buildArgs` gained a symmetric `disallowedTools` → `--disallowedTools`
+  denylist (back-compat as E-032); a `PlayTools.deny` + `AUTONOMOUS_DENY` route the `AskUserQuestion` deny
+  through the autonomous plays only, interactive/TUI byte-identical. 1188 tests. **`vend chain` is now
+  unattended end-to-end** (both dogfood failure modes closed: budget → E-050, tools → E-051).
 - **`git bisect run` integration** — E-034's audit does a linear sweep; bisect is
   the faster backstop for a single red commit. **Leaf.** small.
 - **Mana economics** (`mana-economics.md`) — spend well *for* the author, improving
