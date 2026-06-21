@@ -83,36 +83,40 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`macro-wallet-live-clear`** (Frontier 1 keystone) — re-run the metered sweep now the censor's fixed (E-038): confirm a pull actually **clears** (propose finishes, a real epic mints) + the first **cleared** forward-E1 record. Aim at a **concrete** #1 (E-037's was self-referential). Metered, bounded by P7. | **Keystone** (P4/P7 + the trust cadence) | **active → E-039** — the live re-sweep (metered) → settle + honest verdict. Awaiting `lisa loop`. May still 0-clear (honest if so — the bottleneck moved). |
+*Nothing in flight — E-039 cleared (the wallet is now **watched clearing**: it minted `vend init`/
+`vend doctor`, which the loop then built). Frontier 1's residual is the forward-E1 **cadence** (8/10,
+4 cleared); Frontier 7 advanced (init+doctor built). Pull below.*
 
 ---
 
 ## Pullable signals (open demand)
 
-### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 + E-038 done; re-sweep → E-039 (in flight)**
+### Frontier 1 — Prove the autonomy loop (P4/P7) · *keystone* · **E-037 + E-038 + E-039 done — now WATCHED CLEARING**
 
-- **Re-run the live sweep** → **pulled → E-039 (in flight).** E-037 watched the wallet (cleared 0,
-  time-censor); **E-038 fixed it** (`timeoutMsFor × 2`). E-039 re-runs the bounded metered sweep to
-  confirm a pull actually **clears** (propose finishes, a real epic mints) + accrue the first
-  **cleared** forward record. Aims at a **concrete** #1 (E-037's was a self-referential "run the
-  sweep" meta-signal). May still 0-clear (honest if so — the bottleneck moved to decompose/tokens).
+- **Re-run the live sweep** → **done → E-039 (CLEARED 2).** E-037 watched the wallet *refuse*
+  (cleared 0, time-censor); **E-038 fixed it** (`timeoutMsFor × 2`); **E-039 re-ran the bounded
+  metered sweep and the wallet CLEARED** — 2 real pulls (`vend init`→**E-040**, `vend doctor`→
+  **E-042**, each 2 stories + 4 tickets, `lisa validate` green). `propose-epic` **finished at 93 s /
+  83 s, past the 72,785 ms wall** that censored E-037 ⇒ **E-038 proven live, in flight.** Clean P7
+  **wallet-exhausted** stop; auth==exec held (E-025). (Board #1 was self-referential again — re-pointed
+  at concrete demand before casting; a ranker follow-up, not a blocker.)
 - **Accrue cleared forward-E1 to ≥10.** Each `vend work --no-intervened` sweep that *clears* a pull
-  adds a genuine forward record (now **4/10**, all censored). The ≥10-genuine bar fully ungates the
-  macro-wallet's provisional go — a **cadence**, not a single epic.
-- **Macro-wallet live proof + forward-E1 accrual.** E-024 wired `vend work --budget`
-  to spend a feature-block budget down across casts (green, 825 tests). The headline
-  gesture is now **watched** (E-037, 2026-06-20): a real metered sweep demonstrated
-  **P4/P7 live** — bounded wallet, clean twin P7 `andon: timed-out` stop, truthful
-  receipt, auth==exec held (E-025). Forward-E1 moved **1/2 → 3/4 (sample 2/10 → 4/10)**
-  — but the +2 records are **censored** (`timed-out`), **not cleared pulls**: the
-  watched run was an **honest 0-clear**. So the go stays **provisional + forward-
-  leaning**, *not forward-confirmed*. **What remains to ungate:** (1) clear the
-  `propose-epic` per-step time-censor — its 72,785 ms p90 envelope censors the board's
-  top signal *before it can mint* (a recalibration fix, rhymes with Frontier 6); then
-  (2) accrue **cleared** forward records to **≥10**. **Keystone.**
-  (`work/T-037-03/verdict.md`, `work/T-037-02/sweep-log.md`, `work/T-026-04/verdict.md`.)
+  adds a genuine forward record. E-039 added the **first 4 cleared** forward records (ledger 30–33,
+  `intervened:false`+`success`): forward sample **4/10 → 8/10**, of which **0 → 4 are now cleared**
+  (the prior 4 were all censored). **+2 reports to the sample bar (≈1 cleared pull); ≈+3 more cleared
+  pulls to ≥10 genuinely cleared.** The ≥10-genuine bar fully ungates the provisional go — a
+  **cadence**, not a single epic.
+- **Macro-wallet live proof + forward-E1 accrual.** The headline gesture is now **watched CLEARING**
+  (E-039, 2026-06-20), upgraded from *watched refusing* (E-037): a real metered sweep cleared 2
+  grounded pulls on a bounded walk-away — P4/P7 live, truthful receipt, the propose time-censor (the
+  old named blocker) **cleared** by E-038. Forward-E1 moved on **cleared** (not censored) evidence for
+  the first time (**0 → 4 cleared; sample 4/10 → 8/10**). **But 2 cleared pulls is NOT the ≥10 bar** —
+  the go stays **provisional + forward-leaning, *not* forward-confirmed** (no over-claim off one
+  sweep — the load-bearing non-goal). **What remains to ungate:** accrue **cleared** forward records
+  to **≥10** (the propose time-censor is now off the critical path). Two follow-ups the run surfaced:
+  an **idempotent-mint guard** for `propose-epic` (it double-minted a now-deleted orphan E-041), and a
+  **steer ranker that demotes self-referential targets**. **Keystone.**
+  (`work/T-039-02/verdict.md`, `work/T-039-01/sweep-log.md`, `work/T-037-03/verdict.md`, `work/T-026-04/verdict.md`.)
 
 ### Frontier 2 — Live open-model runtime (P6)
 
@@ -171,17 +175,26 @@ named by the charter principle it advances and the gap it closes:
     ordering + routing + bounding invisibly; the consistency layer measures
     cache-hit + per-model cost and tunes it. The product-level goal these serve.
 
-### Frontier 7 — Distribution & onboarding (newly surfaced) — *PM-staged, awaiting a pull*
+### Frontier 7 — Distribution & onboarding (PM-staged) — *init + doctor built (by Vend); rest open*
 
 The board was **silent** on getting Vend *onto a machine* and a new user *driving it* — surfaced by
-E-037's loop (go-and-see + a **green** `bun build --compile` + BAML spike) and ranked by the PM's
-2026-06-20 distribution/onboarding cycle (`pm/proposed-batch.md`; detail in
-`pm/deployability-discovery.md` + `pm/onboarding-examples-discovery.md`). High-leverage on its own
-**and** it compounds the keystone (more driveable projects → more cleared runs → forward-E1 → the
-wallet ungates). Un-elaborated here (PE-6); the PM batch has the ranked detail. Recommended first
-pull: **`vend init`**. Signals: `vend init`/`vend doctor` · a driveable hackathon `examples/`
-template · Homebrew/`bun --compile` delivery · onboarding docs. **High** (foundation-first: init →
-example → delivery). *Pull from the PM batch when ready — the human pulls (pull-discipline).*
+E-037's loop + ranked by the PM's 2026-06-20 cycle (`pm/proposed-batch.md`, `pm/deployability-
+discovery.md`, `pm/onboarding-examples-discovery.md`). High-leverage **and** it compounds the keystone
+(more driveable projects → more cleared runs → forward-E1 → the wallet ungates). **First two signals
+already cleared — autonomously, by E-039's wallet sweep:** ✅ `vend init` (→ E-040, scaffold a
+driveable project, idempotent) · ✅ `vend doctor` (→ E-042, envinfo preflight + cast precondition
+guard). **Remaining:** a driveable hackathon `examples/` template · Homebrew / `bun --compile`
+delivery · onboarding docs. **High** (foundation laid; example → delivery next). *Pull from the PM
+batch — the human pulls (pull-discipline).*
+
+- **Idempotent-mint guard for `propose-epic`** (surfaced by E-039) — the `vend doctor` clear minted
+  the epic **twice** (E-042 + a childless orphan E-041, since deleted); an id double-allocation must
+  not leave a stray card. Add an idempotent guard so a re-mint of the same title/id is a no-op (rhymes
+  with the E-004 id-collision guard). **Standard** · **ready** · small (~1h).
+- **Steer ranker demotes self-referential targets** (surfaced by E-037 + E-039) — `vend steer`/
+  `survey` keep ranking *"run the sweep"* meta-signals #1, which propose-epic can't cleanly mint; the
+  ranker should demote introspective/self-referential targets beneath concrete product demand.
+  **Standard** (board-quality; both live sweeps hit it). small.
 
 ---
 
