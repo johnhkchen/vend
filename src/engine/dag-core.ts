@@ -27,14 +27,23 @@ import type { RunSummary } from "./cast.ts";
 export type NodeId = string;
 
 /**
- * A node's cast thunk — OPAQUE to this ticket. T-046-01 reads only a node's `id` and the edges;
- * how a node is cast (and how it receives its upstreams' `produced` refs) is T-046-02's concern,
- * which narrows this signature to its real upstream-collection shape. The wide `(...args)` form is
- * deliberate and honest: the model/validation/ordering here genuinely never invoke `cast`, exactly
- * as `runChain`'s sequencing never reads inside a `ChainStep.cast`. The `RunSummary` return is what
- * keeps the type-only import meaningful (the edge payload a downstream join will thread).
+ * The upstream `produced` references threaded into a node's cast, KEYED BY the upstream (from-)node
+ * id. T-046-02's `runGraph` builds this from a node's IN-edges: a SOURCE node (no in-edges) gets an
+ * EMPTY map, a LINEAR node a 1-entry map, a **JOIN** (≥2 in-edges) a multi-entry map. This is the
+ * graph generalization of `runChain`'s single `upstream: string | undefined` — the load-bearing
+ * shape the linear engine structurally cannot deliver (two upstreams into one node).
  */
-export type NodeCast = (...args: readonly unknown[]) => Promise<RunSummary>;
+export type NodeUpstreams = ReadonlyMap<NodeId, string>;
+
+/**
+ * A node's cast thunk. T-046-02 NARROWS this from T-046-01's wide `(...args)` placeholder to its
+ * real shape: it receives this node's {@link NodeUpstreams} (its upstreams' `produced` refs, keyed
+ * by from-node) and returns the node's {@link RunSummary} (which carries this node's OWN `produced`
+ * — the edge payload a downstream join threads). The play-specific adapter (upstreams → typed
+ * inputs → `castPlay`) is closed over by `cast` (T-046-03); this model/ordering layer still never
+ * invokes `cast` — exactly as `runChain`'s sequencing never reads inside a `ChainStep.cast`.
+ */
+export type NodeCast = (upstreams: NodeUpstreams) => Promise<RunSummary>;
 
 // ── The typed graph model ────────────────────────────────────────────────────
 
