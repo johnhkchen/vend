@@ -1,0 +1,11 @@
+# Cloudflare Pages config for the hackathon seed.
+#
+# HONEST BOUNDARY: this is config present + build-green, NOT a live deploy from
+# this repo. The app deploys on the *designer's* push, under their own
+# Cloudflare account — there are no Cloudflare credentials in the vend repo's
+# environment. `wrangler pages deploy dist` (or the GitHub workflow) reads this
+# file; the build command is `npm run build` and the output dir is `dist`.
+
+name = "hackathon-seed"
+compatibility_date = "2025-03-01"
+pages_build_output_dir = "dist"

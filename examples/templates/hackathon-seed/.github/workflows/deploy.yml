@@ -1,0 +1,31 @@
+# Literal "auto-deploy on the designer's push" path for the hackathon seed.
+#
+# HONEST BOUNDARY: this workflow is INERT without Cloudflare credentials. It is
+# config present, not exercised in the vend repo. The designer (or their fork)
+# sets repo secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; then every
+# push to main builds the static site and deploys it to Cloudflare Pages.
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=hackathon-seed

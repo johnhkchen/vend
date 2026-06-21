@@ -1,0 +1,29 @@
+---
+import HackathonApp from "../components/HackathonApp.tsx";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Hackathon Seed — vend</title>
+  </head>
+  <body style="margin: 0; background: #fafafa;">
+    <main>
+      <header style="text-align: center; padding: 2rem 1rem 0;">
+        <h1>Your hackathon app</h1>
+        <p style="color: #666;">
+          An Astro + React seed, auto-deployable to Cloudflare. Edit
+          <code>SEED.md</code>, then drive the build with vend.
+        </p>
+      </header>
+
+      <!-- The interactive React island (client:load forces hydration). -->
+      <HackathonApp client:load />
+
+      <!-- T-058-04 will embed the vend SVG work-graph board beside the app here. -->
+    </main>
+  </body>
+</html>
