@@ -83,9 +83,10 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`live-real-play-graph`** (Frontier 3 follow-on) — prove E-046's DAG substrate LIVE with real plays, not stubs: `survey → [propose-epic ×2 parallel] → capture-note (join)` through `castGraph`. The headline is **real concurrency** (2 real casts at once — the linear chain can't) + the multi-upstream join, live. Metered, bounded by P7. | **High** (the live confirmation of the v1-vision substrate) | **active → E-047** — build the real-play `DagSpec` (stub-tested wiring) + cast it live (metered) → settle (concurrency proof + honest first-composition read). The first composed playbook (modest). Awaiting `lisa loop`. |
+*Nothing in flight — E-047 done: the DAG substrate is **proven LIVE** (two real `propose` casts ran
+concurrently — the linear chain's ceiling broken in practice). The run skipped the join cleanly when a
+branch starved and **minted E-048 `cross-branch-budget-wallet`** (the cross-branch-budget follow-on,
+un-decomposed) — surface under Frontier 3. Board benign all-clear. Pull below.*
 
 ---
 
@@ -140,10 +141,20 @@ named by the charter principle it advances and the gap it closes:
   multi-upstream map, halt-the-dependent-subgraph), and `castGraph` (concurrent wave dispatcher) —
   proven fails-vs-linear (the diamond's 2-upstream join `runChain` can't express). The v1 vision's named
   capability exists at its minimum honest form. **Remaining (E-046's named follow-ons):** **conditional
-  edges** (branch on a node's result), a **live real-play graph** → **pulled → E-047 (in flight)**
-  (`survey → [propose ×2] → note` through `castGraph` — real concurrency live), **cross-branch budget accounting**
-  (the macro-wallet across parallel branches), and cycle/error semantics. Each a downstream pull onto
-  the proven substrate. **High.**
+  edges** (branch on a node's result — still open; it was *signal #1* of the E-047 cast but propose-1
+  was budget-exhausted before it minted, so this stays open demand), a **live real-play graph** →
+  **done → E-047** (`survey → [propose ×2] → note` through `castGraph` — **concurrency proven live**,
+  2 casts overlapped 68.97 s; the live multi-upstream join stays stub-proven only, since propose-1's
+  budget-exhaustion skipped the join; `work/T-047-02/graph-cast-log.md`), **cross-branch budget
+  accounting** (the macro-wallet across parallel branches) → **minted → E-048
+  (`cross-branch-budget-wallet`)** — the E-047 cast surfaced this gap live (per-branch envelopes, no
+  shared wave-level wallet) and minted the demand for it; minted-only, ready to decompose when pulled —
+  and cycle/error semantics. Each a downstream pull onto the proven substrate. **High.**
+  - **Decompose + build E-048 `cross-branch-budget-wallet`** — **ready.** A shared wave-level envelope
+    across a fan-out with a correct hard stop (P7 under concurrency), instead of per-branch wallets that
+    silently overspend. Self-minted by the E-047 cast; it **also unblocks the live multi-upstream join**
+    (with a shared budget both branches finish, so `capture-note` runs — the one piece E-047 left
+    stub-proven). The natural next Frontier-3 pull.
 - **Decompose-budget finding** (from E-045) — the macro-wallet depleted by the decompose step on the
   heavy DAG epic (E-046 minted but un-decomposed until the hand-resume). Heavy epics may want a fatter
   macro budget or a per-step decompose floor; a mild echo of the E-038 envelope thread. **Standard**,
