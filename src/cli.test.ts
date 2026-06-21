@@ -422,3 +422,19 @@ describe("parseArgs — init (T-040-03 scaffold command)", () => {
     expect(USAGE).toContain("vend init");
   });
 });
+
+describe("parseArgs — doctor (T-042-03 preflight command)", () => {
+  test("bare `doctor` parses to the no-arg doctor command", () => {
+    expect(parseArgs(["doctor"])).toEqual({ cmd: "doctor" });
+  });
+  test("doctor takes no arguments — an unexpected positional is usage", () => {
+    expect(parseArgs(["doctor", "junk"])).toEqual({ cmd: "usage", error: "unexpected doctor argument: junk" });
+  });
+  test("doctor takes no flags — an unknown flag is usage", () => {
+    expect(parseArgs(["doctor", "--json"]).cmd).toBe("usage");
+    expect(parseArgs(["doctor", "--budget", "1,2"]).cmd).toBe("usage");
+  });
+  test("USAGE lists the doctor line", () => {
+    expect(USAGE).toContain("vend doctor");
+  });
+});

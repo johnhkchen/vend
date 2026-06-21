@@ -22,6 +22,7 @@ export const USAGE =
   "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
   "       vend shelf\n" +
   "       vend init\n" +
+  "       vend doctor\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -66,6 +67,7 @@ export type ParsedCommand =
     }
   | { readonly cmd: "shelf" }
   | { readonly cmd: "init" }
+  | { readonly cmd: "doctor" }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -136,6 +138,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "work") return parseWorkArgs(argv);
   if (argv[0] === "shelf") return parseShelfArgs(argv);
   if (argv[0] === "init") return parseInitArgs(argv);
+  if (argv[0] === "doctor") return parseDoctorArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -163,6 +166,20 @@ function parseShelfArgs(argv: readonly string[]): ParsedCommand {
 function parseInitArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length > 1) return { cmd: "usage", error: `unexpected init argument: ${argv[1]}` };
   return { cmd: "init" };
+}
+
+/**
+ * Parse the read-only `doctor` preflight path (T-042-03) — probe the vend-specific deps (lisa &
+ * claude on PATH, the BAML native addon loadable, the active executor's config present) and
+ * report. PURE. Like `shelf`/`init`, doctor takes NO arguments AT ALL: there is no subject to type
+ * (the host environment is the implicit, only target) and nothing is cast, so there is no
+ * `--budget` to fund. Any token after `doctor` — a positional or a flag — is therefore an error.
+ * The probe, render, print, and exit are the dispatch arm's composition over `probeDoctor`
+ * (doctor-probe.ts) and `renderDoctorReport` (doctor-core.ts).
+ */
+function parseDoctorArgs(argv: readonly string[]): ParsedCommand {
+  if (argv.length > 1) return { cmd: "usage", error: `unexpected doctor argument: ${argv[1]}` };
+  return { cmd: "doctor" };
 }
 
 /**
@@ -708,6 +725,22 @@ if (import.meta.main) {
     const { created, skipped } = outcome.result;
     process.stdout.write(`vend init: scaffolded — ${created.length} created, ${skipped.length} skipped\n`);
     process.exit(0);
+  }
+
+  if (parsed.cmd === "doctor") {
+    // The preflight gate (T-042-03): probe the vend-specific deps (lisa & claude on PATH, the BAML
+    // native addon loadable, the active executor's config present), render the verdict, print it,
+    // and exit with the CORE-computed code (0 all-green / 1 any-broken). A broken dep is DATA — a
+    // clean `✗ <check> — <fix-it>` line, never a stack trace: `probeDoctor` never rejects (every
+    // check is wrapped by safeCheck) and `renderDoctorReport` never throws. Read-only — nothing is
+    // cast, so there is no budget. The report prints to STDOUT green OR red (it is a status
+    // checklist, not an error stream, like `work`'s receipt). Lazy import keeps the probe (and its
+    // transitive BAML addon) off the pure-parse path, exactly as the other arms keep their deps lazy.
+    const { probeDoctor } = await import("./doctor/doctor-probe.ts");
+    const { renderDoctorReport } = await import("./doctor/doctor-core.ts");
+    const report = renderDoctorReport(await probeDoctor());
+    process.stdout.write(`${report.report}\n`);
+    process.exit(report.exitCode);
   }
 
   if (parsed.cmd === "envelope") {
