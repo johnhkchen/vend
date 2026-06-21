@@ -67,7 +67,7 @@ function fakeProjection(): Projection {
       { key: "E-1", label: 'Lane <one> & "two"', cards: [card("T-1", "Alpha", "done"), card("T-2", "Beta", "open")] },
       { key: "E-2", label: "Second", cards: [card("T-3", "Gamma", "in_progress")] },
     ],
-    links: [{ from: "T-3", to: "T-1", kind: "depends_on" }],
+    links: [{ from: "T-3", to: "T-1", kind: "depends_on", blocked: false }],
   } as unknown as Projection;
 }
 
@@ -117,6 +117,40 @@ describe("projectionToSvg — one line per link", () => {
     expect(line).toBeDefined();
     // both endpoints carry coordinates; the line is present and well-formed.
     expect(line).toMatch(/x1="\d+" y1="\d+" x2="\d+" y2="\d+"/);
+  });
+});
+
+// ── AC: blocked edges carry visual WEIGHT; satisfied edges stay light (E-056) ───────────────────────
+
+describe("projectionToSvg — blocked edges carry visual weight (E-056)", () => {
+  // The line element(s) of a rendered projection, one per <line> emitted.
+  const lines = (svg: string): string[] => svg.split("\n").filter((l) => l.includes("<line"));
+
+  test("a blocked:true link renders the heavy, distinct stroke (width 4, #E53935)", () => {
+    // miniProjection's one real link is T-002-01 (open, not done) → T-001-03 ⇒ blocked: true.
+    const p = miniProjection();
+    expect(p.links.length).toBe(1);
+    expect(p.links[0]!.blocked).toBe(true);
+    const [line] = lines(projectionToSvg(p));
+    expect(line).toBeDefined();
+    expect(line).toContain('stroke="#E53935"');
+    expect(line).toContain('stroke-width="4"');
+  });
+
+  test("a blocked:false link renders the existing light EDGE style (width 2, #B0BEC5)", () => {
+    // fakeProjection's single link is blocked:false → the unchanged satisfied style.
+    const [line] = lines(projectionToSvg(fakeProjection()));
+    expect(line).toBeDefined();
+    expect(line).toContain('stroke="#B0BEC5"');
+    expect(line).toContain('stroke-width="2"');
+    // and NOT the heavy/distinct blocked style.
+    expect(line).not.toContain("#E53935");
+    expect(line).not.toContain('stroke-width="4"');
+  });
+
+  test("same projection with a blocked link → byte-identical SVG (P5)", () => {
+    const p = miniProjection();
+    expect(projectionToSvg(p)).toBe(projectionToSvg(p));
   });
 });
 

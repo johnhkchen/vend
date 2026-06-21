@@ -78,8 +78,12 @@ const LABEL = Object.freeze({ fontSize: 14, fill: "#311B92" });
 const FACE = Object.freeze({ fontSize: 13, fill: "#37474F", inset: 10 });
 /** Card box stroke width + corner radius. */
 const CARD = Object.freeze({ strokeWidth: 1, rx: 6 });
-/** Edge line style. */
+/** Edge line style — a SATISFIED (non-blocking) dependency: light + thin. */
 const EDGE = Object.freeze({ stroke: "#B0BEC5", strokeWidth: 2 });
+/** Blocked-edge style (E-056 edges-as-payload): a heavier, distinct stroke so an UNSATISFIED
+ *  dependency — "what should I unblock first?" — pops off the board. Red echoes the palette's
+ *  `critical` stroke; 2× the satisfied weight. Stroke weight/color only (no markers, no geometry). */
+const EDGE_BLOCKED = Object.freeze({ stroke: "#E53935", strokeWidth: 4 });
 /** Character budget before a face/label is clipped with an ellipsis (CARD_W is fixed; no font
  *  metrics — those would break purity/determinism). Cosmetic only; full text stays in the IR. */
 const FACE_CHAR_BUDGET = 30;
@@ -150,8 +154,10 @@ export function projectionToSvg(projection: Projection, overlays: SvgOverlays = 
     const from = boxes.get(link.from);
     const to = boxes.get(link.to);
     if (!from || !to) continue; // defensive — every endpoint resolves for a well-formed projection.
+    // E-056: a blocked (from-not-done) dependency gets the heavy/distinct stroke; satisfied stays light.
+    const edge = link.blocked ? EDGE_BLOCKED : EDGE;
     out.push(
-      `  ${svgLine({ x1: from.cx, y1: from.cy, x2: to.cx, y2: to.cy, stroke: EDGE.stroke, strokeWidth: EDGE.strokeWidth })}`,
+      `  ${svgLine({ x1: from.cx, y1: from.cy, x2: to.cx, y2: to.cy, stroke: edge.stroke, strokeWidth: edge.strokeWidth })}`,
     );
   }
 
