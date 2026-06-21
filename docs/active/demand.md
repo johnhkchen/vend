@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`rational-funding-band`** (P7) — make the per-cast funding guard a rational BAND: a **350k floor** (a too-tight p90 never starves a cast — the `vend chain` propose just budget-exhausted at 176k/170k, a 3.6% tail) + a **700k hard ceiling** (runaway self-funding, E-051's decompose ran to 733k, is rejected). "Care at 350k, reject at 700k." E-053, **hand-authored** (a budget fix; the budget-flaky `vend chain` can't author its own fix). | **High** (P7 — completes the E-038→E-050 calibration arc; makes the budget a band a human can reason about) | **active → E-053** — hand-decomposed: T-053-01 pure band (`FUNDING_FLOOR_TOKENS`=350k / `FUNDING_CEILING_TOKENS`=700k; clamp `fundingEnvelope`'s token output to `[floor, ceiling]`; price + wall-clock untouched) → T-053-02 confirm end-to-end (propose funds at the floor so the tail-halt can't recur; decompose capped at ceiling; macro-wallet authorizes on the honest price, IA-8 + P7). FREE/deterministic. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
