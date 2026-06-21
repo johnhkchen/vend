@@ -446,6 +446,55 @@ describe("parseArgs — svg (T-055-03 file-output seam)", () => {
   });
 });
 
+describe("parseArgs — annotate (T-057-03 annotation→demand round-trip)", () => {
+  test("annotate <node-id> \"<feedback>\" --seat designer parses node id, feedback, and seat", () => {
+    expect(parseArgs(["annotate", "T-055-01", "this is rough", "--seat", "designer"])).toEqual({
+      cmd: "annotate",
+      nodeId: "T-055-01",
+      feedback: "this is rough",
+      seat: "designer",
+    });
+  });
+  test("--seat omitted defaults to the designer seat", () => {
+    expect(parseArgs(["annotate", "T-055-01", "this is rough"])).toEqual({
+      cmd: "annotate",
+      nodeId: "T-055-01",
+      feedback: "this is rough",
+      seat: "designer",
+    });
+  });
+  test("--seat dev selects the dev seat", () => {
+    expect(parseArgs(["annotate", "E-057", "needs an edge", "--seat", "dev"])).toEqual({
+      cmd: "annotate",
+      nodeId: "E-057",
+      feedback: "needs an edge",
+      seat: "dev",
+    });
+  });
+  test("peels the node-id and joins multi-token and single-token feedback to the same string", () => {
+    const multi = parseArgs(["annotate", "T-055-01", "this", "feels", "rough"]);
+    const single = parseArgs(["annotate", "T-055-01", "this feels rough"]);
+    expect(multi).toEqual({ cmd: "annotate", nodeId: "T-055-01", feedback: "this feels rough", seat: "designer" });
+    expect(single).toEqual({ cmd: "annotate", nodeId: "T-055-01", feedback: "this feels rough", seat: "designer" });
+  });
+  test("annotate with no node-id → usage", () => {
+    expect(parseArgs(["annotate"])).toEqual({ cmd: "usage", error: "missing <node-id>" });
+    expect(parseArgs(["annotate", "--seat", "dev"])).toEqual({ cmd: "usage", error: "missing <node-id>" });
+  });
+  test("annotate with a node-id but no feedback → usage", () => {
+    expect(parseArgs(["annotate", "T-055-01"])).toEqual({ cmd: "usage", error: "missing <feedback>" });
+    expect(parseArgs(["annotate", "T-055-01", "--seat", "dev"])).toEqual({ cmd: "usage", error: "missing <feedback>" });
+  });
+  test("an unknown seat is a usage error naming the allowed seats", () => {
+    const r = parseArgs(["annotate", "T-055-01", "rough", "--seat", "founder"]);
+    expect(r.cmd).toBe("usage");
+    if (r.cmd === "usage") expect(r.error).toContain("designer | dev");
+  });
+  test("USAGE lists the annotate line", () => {
+    expect(USAGE).toContain("vend annotate");
+  });
+});
+
 describe("parseArgs — init (T-040-03 scaffold command)", () => {
   test("bare `init` parses to the no-arg init command", () => {
     expect(parseArgs(["init"])).toEqual({ cmd: "init" });

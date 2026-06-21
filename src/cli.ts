@@ -18,6 +18,7 @@ export const USAGE =
   "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened]\n" +
   "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
+  '       vend annotate <node-id> "<feedback>" [--seat <designer|dev>]\n' +
   "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend steer [--budget <ms>,<tokens>]\n" +
   "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
@@ -56,6 +57,19 @@ export type ParsedCommand =
     }
   | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
   | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
+  | {
+      readonly cmd: "annotate";
+      /** The board work-item id the feedback was left on (`E-…`/`S-…`/`T-…`) — the back-link target
+       *  the staged signal's provenance trailer references. */
+      readonly nodeId: string;
+      /** The non-dev's raw feedback text — cast as the expand fragment AND carried as the
+       *  Annotation's `text` (they are the same string per the Annotation reuse contract). */
+      readonly feedback: string;
+      /** The seat that left the feedback. Validated against {@link SVG_SEATS} (the seats the
+       *  work-graph renders for), so it is one of `designer`/`dev`; assignable to the wider
+       *  `Annotation.seat: string` at dispatch. */
+      readonly seat: Seat;
+    }
   | { readonly cmd: "survey"; readonly budget?: Budget }
   | { readonly cmd: "steer"; readonly budget?: Budget }
   | {
@@ -141,6 +155,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "run") return parseRunArgs(argv);
   if (argv[0] === "chain") return parseChainArgs(argv);
   if (argv[0] === "expand") return parseExpandArgs(argv);
+  if (argv[0] === "annotate") return parseAnnotateArgs(argv);
   if (argv[0] === "survey") return parseSurveyArgs(argv);
   if (argv[0] === "steer") return parseSteerArgs(argv);
   if (argv[0] === "work") return parseWorkArgs(argv);
@@ -378,6 +393,39 @@ function parseExpandArgs(argv: readonly string[]): ParsedCommand {
 
   const fragment = positional.join(" ");
   return budget ? { cmd: "expand", fragment, budget } : { cmd: "expand", fragment };
+}
+
+/**
+ * Parse the `annotate <node-id> "<feedback>" [--seat <seat>]` path — the annotation→demand
+ * round-trip gesture (T-057-03), the OUTBOUND mouth of E-057. PURE. A HYBRID of `parseExpandArgs`
+ * and `parseSvgArgs`: the FIRST non-flag token is peeled as the `node-id`; the REST are joined with
+ * a space into the `feedback` (so an unquoted multi-word note and a quoted single-token one both
+ * round-trip, the `expand` join with the head removed). `--seat` is OPTIONAL — its block is the
+ * `parseSvgArgs` idiom verbatim: default `designer` (the non-dev seat, the round-trip's
+ * protagonist), validated against {@link SVG_SEATS} (the seats the work-graph renders for; a founder
+ * has no preset, so no view to annotate). UNLIKE `expand` it carries NO `--budget` (the thin
+ * gesture; the dispatch defaults to the play's warranted envelope). A missing node-id OR feedback is
+ * a clean usage error, mirroring `parseExpandArgs`'s missing-subject refusal.
+ */
+function parseAnnotateArgs(argv: readonly string[]): ParsedCommand {
+  const positional: string[] = [];
+  let seat: Seat = "designer";
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--seat") {
+      const word = argv[++i];
+      const match = SVG_SEATS.find((s) => s === word);
+      if (!match) return { cmd: "usage", error: `--seat must be one of ${SVG_SEATS.join(" | ")}, got ${JSON.stringify(word)}` };
+      seat = match;
+    } else {
+      positional.push(a);
+    }
+  }
+
+  const [nodeId, ...rest] = positional;
+  if (!nodeId) return { cmd: "usage", error: "missing <node-id>" };
+  if (rest.length === 0) return { cmd: "usage", error: "missing <feedback>" };
+  return { cmd: "annotate", nodeId, feedback: rest.join(" "), seat };
 }
 
 /**
@@ -662,6 +710,26 @@ if (import.meta.main) {
     const { castExpandFragment, expandFragmentPlay } = await import("./play/expand-fragment.ts");
     const budget = parsed.budget ?? expandFragmentPlay.budget;
     const summary = await castExpandFragment({ fragment: parsed.fragment, budget });
+    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.exit(summary.outcome === "success" ? 0 : 1);
+  }
+
+  if (parsed.cmd === "annotate") {
+    // The annotation→demand round-trip gesture (T-057-03): cast ExpandFragment on the feedback TEXT as
+    // ONE fragment, carrying the annotation provenance (the node id it was left on + the seat). On
+    // success it STAGES a provenance-bearing signal under `docs/active/pm/staged/` — the inbound demand
+    // half of E-057 — touching NOTHING on the board (the inherited one-way-authority staging from
+    // T-057-02; the trailer + back-link are rendered by `renderAnnotationProvenance`). A
+    // read-never-invent / honest-empty refusal halts as a `gate-failed` andon with nothing staged. The
+    // budget is the play's warranted envelope (no `--budget` on this thin gesture). Lazy import keeps
+    // the cast (and its BAML addon) off the pure-parse path, exactly as the expand arm — the seam
+    // REUSES expand-fragment whole (T-057-02 made the cast annotation-capable), building no new effect.
+    const { castExpandFragment, expandFragmentPlay } = await import("./play/expand-fragment.ts");
+    const summary = await castExpandFragment({
+      fragment: parsed.feedback,
+      budget: expandFragmentPlay.budget,
+      annotation: { text: parsed.feedback, nodeId: parsed.nodeId, seat: parsed.seat },
+    });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
   }
