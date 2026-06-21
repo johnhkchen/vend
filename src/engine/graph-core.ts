@@ -14,20 +14,37 @@
 //                 still run. The per-edge gate is the SAME `decideThread` `runChain` uses (reused,
 //                 not reimplemented). Elaborate cross-branch error semantics are OUT (E-046 scope).
 //
-// PURITY (the chain-core.ts discipline): the only imports are two TYPES (`RunOutcome`, `RunSummary`,
-// erased under verbatimModuleSyntax), one PURE value (`decideThread` from chain-core.ts, itself
-// type-only-importing), and dag-core.ts (the model + `topoSort`). No fs, clock, network, process,
-// or native addon. `runGraph` is "pure given its injected casts" — it SPAWNS NOTHING; the `cast`
-// thunks are injected (`DagNode.cast`), exactly as graph-core.test.ts injects fakes returning
-// canned summaries and T-046-03's `castGraph` injects `adapt → castPlay`. Same spec + same casts ⇒
-// byte-identical result (ordering is `topoSort`'s declaration-order tie-break). Real concurrency of
-// independent ready nodes is the impure shell's job (T-046-03); this core awaits per node in topo
-// order — correctness, not parallelism, is its contract.
+// TWO EXECUTORS, ONE PURE CORE: this module hosts BOTH graph executors —
+//   - `runGraph` (T-046-02)            — the SEQUENTIAL reference: awaits each node one-at-a-time in
+//                                        topo order. Correctness, not parallelism, is its contract.
+//   - `runGraphConcurrent` (T-046-03)  — its CONCURRENT twin: a wave dispatcher that `Promise.all`s
+//                                        each topological ready-set, and (E-048, T-048-02) optionally
+//                                        threads ONE SHARED WALLET across the wave — authorize the
+//                                        ready-set before dispatch (`authorizeWave`), debit after it
+//                                        settles (`debitWave`, tokens SUM / wall-clock MAX), hard-stop
+//                                        at the wave boundary so concurrent branches cannot collectively
+//                                        overspend the envelope (P7 under concurrency).
+// Both are the SAME join/fan-out/halt semantics over the same primitives; the concurrent twin returns
+// the same {@link GraphResult}, assembled in topo order so it is deterministic despite concurrent settle.
+//
+// PURITY (the chain-core.ts discipline): every import is a TYPE (erased under verbatimModuleSyntax) or a
+// PURE value — `decideThread` (chain-core.ts), `topoSort` (dag-core.ts), and (E-048) the pure budget
+// algebra `authorizeWave` (spend-core.ts) + `debitWave` (wallet.ts) + `countTokens` (budget.ts). No fs,
+// clock, network, process, or native addon. BOTH executors are "pure given their injected casts" — they
+// SPAWN NOTHING; the `cast` thunks are injected (`DagNode.cast`), exactly as graph-core.test.ts injects
+// fakes returning canned summaries and T-046-03's `castGraph` injects `adapt → castPlay`. The
+// `Promise.all` in `runGraphConcurrent` only awaits those injected thunks — it adds CONCURRENCY, not
+// IMPURITY; the SPAWNING (value-importing `castPlay`) is the impure shell's job (`castGraph`, graph.ts),
+// which is why `bun test` imports THIS core but never graph.ts. Same spec + same casts ⇒ byte-identical
+// result (ordering is `topoSort`'s declaration-order tie-break).
 
 import type { RunOutcome } from "../log/run-log.ts";
 import type { RunSummary } from "./cast.ts";
 import { decideThread } from "./chain-core.ts";
 import { topoSort, type DagNode, type DagSpec, type NodeId, type NodeUpstreams } from "./dag-core.ts";
+import { authorizeWave } from "./spend-core.ts";
+import { debitWave, type Wallet } from "../budget/wallet.ts";
+import { countTokens, type Budget } from "../budget/budget.ts";
 
 /**
  * A node NOT cast because its dependent subgraph was halted (the graph analog of `runChain`'s
@@ -65,6 +82,11 @@ export interface GraphResult {
   readonly halted: boolean;
   readonly produced: ReadonlyMap<NodeId, string>;
   readonly haltReason?: string;
+  /** The shared wallet's remaining balance at the run's end — the budget readout (E-048, T-048-02).
+   *  Present ONLY when a wallet was threaded through {@link runGraphConcurrent}; `undefined` on the
+   *  sequential {@link runGraph} path and the legacy (no-wallet) concurrent path. Total debited is
+   *  `funded − walletRemaining` per denomination (IA-8, never conflated). */
+  readonly walletRemaining?: Budget;
 }
 
 /**
@@ -185,5 +207,223 @@ export async function runGraph(spec: DagSpec): Promise<GraphResult> {
     halted,
     produced,
     ...(halted ? { haltReason: skipped[0]?.reason } : {}),
+  };
+}
+
+/**
+ * The shared-wallet context {@link runGraphConcurrent} threads when a caller opts into cross-branch
+ * budgeting (E-048, T-048-02). `wallet` is the ONE envelope every wave draws from; `priceOf` is each
+ * node's PREDICTED price (the `PlayNode.budget` measured envelope, IA-8 honest — `castGraph` builds the
+ * map). Absent ⇒ the legacy path (every runnable node dispatched, no authorization, no debit).
+ */
+export interface ConcurrentBudget {
+  readonly wallet: Wallet;
+  readonly priceOf: (id: NodeId) => Budget;
+}
+
+/** A settled cast's actuals as a debit delta — `{ tokens: countTokens(usage), timeMs: wallMs }`. A
+ *  summary without `actuals` (a hand-built stub, never today's `castPlay`) contributes `{0,0}`: the
+ *  wallet simply does not move on what we could not measure (no ledger read — that is spend.ts's impure
+ *  concern), never a phantom charge. PURE. */
+function actualsDelta(summary: RunSummary | undefined): Budget {
+  const a = summary?.actuals;
+  if (a === undefined) return { tokens: 0, timeMs: 0 };
+  return { tokens: countTokens(a.usage), timeMs: a.wallMs };
+}
+
+/**
+ * The CONCURRENT wave dispatcher — `runGraph`'s twin with `Promise.all` per topological ready-set, and
+ * (E-048) an optional SHARED WALLET threaded across the whole graph. PURE GIVEN INJECTED CASTS: it spawns
+ * nothing (the `Promise.all` only awaits the injected `DagNode.cast` thunks — concurrency, not impurity);
+ * the SPAWNING is `castGraph`'s job (graph.ts). It reuses `topoSort` (ordering + cycle authority),
+ * `decideThread` (the per-edge halt gate), and — when budgeted — the pure `authorizeWave`/`debitWave`
+ * algebra. The result is assembled in TOPO ORDER, so the {@link GraphResult} is deterministic even though
+ * the wave's casts settle in nondeterministic order. Its join/fan-out/halt semantics are the ones
+ * graph-core.test.ts proves on the sequential `runGraph`.
+ *
+ * BUDGET (when `budget` is supplied) — P7 under concurrency:
+ *   1. AUTHORIZE before dispatch — `authorizeWave(wallet, readySet, priceOf)` partitions the runnable
+ *      ready-set into `dispatch` (collectively affordable: tokens SUM, wall-clock MAX each-fits) and
+ *      `stopped` (the wave-boundary HARD STOP). Only `dispatch` is cast.
+ *   2. A `stopped` node is a CLEAN budget halt — recorded in `skipped`, never cast, never `proceeded`,
+ *      so its dependent subgraph cascade-skips (the runGraph halt semantics) — a successful refusal
+ *      (IA-9), not a failure outcome.
+ *   3. DEBIT after settle — `debitWave(wallet, dispatchedActuals)` (tokens summed, wall-clock MAX)
+ *      threads the fresh wallet into the next ready-set. The wallet is immutable; the fold is the single
+ *      point of mutation, so concurrent casts never race the balance.
+ * Each wave authorizes against the LIVE (depleting) wallet, so the run converges to a clean stop once
+ * nothing fits (`spendDown`'s wallet-exhausted, at wave granularity) while independent affordable work
+ * still proceeds. A linear graph is a sequence of single-node waves, where `authorizeWave` == `fitNext`
+ * and `debitWave` == `debit` (T-048-01 single-node equivalence) — back-compat for the linear path.
+ * Without `budget`, the dispatcher is byte-for-byte its pre-E-048 self.
+ */
+export async function runGraphConcurrent(spec: DagSpec, budget?: ConcurrentBudget): Promise<GraphResult> {
+  const sorted = topoSort(spec);
+
+  // CYCLE — precondition violation (validateDag is the cycle gate). Refuse totally rather than hang:
+  // nothing cast, every node skipped, a non-success terminal outcome — byte-for-byte the runGraph path.
+  if ("cycle" in sorted) {
+    const reason = `graph is cyclic — castGraph runs only acyclic specs (validateDag is the cycle gate); cycle: ${sorted.cycle.join(", ")}`;
+    return {
+      nodes: new Map(),
+      skipped: spec.nodes.map((node) => ({ id: node.id, blockedBy: sorted.cycle, reason })),
+      outcome: "gate-failed",
+      halted: true,
+      produced: new Map(),
+      haltReason: reason,
+    };
+  }
+
+  const order = sorted.order;
+
+  // First-declared node per id (parity with topoSort's first-index rule for any duplicate id;
+  // validateDag is what refuses duplicates — here we just stay total and deterministic).
+  const byId = new Map<NodeId, DagNode>();
+  for (const node of spec.nodes) if (!byId.has(node.id)) byId.set(node.id, node);
+
+  // Adjacency over DECLARED endpoints only — an edge touching an unknown id contributes nothing
+  // (parity with runGraph/topoSort). `inEdges` keys are exactly the declared ids in `order`.
+  const inEdges = new Map<NodeId, NodeId[]>();
+  const outDegree = new Map<NodeId, number>();
+  for (const id of order) {
+    inEdges.set(id, []);
+    outDegree.set(id, 0);
+  }
+  for (const edge of spec.edges) {
+    if (!inEdges.has(edge.from) || !inEdges.has(edge.to)) continue; // unknown endpoint → ignored
+    inEdges.get(edge.to)?.push(edge.from);
+    outDegree.set(edge.from, (outDegree.get(edge.from) ?? 0) + 1);
+  }
+
+  const summaries = new Map<NodeId, RunSummary>();
+  const proceeded = new Set<NodeId>(); // cast AND passed decideThread (has a threadable produced)
+  const producedAll = new Map<NodeId, string>(); // every proceeded node's produced — the fan-out source
+  const haltReasonOf = new Map<NodeId, string>(); // why a CAST or budget-stopped node did not proceed
+  const decided = new Set<NodeId>(); // proceeded, halted-after-cast, budget-stopped, or skipped
+  const skipped: SkippedNode[] = [];
+  const remaining = new Set<NodeId>(order);
+
+  // The ONE shared wallet, threaded across every wave (E-048). `let` because each settled wave folds a
+  // FRESH wallet (debitWave is immutable) back in. Undefined ⇒ legacy path (no authorize/debit).
+  let wallet: Wallet | undefined = budget?.wallet;
+
+  // WAVE LOOP: each pass dispatches the AUTHORIZED ready nodes TOGETHER (Promise.all), then settles and
+  // debits the shared wallet. A node is "ready" once all its upstreams are decided; runnable iff all
+  // upstreams proceeded; DISPATCHED iff (budget ? it fits the shared wallet : always).
+  while (remaining.size > 0) {
+    const wave = order.filter(
+      (id) => remaining.has(id) && (inEdges.get(id) ?? []).every((from) => decided.has(from)),
+    );
+    // `wave` is non-empty: `order` is a topo order over an acyclic graph, so the earliest remaining
+    // node has all upstreams already decided. (Defensive: break to stay total rather than spin.)
+    if (wave.length === 0) break;
+
+    // SKIP: a wave node with any non-proceeded upstream is halted (its downstreams cascade later).
+    const toSkip = wave.filter((id) => (inEdges.get(id) ?? []).some((from) => !proceeded.has(from)));
+    const skipSet = new Set(toSkip);
+    for (const id of toSkip) {
+      const blockedBy = (inEdges.get(id) ?? []).filter((from) => !proceeded.has(from));
+      const causes = blockedBy.map((from) =>
+        haltReasonOf.has(from) ? `'${from}' (${haltReasonOf.get(from)})` : `'${from}' (upstream skipped)`,
+      );
+      skipped.push({ id, blockedBy, reason: `skipped — dependent on halted upstream ${causes.join(", ")}` });
+      decided.add(id);
+      remaining.delete(id);
+    }
+
+    // The runnable ready nodes (all upstreams proceeded). AUTHORIZE them against the shared wallet:
+    // `dispatch` is collectively affordable; `stopped` is P7's hard wall at the wave boundary.
+    const runnable = wave.filter((id) => !skipSet.has(id));
+    const { dispatch, stopped } =
+      budget !== undefined && wallet !== undefined
+        ? authorizeWave(wallet, runnable, budget.priceOf)
+        : { dispatch: runnable, stopped: [] as readonly NodeId[] };
+
+    // BUDGET STOP: a node the wave could not afford is a CLEAN halt — recorded, never cast, never
+    // proceeded, so its dependent subgraph cascade-skips (the runGraph halt semantics). IA-9 refusal.
+    for (const id of stopped) {
+      const price = budget?.priceOf(id);
+      const rem = wallet?.remaining;
+      const detail =
+        price !== undefined && rem !== undefined
+          ? `price ${price.tokens} tok / ${price.timeMs} ms, remaining ${rem.tokens} tok / ${rem.timeMs} ms`
+          : "shared wallet exhausted";
+      const reason = `budget-stopped — wave envelope cannot afford this cast (${detail})`;
+      skipped.push({ id, blockedBy: [], reason });
+      haltReasonOf.set(id, `budget-stopped: ${detail}`);
+      decided.add(id);
+      remaining.delete(id);
+    }
+
+    // RUN: dispatch the authorized ready nodes CONCURRENTLY. Each gathers its JOIN map (every upstream
+    // proceeded ⇒ each produced present) and awaits its injected cast.
+    const cast = await Promise.all(
+      dispatch.map(async (id) => {
+        const upstreams: NodeUpstreams = new Map(
+          (inEdges.get(id) ?? []).flatMap((from) => {
+            const p = producedAll.get(from);
+            return p === undefined ? [] : [[from, p] as const];
+          }),
+        );
+        const node = byId.get(id);
+        if (node === undefined) return [id, undefined] as const; // unreachable (id ∈ order ⊆ declared)
+        return [id, await node.cast(upstreams)] as const;
+      }),
+    );
+
+    // SETTLE: record summaries + the fan-out/thread gate (decideThread, REUSED).
+    for (const [id, summary] of cast) {
+      decided.add(id);
+      remaining.delete(id);
+      if (summary === undefined) continue;
+      summaries.set(id, summary);
+      const decision = decideThread(summary);
+      if (decision.proceed) {
+        proceeded.add(id);
+        if (summary.produced !== undefined) producedAll.set(id, summary.produced);
+      } else {
+        haltReasonOf.set(id, decision.reason ?? "did not proceed");
+      }
+    }
+
+    // DEBIT after settle: fold this wave's dispatched actuals into the ONE wallet (tokens SUM,
+    // wall-clock MAX). The single fold is the only point of mutation — concurrent casts never race it.
+    if (budget !== undefined && wallet !== undefined) {
+      wallet = debitWave(
+        wallet,
+        dispatch.map((id) => actualsDelta(summaries.get(id))),
+      ).wallet;
+    }
+  }
+
+  // DETERMINISTIC ASSEMBLY in topo order — independent of the concurrent settle order above, so the
+  // same spec + same casts yield the same GraphResult (parity with the sequential runGraph).
+  let firstFail: RunSummary | undefined;
+  for (const id of order) {
+    const s = summaries.get(id);
+    if (s !== undefined && firstFail === undefined && s.outcome !== "success") firstFail = s;
+  }
+
+  // SINKS: the leaves' produced are the graph's net output(s); a sink absent from producedAll
+  // (failed, produced nothing, or skipped) is omitted.
+  const produced = new Map<NodeId, string>();
+  for (const id of order) {
+    if ((outDegree.get(id) ?? 0) !== 0) continue;
+    const p = producedAll.get(id);
+    if (p !== undefined) produced.set(id, p);
+  }
+
+  // Skips were appended in wave order; re-key to topo order so the result is fully deterministic.
+  skipped.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+
+  const halted = skipped.length > 0;
+  return {
+    nodes: summaries,
+    skipped,
+    outcome: firstFail?.outcome ?? "success",
+    halted,
+    produced,
+    ...(halted ? { haltReason: skipped[0]?.reason } : {}),
+    ...(wallet !== undefined ? { walletRemaining: wallet.remaining } : {}),
   };
 }

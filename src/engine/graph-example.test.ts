@@ -4,7 +4,7 @@ import type { RunSummary } from "./cast.ts";
 import { runGraph } from "./graph-core.ts";
 import { runChain, type ChainStep } from "./chain-core.ts";
 import type { DagSpec, NodeUpstreams } from "./dag-core.ts";
-import { runDiamondExample } from "./graph-example.ts";
+import { runDiamondExample, runSharedWalletFanout, runPerNodeFanout } from "./graph-example.ts";
 
 // T-046-03 — the DETERMINISTIC worked example (AC#2) + the fails-vs-linear proof (AC#3). We import
 // ONLY the pure cores (`runGraph`, `runChain`) + the stub example (both type-only-import the impure
@@ -116,5 +116,69 @@ describe("fails-vs-linear (AC#3): the 2-upstream join is inexpressible by runCha
     const maxRefsIntoAnyStep = Math.max(...chainThread.map((u) => (u === undefined ? 0 : 1)));
     expect(maxRefsIntoAnyStep).toBe(1); // runChain: at most ONE upstream per step — no join
     expect(graphJoinSize).toBeGreaterThan(maxRefsIntoAnyStep); // genuinely non-linear
+  });
+});
+
+// T-048-02 (E-048) — the SHARED-WALLET worked example. We drive the REAL pure budgeted wave dispatcher
+// (`runGraphConcurrent`, in graph-core.ts) with COSTED stubs — still no `castPlay`, no native addon,
+// nothing spawned. The shape mirrors fails-vs-linear above: a fan-out the shared wallet stops which the
+// old per-node budgets would have OVERSPENT. NO LIVE MODEL.
+describe("AC#3 (E-048): one shared wallet stops a fan-out the per-node budgets would overspend", () => {
+  test("shared wallet: the overflowing branch is budget-stopped at the wave boundary, spend bounded", async () => {
+    const { result, funded } = await runSharedWalletFanout();
+
+    // A and B cast; C never ran — it was hard-stopped when the wave {B,C} could not collectively afford.
+    expect([...result.nodes.keys()].sort()).toEqual(["A", "B"]);
+    expect(result.nodes.has("C")).toBe(false);
+
+    // C appears in `skipped` with a BUDGET reason (a clean wave-boundary halt, not an upstream failure).
+    const c = result.skipped.find((s) => s.id === "C");
+    expect(c).toBeDefined();
+    expect(c?.reason).toMatch(/budget-stopped/);
+
+    // A clean refusal (IA-9): halted true, but the OUTCOME is success — no cast failed.
+    expect(result.halted).toBe(true);
+    expect(result.outcome).toBe("success");
+
+    // The readout: remaining = funded − (A debit 40k/30k) − (B debit 40k/20k). Tokens SUM (80k spent),
+    // wall-clock MAX per wave (A wave 30k, B wave 20k → 50k spent). C's 40k tokens were NEVER charged.
+    expect(result.walletRemaining).toEqual({ tokens: 10_000, timeMs: 10_000 });
+
+    // Total debited == bounded envelope: spent ≤ funded on BOTH denominations (P7 held under concurrency).
+    const spent = {
+      tokens: funded.tokens - (result.walletRemaining?.tokens ?? 0),
+      timeMs: funded.timeMs - (result.walletRemaining?.timeMs ?? 0),
+    };
+    expect(spent).toEqual({ tokens: 80_000, timeMs: 50_000 });
+    expect(spent.tokens).toBeLessThanOrEqual(funded.tokens);
+    expect(spent.timeMs).toBeLessThanOrEqual(funded.timeMs);
+  });
+
+  test("per-node (legacy, no wallet): the SAME fan-out dispatches both branches and OVERSPENDS", async () => {
+    const { result, totalSpent } = await runPerNodeFanout();
+
+    // All three nodes cast — no authorization gate, nothing stopped.
+    expect([...result.nodes.keys()].sort()).toEqual(["A", "B", "C"]);
+    expect(result.skipped).toEqual([]);
+
+    // The legacy path threads no wallet, so there is no readout.
+    expect(result.walletRemaining).toBeUndefined();
+
+    // Summed real burn = A(40k) + B(40k) + C(40k) = 120k tokens — over the 90k envelope the shared
+    // wallet enforced. This is the cross-branch leak E-048 fixes.
+    expect(totalSpent.tokens).toBe(120_000);
+    expect(totalSpent.tokens).toBeGreaterThan(90_000);
+  });
+
+  test("side by side: the shared wallet bounds spend to the envelope; per-node breaches it", async () => {
+    const shared = await runSharedWalletFanout();
+    const perNode = await runPerNodeFanout();
+
+    const sharedTokens = shared.funded.tokens - (shared.result.walletRemaining?.tokens ?? 0);
+    const envelope = shared.funded.tokens; // 90_000
+
+    expect(sharedTokens).toBeLessThanOrEqual(envelope); // shared: 80k ≤ 90k — inside the wall
+    expect(perNode.totalSpent.tokens).toBeGreaterThan(envelope); // per-node: 120k > 90k — overspent
+    expect(sharedTokens).toBeLessThan(perNode.totalSpent.tokens); // the wall saved 40k of tokens
   });
 });

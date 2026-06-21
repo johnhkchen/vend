@@ -13,10 +13,12 @@
 // structurally cannot deliver. The runtime CONCURRENCY of B ∥ C is `castGraph`'s job (graph.ts),
 // proven live; here the diamond's correctness under the sequential reference executor is what we pin.
 
-import { runGraph, type GraphResult } from "./graph-core.ts";
+import { runGraph, runGraphConcurrent, type GraphResult } from "./graph-core.ts";
 import type { RunOutcome } from "../log/run-log.ts";
 import type { RunSummary } from "./cast.ts";
 import type { DagNode, DagSpec, NodeId, NodeUpstreams } from "./dag-core.ts";
+import { allocate, type Wallet } from "../budget/wallet.ts";
+import { countTokens, type Budget } from "../budget/budget.ts";
 
 /** A canned cast result — the only thing the pure core sees of a node (graph-core.test.ts shape). */
 function summary(outcome: RunOutcome, produced?: string): RunSummary {
@@ -76,4 +78,85 @@ export async function runDiamondExample(): Promise<DiamondTrace> {
     upstreamsSeen[id] = seen[id]?.[0] ?? {}; // each node is cast exactly once in the diamond
   }
   return { upstreamsSeen, result };
+}
+
+// ─── The SHARED-WALLET worked example (T-048-02, epic E-048) ───────────────────────────────────────
+//
+// E-048's "Done looks like": a fan-out whose branches' COMBINED cost exceeds a small shared envelope.
+// Under ONE shared wallet, `castGraph`'s wave dispatcher (the pure `runGraphConcurrent`, exercised here
+// with stubs — NO live cast, NO castPlay) stops the overflowing branch at the wave boundary and the
+// total debited stays inside the envelope (tokens SUM, wall-clock MAX). Under the OLD per-node budgets
+// (the no-wallet legacy path) the SAME fan-out dispatches BOTH branches — each "affords" its own budget
+// against the pre-wave balance — and OVERSPENDS. This module builds that fixture and both runs.
+
+/** A COSTED stub node — a canned success carrying both a `produced` ref AND measured `actuals`
+ *  (`{ usage, wallMs }`) so `debitWave` has a real delta to fold. The wave-budget analog of
+ *  {@link recordingStub}; tokens are carried as `input_tokens` (so `countTokens` == that count). */
+function costedStub(id: NodeId, produced: string, price: Budget): DagNode {
+  return {
+    id,
+    cast: async () => ({
+      runId: `run-${id}`,
+      outcome: "success" as RunOutcome,
+      materialized: true,
+      produced,
+      actuals: { usage: { input_tokens: price.tokens }, wallMs: price.timeMs },
+    }),
+  };
+}
+
+/** The shared-wallet fan-out fixture: A → {B, C}. A is cheap; B and C are each affordable ALONE but
+ *  TOGETHER overflow the post-A token envelope. Prices == actuals (deterministic, no recalibration).
+ *  - envelope:  90_000 tokens / 60_000 ms.
+ *  - A:         40_000 tok / 30_000 ms  → after A debit: 50_000 tok / 30_000 ms remaining.
+ *  - B, C:      40_000 tok / 20_000 ms each. Wave {B,C}: B fits (cum 40k ≤ 50k); C stops (40k+40k=80k
+ *               > 50k). Per-node (no wallet): both dispatch → 40k+40k = 80k summed on top of A's 40k. */
+export function budgetedFanoutExample(): {
+  spec: DagSpec;
+  wallet: Wallet;
+  priceOf: (id: NodeId) => Budget;
+} {
+  const prices: Record<NodeId, Budget> = {
+    A: { tokens: 40_000, timeMs: 30_000 },
+    B: { tokens: 40_000, timeMs: 20_000 },
+    C: { tokens: 40_000, timeMs: 20_000 },
+  };
+  const spec: DagSpec = {
+    nodes: [
+      costedStub("A", "pa", prices.A as Budget),
+      costedStub("B", "pb", prices.B as Budget),
+      costedStub("C", "pc", prices.C as Budget),
+    ],
+    edges: [
+      { from: "A", to: "B" },
+      { from: "A", to: "C" },
+    ],
+  };
+  const wallet = allocate({ tokens: 90_000, timeMs: 60_000 });
+  const priceOf = (id: NodeId): Budget => (prices[id] as Budget) ?? { tokens: 0, timeMs: 0 };
+  return { spec, wallet, priceOf };
+}
+
+/** Run the fan-out under the SHARED wallet — the bounded path. C is budget-stopped at the wave
+ *  boundary; `result.walletRemaining` shows the envelope was not overspent. */
+export async function runSharedWalletFanout(): Promise<{ result: GraphResult; funded: Budget }> {
+  const { spec, wallet, priceOf } = budgetedFanoutExample();
+  const result = await runGraphConcurrent(spec, { wallet, priceOf });
+  return { result, funded: wallet.funded };
+}
+
+/** Run the SAME fan-out with NO shared wallet — the legacy per-node path. Both B and C dispatch; the
+ *  summed actuals (what each node really burned) is the OVERSPEND a shared wallet would have stopped. */
+export async function runPerNodeFanout(): Promise<{ result: GraphResult; totalSpent: Budget }> {
+  const { spec } = budgetedFanoutExample();
+  const result = await runGraphConcurrent(spec); // no budget ⇒ every runnable node dispatched
+  let tokens = 0;
+  let timeMs = 0;
+  for (const summary of result.nodes.values()) {
+    const a = summary.actuals;
+    if (a === undefined) continue;
+    tokens += countTokens(a.usage); // every branch's tokens are real — summed
+    timeMs += a.wallMs;
+  }
+  return { result, totalSpent: { tokens, timeMs } };
 }
