@@ -83,7 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
+| Signal | Value | Status |
+|---|---|---|
+| **`projection-to-svg-renderer`** (Frontier 4 / P5·P3) — render the work-graph as a large static SVG: a THIRD consumer of E-021's `Projection` IR (beside `paper.ts`), MCP-independent, so a non-dev teammate sees the whole board as a portable file. E-055, **minted + decomposed live by `vend chain`** — honored every scope pin (deterministic layout, mirror paper.ts, Linear/round-trip named out-of-scope). | **High** (the unblocked visual half of the non-dev round-trip) | **active → E-055** — T-055-01 pure SVG primitives + deterministic grid/swimlane geometry → T-055-02 `projectionToSvg(projection, overlays?)` core (one rect/card, group label/group, edge/link, honest-empty, byte-identical, never writes back) → T-055-03 CLI/file seam (loadGraph → projectGraph → write .svg, authority-guard green). FREE/deterministic. Awaiting `lisa loop`. |
 
 ---
 
