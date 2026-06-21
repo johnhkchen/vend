@@ -138,31 +138,45 @@ named by the charter principle it advances and the gap it closes:
   multi-upstream map, halt-the-dependent-subgraph), and `castGraph` (concurrent wave dispatcher) —
   proven fails-vs-linear (the diamond's 2-upstream join `runChain` can't express). The v1 vision's named
   capability exists at its minimum honest form. **Remaining (E-046's named follow-ons):** **conditional
-  edges** (branch on a node's result — still open; it was *signal #1* of the E-047 cast but propose-1
-  was budget-exhausted before it minted, so this stays open demand), a **live real-play graph** →
+  edges** (branch on a node's result) → **done → E-049 (cleared, crystallized)** — predicate-on-edge
+  branching with a DISTINCT branch-not-taken andon, mirrored byte-identical into the concurrent wave
+  dispatcher; notably the **first epic Vend self-PROPOSED and self-DECOMPOSED via `vend chain`**. A
+  **live real-play graph** →
   **done → E-047** (`survey → [propose ×2] → note` through `castGraph` — **concurrency proven live**,
   2 casts overlapped 68.97 s; the live multi-upstream join stays stub-proven only, since propose-1's
   budget-exhaustion skipped the join; `work/T-047-02/graph-cast-log.md`), **cross-branch budget
   accounting** (the macro-wallet across parallel branches) → **minted → E-048
   (`cross-branch-budget-wallet`)** — the E-047 cast surfaced this gap live (per-branch envelopes, no
   shared wave-level wallet) and minted the demand for it; **now done → E-048 (cleared, crystallized)** —
-  and cycle/error semantics. Each a downstream pull onto the proven substrate. (Cross-branch budget is now
-**done → E-048**, crystallized.) **High.**
+  and cycle/error semantics. Each a downstream pull onto the proven substrate. (Cross-branch budget →
+**E-048**, conditional edges → **E-049** — both done + crystallized; only cycle/error semantics + the
+live-join re-cast remain.) **High.**
   - ~~Decompose + build E-048 `cross-branch-budget-wallet`~~ → **done → E-048 (CLEARED, crystallized).**
     One shared wallet through `castGraph`'s wave dispatcher — `authorizeWave` + `debitWave` (**tokens SUM
     / wall-clock MAX** under concurrency, single-element == sequential `debit`), single-chain/`spendDown`
     UNCHANGED, deterministic shared-vs-per-node worked example (3-branch partial wave). P7 holds under
     concurrency; 1150 tests. **Now unblocks E-047's live join** — a shared budget lets both branches
     finish, so a live re-cast would run `capture-note` (the next downstream pull, below).
+  - ~~Conditional edges for the typed DAG~~ → **done → E-049 (CLEARED, crystallized).** `EdgePredicate`
+    + optional `when?` on `DagEdge`: an out-edge fires only if its predicate holds over the upstream's
+    `produced`; the branch-not-taken cascade-skips via the EXISTING halt machinery with a DISTINCT
+    "branch not taken" andon; mirrored into `runGraphConcurrent` (== sequential) + a router worked example
+    through `castGraph`. Absent `when` ⇒ unconditional fan-out (back-compat). 1162 tests. **Dogfood
+    milestone: the first epic Vend both self-PROPOSED and self-DECOMPOSED via `vend chain`** (propose
+    clean; decompose needed 120k→350k — the warranted envelope under-bounds decompose).
   - **Live multi-upstream join re-cast (now unblocked by E-048).** E-047 proved concurrency live but the
     2-upstream join stayed *stub-proven* — propose-1 budget-exhausted, so `castGraph` (correctly) skipped
     `capture-note`. With one shared wave-level wallet, both branches can finish under a bounded envelope;
     a live re-cast of the `survey → [propose ×2] → capture-note` diamond would prove the join end-to-end.
     **Standard** (free-ish; a small bounded live cast). The honest closer on E-046/E-047's substrate.
-- **Decompose-budget finding** (from E-045) — the macro-wallet depleted by the decompose step on the
-  heavy DAG epic (E-046 minted but un-decomposed until the hand-resume). Heavy epics may want a fatter
-  macro budget or a per-step decompose floor; a mild echo of the E-038 envelope thread. **Standard**,
-  noted.
+- **Decompose-envelope under-bounds — now TWICE confirmed (E-045, E-049).** The recalibrated
+  `decompose-epic` warranted envelope (~120k tokens) is too thin for a real epic: E-046 depleted it
+  (un-decomposed until the hand-resume), and **E-049's `vend chain` decompose exhausted at ~265k against
+  the 120k envelope, clearing only when bumped to 350k.** Two data points say the p90 recalibration (E-013)
+  is systematically under-bounding decompose — heavy epics want a fatter decompose floor or a re-fit of
+  the envelope from the *uncensored* tail (the E-038 censoring lesson). **Standard → leaning High** (it
+  blocks the autonomous chain — `just next` papers over it with a manual 350k budget). The honest fix is
+  in the calibration, not the justfile.
 - **Per-play executor / BAML-client selection.** A play declares *which model* it
   runs on — the natural successor to E-032 (per-play tooling) + E-035/E-036's
   selection seams. **Standard.** ~1 block.
@@ -190,6 +204,13 @@ named by the charter principle it advances and the gap it closes:
   honest-empty into `budget-exhausted` (stdout-only today), so the probe + `vend
   audit` can't split them; thread the stop-reason so it's countable. **Standard**
   (unblocks clean consistency/trust measurement). **Ready** — small (~1h).
+- **Restrict autonomous casts' tool-set — no `AskUserQuestion` in a headless `claude -p`.** E-049's
+  `decompose-epic` cast called Claude Code's built-in `AskUserQuestion`, which has no answerer in a piped
+  cast — it hung the pane until the tool resolved empty (the run then completed, but it *could* hang
+  indefinitely / blow the wall-clock). Autonomous plays (propose/decompose/work) should run with a
+  tool-set that excludes interactive tools, or a setting that auto-declines them — a clean refusal, not a
+  hang (N2: autonomous enforcement, not a supervision prompt). **Standard** (small, real reliability gap
+  surfaced live by the dogfood). **Ready.**
 - **`git bisect run` integration** — E-034's audit does a linear sweep; bisect is
   the faster backstop for a single red commit. **Leaf.** small.
 - **Mana economics** (`mana-economics.md`) — spend well *for* the author, improving
