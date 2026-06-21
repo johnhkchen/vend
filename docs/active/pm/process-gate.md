@@ -1,5 +1,5 @@
 ---
-ready: true           # ← RAISED 2026-06-20 for the next cycle — awaiting processing
+ready: false          # ← processed 2026-06-20 (one-shot consumed); raise again for the next cycle
 requested_at: 2026-06-20
 ---
 
@@ -26,28 +26,11 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
-### ▶ NEXT CYCLE — gate raised 2026-06-20 (awaiting processing)
-
-Rank the open demand and recommend the next pull. The board after this session's sweep holds, in
-rough leverage order:
-
-- **Frontier 7 continuation** — `vend init`/`vend doctor` just landed; carried forward: **D-1**
-  Homebrew delivery (`dist` + `justfile`; spike green — the natural *ship it* next), **X-1**
-  hackathon example (the value-proof *and* a forward-E1 accruer), then **X-2**/**X-3** (meatier
-  examples). `PRD-distribution-onboarding.md` sequences these.
-- **Frontier 1 cadence** — accrue cleared forward-E1 to ≥10 (mostly automatic via `vend work`
-  sweeps; a "run more" cadence, not a fresh epic).
-- **Frontier 3 — multi-node DAG** — the standing architectural keystone; the biggest unbuilt thing,
-  and Frontier 2 (open-model runtime) wants it underneath.
-- **Frontier 4** (Linear renderer + annotation→demand) · **Frontier 5** (walk-away UX, design-pull-
-  first) · **Frontier 2** (agentic open-model runner).
-
-**The genuine fork for you (recommendation-first):** *continue Frontier 7 momentum* (D-1 delivery +
-X-1 hackathon — ship and demonstrate what just landed, compounding the keystone cadence) **vs.**
-*pivot to the architectural keystone* (Frontier 3 DAG — the heavy v1-vision build). My lean:
-**continue Frontier 7** — the foundation is fresh, shipping+demonstrating is higher-leverage than the
-heavy DAG while autonomy is still being *proven*, and it keeps feeding forward-E1. But the DAG is the
-looming debt. **Confirm or redirect this focus and I'll synthesize the ranked batch.**
+_**Frontier 7 continuation cycle — PROCESSED 2026-06-20 (gate consumed, one-shot, back down).**
+Focus confirmed (continue Frontier 7) and synthesized into `proposed-batch.md`: 6 ranked signals,
+recommended pull **the hackathon example**. The batch is the *strategic* layer — the loop
+auto-drains the tactical correctness fixes its runs surface (E-043 mint-guard, steer self-ref), so
+those are excluded. Promotion is still a human pull. Raise the gate again for the next cycle._
 
 ---
 
