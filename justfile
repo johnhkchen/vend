@@ -16,9 +16,9 @@ decompose_budget := "600000,350000"
 default:
     @just --list
 
-# One-gesture fresh-device setup: deps, Doppler, git hooks, then verify the gate.
 # Idempotent — safe to re-run. Interactive logins (doppler, claude) are checked
-# and guided, never forced. See README.md for the manual fallback.
+# and guided, never forced; the manual fallback lives in this recipe / README.md.
+# One-gesture fresh-device setup: deps, Doppler config, git hooks, verify the gate.
 setup:
     #!/usr/bin/env sh
     set -e
