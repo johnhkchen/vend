@@ -199,7 +199,27 @@ live-join re-cast remain.) **High.**
 - **Annotation → demand round-trip** — a teammate's annotation flows back as a priced demand signal via
   `expand-fragment` (E-016), provenance + back-link, one-way-authority guarded. MCP-independent (the
   annotation is text input; live fetch deferred). The complement to the SVG surface — what teammates do
-  *with* the rendered board. **High.** *(Next after the SVG renderer.)*
+  *with* the rendered board. **Maya's "telephone-killer" — her deepest need (steer without a developer
+  translating); the originating designer request that spawned this whole line.** **High.**
+
+**SVG surface design-inputs (boarded from `pm/persona-research.md` — WIP, not committed). The glanceability +
+edges fix is in flight (above); these are the rest the personas sharpened:**
+- **`vend svg` glanceability + edges-as-payload** → **PULLING (staged).** Coarse default grouping (the
+  designer preset groups by `epic` → 62 columns) + visual weight on blocked / critical-path edges
+  (`ProjectionLink` is bare `{from,to}` today). The "one picture" + Devraj's funding map. **High** (gates
+  the render-and-watch validation — it fails at 62-wide today).
+- **Color-blind redundancy** — status rides color tokens alone (chosen for card semantics, not contrast);
+  add a redundant shape/position/label signal so status survives without color. **Standard.** Accessibility gap.
+- **Layout stability-under-delta** — the deterministic "no force-directed" layout is an *accessibility*
+  property for Sam (a persistent spatial anchor to re-orient to). Add a stability check: add one card,
+  re-render, assert other groups' boxes don't move (the research's cheapest Sam-test). **Standard.**
+- **Card-face vocabulary residual jargon** — most faces read clean ("Budget control"), but a few leak
+  `Baml…`/`Ci…`/`Claude p…` from technical titles. Tighten the vocabulary policy to strip residual tokens —
+  *the research's #1 weak link: if faces stay jargon-heavy the SVG is just a reframed text wall.* **Standard.**
+- **Render-and-watch validation probe** — the cheapest validation the research prescribes: hand the
+  designer one real rendered `.svg`, ask her to narrate, measure where she gets lost. Tests the *still-open*
+  hypothesis (2b) that non-devs want a visual surface — the honest "test it, don't keep building blind"
+  move. **High** (a probe/measurement, not a build; pairs the glanceability fix).
 
 ### Frontier 5 — The "walk-away" UX (P4) — IA open design threads
 
