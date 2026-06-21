@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseArgs, parseBudgetArg } from "./cli.ts";
+import { parseArgs, parseBudgetArg, USAGE } from "./cli.ts";
 
 // T-002-03 CLI: the PURE arg parsers. The `import.meta.main` dispatch (which imports
 // the impure runner and exits the process) does not run on import, so this test never
@@ -404,5 +404,21 @@ describe("parseArgs — shelf (T-030-02 supply view)", () => {
     expect(parseArgs(["shelf", "survey"]).cmd).toBe("usage");
     expect(parseArgs(["shelf", "--budget", "1,2"]).cmd).toBe("usage");
     expect(parseArgs(["shelf", "--all"]).cmd).toBe("usage");
+  });
+});
+
+describe("parseArgs — init (T-040-03 scaffold command)", () => {
+  test("bare `init` parses to the no-arg init command", () => {
+    expect(parseArgs(["init"])).toEqual({ cmd: "init" });
+  });
+  test("init takes no arguments — an unexpected positional is usage", () => {
+    expect(parseArgs(["init", "junk"])).toEqual({ cmd: "usage", error: "unexpected init argument: junk" });
+  });
+  test("init takes no flags — an unknown flag is usage", () => {
+    expect(parseArgs(["init", "--force"]).cmd).toBe("usage");
+    expect(parseArgs(["init", "--budget", "1,2"]).cmd).toBe("usage");
+  });
+  test("USAGE lists the init line", () => {
+    expect(USAGE).toContain("vend init");
   });
 });

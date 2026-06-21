@@ -21,6 +21,7 @@ export const USAGE =
   "       vend steer [--budget <ms>,<tokens>]\n" +
   "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
   "       vend shelf\n" +
+  "       vend init\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -64,6 +65,7 @@ export type ParsedCommand =
       readonly intervened?: boolean;
     }
   | { readonly cmd: "shelf" }
+  | { readonly cmd: "init" }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -133,6 +135,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "steer") return parseSteerArgs(argv);
   if (argv[0] === "work") return parseWorkArgs(argv);
   if (argv[0] === "shelf") return parseShelfArgs(argv);
+  if (argv[0] === "init") return parseInitArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -148,6 +151,18 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
 function parseShelfArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length > 1) return { cmd: "usage", error: `unexpected shelf argument: ${argv[1]}` };
   return { cmd: "shelf" };
+}
+
+/**
+ * Parse the `init` scaffold-the-cwd path (T-040-03) — lay the vend board/PM/archive/knowledge tree
+ * over a bare lisa project, no-clobber. PURE. Like `shelf`, init takes NO arguments AT ALL: there
+ * is no subject to type (the cwd is the implicit, only target) and nothing is cast, so there is no
+ * `--budget` to fund. Any token after `init` is therefore an error. The lisa-project refusal and
+ * the actual scaffolding are the dispatch arm's composition over `runInit` (init-effect.ts).
+ */
+function parseInitArgs(argv: readonly string[]): ParsedCommand {
+  if (argv.length > 1) return { cmd: "usage", error: `unexpected init argument: ${argv[1]}` };
+  return { cmd: "init" };
 }
 
 /**
@@ -671,6 +686,27 @@ if (import.meta.main) {
     // keeps the play modules (and their BAML addon) off the pure-parse path, like the other arms.
     const { shelfText } = await import("./shelf/shelf.ts");
     process.stdout.write(`${await shelfText()}\n`);
+    process.exit(0);
+  }
+
+  if (parsed.cmd === "init") {
+    // The scaffold gesture (T-040-03): lay the vend tree over the cwd, no-clobber. `runInit`
+    // composes the lisa-project gate with the scaffold apply and hands back a typed outcome — the
+    // refusal is DATA, not a throw. A non-lisa cwd is a clean, SUCCESSFUL refusal (a typed andon +
+    // fix-it hint) that still exits non-zero (an environment precondition, the no-board family).
+    // A scaffolded cwd prints the create/skip tally and exits 0 — a fully-scaffolded re-run (all
+    // skipped) is idempotent success, not an error. Lazy import keeps the effect off the pure-parse
+    // path, exactly as the other arms keep their deps lazy.
+    const { runInit } = await import("./init/init-effect.ts");
+    const outcome = await runInit(process.cwd());
+    if (outcome.kind === "not-lisa") {
+      process.stderr.write(
+        `not a lisa project (no CLAUDE.md or .lisa.toml in ${outcome.root}) — run \`lisa init\` first\n`,
+      );
+      process.exit(1);
+    }
+    const { created, skipped } = outcome.result;
+    process.stdout.write(`vend init: scaffolded — ${created.length} created, ${skipped.length} skipped\n`);
     process.exit(0);
   }
 
