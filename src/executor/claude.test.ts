@@ -91,6 +91,24 @@ test("buildArgs: empty allowedTools array emits no flag (length guard)", () => {
   expect(buildArgs({ allowedTools: [] })).not.toContain("--allowedTools");
 });
 
+test("buildArgs: disallowedTools comma-joins into ONE argv element", () => {
+  expect(buildArgs({ disallowedTools: ["AskUserQuestion", "WebSearch"] })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose", "--disallowedTools", "AskUserQuestion,WebSearch",
+  ]);
+});
+
+test("buildArgs: empty disallowedTools array emits no flag (length guard)", () => {
+  expect(buildArgs({ disallowedTools: [] })).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+  expect(buildArgs({ disallowedTools: [] })).not.toContain("--disallowedTools");
+});
+
+test("buildArgs: allowedTools and disallowedTools compose together, allow before deny", () => {
+  expect(buildArgs({ allowedTools: ["Read"], disallowedTools: ["AskUserQuestion"] })).toEqual([
+    "-p", "--output-format", "stream-json", "--verbose",
+    "--allowedTools", "Read", "--disallowedTools", "AskUserQuestion",
+  ]);
+});
+
 test("buildArgs: strictMcp true appends --strict-mcp-config; false omits it", () => {
   expect(buildArgs({ strictMcp: true })).toEqual([
     "-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config",
@@ -107,12 +125,14 @@ test("buildArgs: all tool flags compose after model/effort/system/max-turns, in 
       maxTurns: 5,
       mcpConfig: "cfg.json",
       allowedTools: ["Read", "Bash(git *)"],
+      disallowedTools: ["AskUserQuestion"],
       strictMcp: true,
     }),
   ).toEqual([
     "-p", "--output-format", "stream-json", "--verbose",
     "--model", "m", "--effort", "low", "--system-prompt", "s", "--max-turns", "5",
-    "--mcp-config", "cfg.json", "--allowedTools", "Read,Bash(git *)", "--strict-mcp-config",
+    "--mcp-config", "cfg.json", "--allowedTools", "Read,Bash(git *)",
+    "--disallowedTools", "AskUserQuestion", "--strict-mcp-config",
   ]);
 });
 
@@ -120,6 +140,7 @@ test("buildArgs: no tool options ⇒ argv byte-identical to today (back-compat)"
   const base = buildArgs({ model: "m" });
   expect(base).not.toContain("--mcp-config");
   expect(base).not.toContain("--allowedTools");
+  expect(base).not.toContain("--disallowedTools");
   expect(base).not.toContain("--strict-mcp-config");
   expect(buildArgs()).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
 });

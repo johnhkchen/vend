@@ -88,6 +88,8 @@ export interface DispenseOptions {
   mcpConfig?: string;
   /** Per-play tool allowlist → `--allowedTools` (E-032). Empty/omitted ⇒ no flag. */
   allowedTools?: readonly string[];
+  /** Per-play tool denylist → `--disallowedTools` (E-051). Empty/omitted ⇒ no flag. */
+  disallowedTools?: readonly string[];
   /** Close the global MCP firehose → `--strict-mcp-config` (E-032). Omitted/false ⇒ no flag. */
   strictMcp?: boolean;
   /**
@@ -128,13 +130,14 @@ export class ClaudeTimeoutError extends ExecutorTimeoutError {
  * (omitting a flag leaves the CLI default path unchanged).
  *
  * Per-play tool scoping (E-032, T-032-01): `mcpConfig` → `--mcp-config <path>`,
- * `allowedTools` → `--allowedTools <comma-joined list>`, `strictMcp` → `--strict-mcp-config`
- * (flag spellings verified against `claude -p --help`; `--allowedTools` accepts a comma- or
- * space-separated list — we comma-join into ONE argv element so the variadic flag cannot
- * swallow a following flag). All three are appended after `--max-turns` and guarded so that
- * when none are supplied the argv is BYTE-IDENTICAL to before E-032 (the no-tools path; the
- * resolved values are threaded in at cast by T-032-02). An empty `allowedTools` array emits
- * no flag.
+ * `allowedTools` → `--allowedTools <comma-joined list>`, `disallowedTools` →
+ * `--disallowedTools <comma-joined list>` (E-051), `strictMcp` → `--strict-mcp-config`
+ * (flag spellings verified against `claude -p --help`; `--allowedTools`/`--disallowedTools`
+ * each accept a comma- or space-separated list — we comma-join into ONE argv element so the
+ * variadic flag cannot swallow a following flag). All are appended after `--max-turns` and
+ * guarded so that when none are supplied the argv is BYTE-IDENTICAL to before E-032 (the
+ * no-tools path; the resolved values are threaded in at cast by T-032-02 / T-051-02). An
+ * empty `allowedTools`/`disallowedTools` array emits no flag.
  */
 export function buildArgs(
   {
@@ -144,6 +147,7 @@ export function buildArgs(
     maxTurns,
     mcpConfig,
     allowedTools,
+    disallowedTools,
     strictMcp,
   }: {
     model?: string;
@@ -152,6 +156,7 @@ export function buildArgs(
     maxTurns?: number;
     mcpConfig?: string;
     allowedTools?: readonly string[];
+    disallowedTools?: readonly string[];
     strictMcp?: boolean;
   } = {},
 ): string[] {
@@ -162,6 +167,10 @@ export function buildArgs(
   if (maxTurns) args.push("--max-turns", String(maxTurns));
   if (mcpConfig) args.push("--mcp-config", mcpConfig);
   if (allowedTools && allowedTools.length > 0) args.push("--allowedTools", allowedTools.join(","));
+  // `--disallowedTools` mirrors `--allowedTools` (E-051): spelling verified against
+  // `claude -p --help` (`--disallowedTools <tools...>`, variadic), so comma-join into
+  // ONE argv element to stop the variadic flag swallowing the next flag. Allow then deny.
+  if (disallowedTools && disallowedTools.length > 0) args.push("--disallowedTools", disallowedTools.join(","));
   if (strictMcp) args.push("--strict-mcp-config");
   return args;
 }
@@ -299,8 +308,8 @@ export function awaitChildClose(
  * `subtype` — including error subtypes — so the caller can meter and branch on it;
  * only a genuinely absent terminal result (the process emitted none) throws.
  */
-export async function dispense({ prompt, model, effort, system, maxTurns, mcpConfig, allowedTools, strictMcp, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
-  const args = buildArgs({ model, effort, system, maxTurns, mcpConfig, allowedTools, strictMcp });
+export async function dispense({ prompt, model, effort, system, maxTurns, mcpConfig, allowedTools, disallowedTools, strictMcp, onMessage, timeoutMs }: DispenseOptions): Promise<ResultMessage> {
+  const args = buildArgs({ model, effort, system, maxTurns, mcpConfig, allowedTools, disallowedTools, strictMcp });
   const child = spawn(CLAUDE_CLI, args, { stdio: ["pipe", "pipe", "pipe"] });
   child.stdin?.end(prompt);
 
