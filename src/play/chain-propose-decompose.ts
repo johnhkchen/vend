@@ -24,12 +24,14 @@
 // `epicSubjectFromPath` is its inline pure helper, and the per-step budget selection lives in the
 // addon-free `chain-propose-decompose-core.ts` (`resolveStepBudgets`) so it is unit-tested (E-025).
 
+import { join } from "node:path";
 import type { Budget } from "../budget/budget.ts";
 import { castChain, type ChainResult, type PlayStep } from "../engine/chain.ts";
-import { resolveStepBudgets } from "./chain-propose-decompose-core.ts";
+import { fundedStepDefault, resolveStepBudgets } from "./chain-propose-decompose-core.ts";
 import { proposeEpicPlay, assembleProposeEpicInputs } from "./propose-epic.ts";
 import { decomposeEpicPlay } from "./decompose-epic.ts";
 import { assembleInputs } from "./project-context.ts";
+import { DEFAULT_RUN_LOG_PATH, loadRunLog } from "../log/run-log.ts";
 
 /** Options for {@link castProposeDecomposeChain} — the per-cast values the chain does not carry. */
 export interface ChainProposeDecomposeOptions {
@@ -68,6 +70,30 @@ export function epicSubjectFromPath(epicPath: string): string {
 }
 
 /**
+ * The per-step DEFAULT rung, MEASUREMENT-FUNDED over the ledger (T-050-02, IA-14). When an override
+ * already covers BOTH steps — a uniform `--budget`, or both per-step budgets set (the `vend work`
+ * path threads per-step funded envelopes) — the default is never consulted, so the ledger is NOT read
+ * and the static play budgets are returned: that path stays byte-for-byte unchanged. Otherwise
+ * `loadRunLog` ONCE (ENOENT ⇒ empty ⇒ cold-start funding, the fresh-project safe path) and fund each
+ * step's default at {@link fundedStepDefault} — the pure recalibrate→fundingEnvelope composition.
+ * IMPURE (one fs read); its decision logic is the tested pure core, the house pattern.
+ */
+async function stepDefaults(
+  root: string,
+  opts: ChainProposeDecomposeOptions,
+): Promise<[Budget, Budget]> {
+  const defaultUnused =
+    opts.budget !== undefined || (opts.proposeBudget !== undefined && opts.decomposeBudget !== undefined);
+  if (defaultUnused) return [proposeEpicPlay.budget, decomposeEpicPlay.budget];
+
+  const { records } = await loadRunLog({ path: join(root, DEFAULT_RUN_LOG_PATH) });
+  return [
+    fundedStepDefault(records, proposeEpicPlay.name, proposeEpicPlay.budget),
+    fundedStepDefault(records, decomposeEpicPlay.name, decomposeEpicPlay.budget),
+  ];
+}
+
+/**
  * Cast the propose→decompose chain end to end — the capstone gesture. Threads ProposeEpic's minted
  * epic path into DecomposeEpic's `epicPath`; on a ProposeEpic gate STOP the chain HALTS before
  * DecomposeEpic (the `castChain` halt). On success it produces BOTH the epic card AND its
@@ -82,13 +108,14 @@ export async function castProposeDecomposeChain(
   opts: ChainProposeDecomposeOptions,
 ): Promise<ChainResult> {
   const root = opts.projectRoot ?? process.cwd();
-  // Each step casts under: its per-step override ?? the uniform `budget` ?? the play's static default
-  // (the cold-start fallback). PURE selection lives in the addon-free core so it is unit-tested.
-  const { proposeBudget, decomposeBudget } = resolveStepBudgets(
-    opts,
-    proposeEpicPlay.budget,
-    decomposeEpicPlay.budget,
-  );
+  // Each step casts under: its per-step override ?? the uniform `budget` ?? the step's DEFAULT rung.
+  // The default rung is now MEASUREMENT-FUNDED over the ledger (T-050-02, IA-14) — a bare `vend chain`
+  // /`vend run` step funds at `max(measured price, maxCensoredActual × headroom)` so an
+  // under-calibrated (cold-start or repeatedly-andon'd) step clears its observed wall, FINISHES, and
+  // RECORDS, breaking the censoring ratchet (E-049's 120k decompose default). PURE rung selection
+  // stays in the addon-free core; only the funded default's ledger READ is impure (below).
+  const [proposeDefault, decomposeDefault] = await stepDefaults(root, opts);
+  const { proposeBudget, decomposeBudget } = resolveStepBudgets(opts, proposeDefault, decomposeDefault);
 
   const steps: PlayStep<any, any>[] = [
     {

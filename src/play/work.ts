@@ -28,7 +28,7 @@ import type { DoctorReport } from "../doctor/doctor-core.ts";
 import { castProposeDecomposeChain } from "./chain-propose-decompose.ts";
 import { proposeEpicPlay } from "./propose-epic.ts";
 import { decomposeEpicPlay } from "./decompose-epic.ts";
-import { recalibrate } from "../ledger/recalibrate.ts";
+import { fundingEnvelope, recalibrate } from "../ledger/recalibrate.ts";
 import { budgetForTier } from "../shelf/gather.ts";
 import { loadRunLog } from "../log/run-log.ts";
 import { parseBoardSignals, labelForSignal, isBoardStale } from "./work-core.ts";
@@ -191,13 +191,19 @@ export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
   // P7 authorization; the wallet still debits the cast's actuals, not this prediction.
   const { records } = await loadRunLog();
   const prior = budgetForTier(PRICE_TIER);
-  // Keep the two per-step envelopes the wallet authorizes on — they recalibrate separately and can
-  // diverge. `price` (their sum) gates `canAfford`; the individual envelopes are threaded into the
-  // cast PER STEP below so the chain RUNS under exactly what was authorized (E-025: the E-024 sweep
-  // authorized at 227k but cast at the 150k static default → budget-exhausted, cleared 0).
-  const proposeEnvelope = recalibrate(proposeEpicPlay.name, records, PRICE_TIER, prior).envelope;
-  const decomposeEnvelope = recalibrate(decomposeEpicPlay.name, records, PRICE_TIER, prior).envelope;
-  const price = sumBudgets(proposeEnvelope, decomposeEnvelope);
+  // Keep the two per-step results — they recalibrate separately and can diverge. The PRICE (the
+  // honest p90 sum) gates `canAfford`/`fitNext`; the FUNDING envelope is what each cast RUNS under.
+  // GUARD ≠ PRICE (IA-8, T-050-02): the wallet AUTHORIZES on `price` and DEBITS the actuals, while a
+  // cold-start/under-calibrated cast is FUNDED at `max(price, maxCensoredActual × headroom)` so it
+  // clears its observed wall, FINISHES, and RECORDS — breaking the censoring ratchet (E-049's 120k
+  // decompose). A well-calibrated play funds == price (back-compat). Threaded PER STEP into the cast
+  // below so the chain runs under exactly what funding authorized (E-025: the E-024 sweep authorized
+  // at 227k but cast at the 150k static default → budget-exhausted, cleared 0).
+  const proposeResult = recalibrate(proposeEpicPlay.name, records, PRICE_TIER, prior);
+  const decomposeResult = recalibrate(decomposeEpicPlay.name, records, PRICE_TIER, prior);
+  const price = sumBudgets(proposeResult.envelope, decomposeResult.envelope);
+  const proposeFunding = fundingEnvelope(proposeEpicPlay.name, records, proposeResult).envelope;
+  const decomposeFunding = fundingEnvelope(decomposeEpicPlay.name, records, decomposeResult).envelope;
 
   const session = await spendDown<string>({
     wallet,
@@ -207,8 +213,8 @@ export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
       castProposeDecomposeChain({
         signal,
         projectRoot: root,
-        proposeBudget: proposeEnvelope,
-        decomposeBudget: decomposeEnvelope,
+        proposeBudget: proposeFunding,
+        decomposeBudget: decomposeFunding,
         ...(opts.model ? { model: opts.model } : {}),
         // The E1 self-report (T-026-02) — session-level, spread only when reported so an
         // unreported sweep keeps the bit unknown (never a fabricated walk-away), exactly like model.
