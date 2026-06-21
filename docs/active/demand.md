@@ -83,9 +83,10 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`forward-e1-cadence-sweep`** (Frontier 1 keystone) — the next bounded `--no-intervened` sweep: advance forward-E1 (8/10, 4 cleared) past the **≥10 bar** (one cleared chain crosses it) + live-confirm **E-044** (concrete #1) + **E-043** (no orphan). Metered, bounded by P7. | **Keystone** (the trust bar provisional since E-014) | **active → E-045** — live cadence sweep (metered) → settle + the ≥10-bar verdict (met/short, honest composition, no over/under-claim). Awaiting `lisa loop`. |
+*Nothing in flight — E-045 settled: the **≥10 forward-E1 bar is MET** (go upgraded provisional →
+bar-met; hardening E-043/E-044 confirmed live). The sweep minted the typed-DAG epic **E-046** (sound,
+but un-decomposed — decompose hit `budget-exhausted`); **resuming its decompose** is a ready pull
+under Frontier 3. Pull below.*
 
 ---
 
@@ -100,15 +101,17 @@ named by the charter principle it advances and the gap it closes:
   83 s, past the 72,785 ms wall** that censored E-037 ⇒ **E-038 proven live, in flight.** Clean P7
   **wallet-exhausted** stop; auth==exec held (E-025). (Board #1 was self-referential again — re-pointed
   at concrete demand before casting; a ranker follow-up, not a blocker.)
-- **Accrue cleared forward-E1 to ≥10** → **pulled → E-045 (in flight):** the next bounded
-  `--no-intervened` sweep — one cleared chain takes forward 8/10 → ≥10 (the bar provisional since
-  E-014), and it doubles as the live confirmation of E-043 (no orphan) + E-044 (concrete #1).
-  Each `vend work --no-intervened` sweep that *clears* a pull
-  adds a genuine forward record. E-039 added the **first 4 cleared** forward records (ledger 30–33,
-  `intervened:false`+`success`): forward sample **4/10 → 8/10**, of which **0 → 4 are now cleared**
-  (the prior 4 were all censored). **+2 reports to the sample bar (≈1 cleared pull); ≈+3 more cleared
-  pulls to ≥10 genuinely cleared.** The ≥10-genuine bar fully ungates the provisional go — a
-  **cadence**, not a single epic.
+- **Accrue forward-E1 to ≥10** → **settled → E-045 / T-045-02: the ≥10 sample bar is MET.** The
+  E-045 sweep took forward (live) **8 → 10** (composition **5 cleared / 5 censored / 1 genuine
+  `--intervened`**). The pre-wired E-014/E-026 rule (≥10 forward self-reports) is **met — say so
+  plainly.** Honest caveat (no over-claim): 9/10 forward runs ran *untouched* and only **1** is a
+  genuine intervention, so this is **"didn't-break" evidence, not "stress-tested"** — the go upgrades
+  **provisional → bar-met**, *not* "bulletproof"/"forward-confirmed-robust" (the E-026/T-026-04 trap).
+  Forward-only numbers throughout; the 23-report combined pool (96% walk-away) is **not** the verdict
+  basis. **What the cadence targets next:** genuine-intervention *depth* (still **1**) — real stress
+  evidence — not more walk-aways. A **cadence**, not a single epic; the next `--no-intervened` sweep
+  that needs a real intervention is worth more than ten that don't.
+  (`work/T-045-02/review.md`, `work/T-045-01/progress.md`.)
 - **Macro-wallet live proof + forward-E1 accrual.** The headline gesture is now **watched CLEARING**
   (E-039, 2026-06-20), upgraded from *watched refusing* (E-037): a real metered sweep cleared 2
   grounded pulls on a bounded walk-away — P4/P7 live, truthful receipt, the propose time-censor (the
@@ -136,6 +139,15 @@ named by the charter principle it advances and the gap it closes:
 - **Multi-node DAG.** Plays composing into a real typed graph (fan-out, join,
   conditional) beyond the linear propose→decompose chain. The architectural
   centerpiece of "typed, graph-structured agent orchestration." **High/Keystone.**
+  **Minted → E-046 `typed-dag-fan-out-join-substrate`** (autonomously, by the E-045 sweep — this was
+  the concrete board #1 E-044 surfaced). **Decompose hit `budget-exhausted` (clean P7) ⇒ epic exists
+  but is un-decomposed (no stories/tickets yet) — a partial chain.** A future pull resumes
+  `decompose-epic` to clear it; until then E-046 is open and childless by budget, not by orphaning.
+  - **Resume E-046's decompose** — `decompose-epic` on E-046 (the DAG epic) — **ready.** The DAG is
+    the architectural keystone, so this likely warrants a *hand* decompose (careful node/edge slicing)
+    over a fat-budget autonomous re-cast. Either way: a real, grounded epic awaiting its tickets.
+    *(Finding: the macro-wallet had depleted by the decompose step — heavy epics may want a fatter
+    macro budget or a per-step floor; a mild echo of the E-038 envelope thread, noted not pulled.)*
 - **Per-play executor / BAML-client selection.** A play declares *which model* it
   runs on — the natural successor to E-032 (per-play tooling) + E-035/E-036's
   selection seams. **Standard.** ~1 block.
