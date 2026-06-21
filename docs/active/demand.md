@@ -83,7 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
+| Signal | Value | Status |
+|---|---|---|
+| **`svg-glanceable-default-and-edge-payload`** (Frontier 4 / P5) — turn the 62-column SVG strip into the one glanceable, decision-bearing picture: coarse default grouping + visual weight on blocked edges. E-056, **minted + decomposed live by `vend chain`** — honored every scope pin (only flip the default, no new axes, no palette redesign, determinism/one-way-authority held). | **High** (makes the render-and-watch validation finally runnable; serves Maya's "one picture" + Devraj's funding map) | **active → E-056** — S-056-01: T-056-01 flip `DESIGNER_PRESET.groupBy` story→coarse (`status`, ≈5 cols); S-056-02: T-056-02 add a `blocked` flag to `ProjectionLink` (computed in `projectGraph` from graph status) → T-056-03 weight blocked edges in `projectionToSvg` (heavy stroke; satisfied stay light). FREE/deterministic, byte-identical, one-way-authority. Awaiting `lisa loop`. |
 
 ---
 
