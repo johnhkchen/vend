@@ -83,9 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-039 cleared (the wallet is now **watched clearing**: it minted `vend init`/
-`vend doctor`, which the loop then built). Frontier 1's residual is the forward-E1 **cadence** (8/10,
-4 cleared); Frontier 7 advanced (init+doctor built). Pull below.*
+| Signal | Value | Status |
+|---|---|---|
+| **`idempotent-mint-guard`** (Frontier 7 follow-up) — `propose-epic` re-mints `nextEpicId`=max+1 each run (TOCTOU-safe, not idempotent), so a retry double-minted the doctor epic (E-042 + orphan E-041, same title). Key the mint on **title**: adopt an existing same-title epic before grabbing a fresh slot. | **Standard** (correctness the loop demonstrably hits; P3/P4) | **active → E-043** — single surgical ticket (pure title-dedup in `id-guard.ts` + `proposeEpicEffect` adopts) + deterministic twice-run proof. Awaiting `lisa loop`. |
 
 ---
 
@@ -187,10 +187,9 @@ guard). **Remaining:** a driveable hackathon `examples/` template · Homebrew / 
 delivery · onboarding docs. **High** (foundation laid; example → delivery next). *Pull from the PM
 batch — the human pulls (pull-discipline).*
 
-- **Idempotent-mint guard for `propose-epic`** (surfaced by E-039) — the `vend doctor` clear minted
-  the epic **twice** (E-042 + a childless orphan E-041, since deleted); an id double-allocation must
-  not leave a stray card. Add an idempotent guard so a re-mint of the same title/id is a no-op (rhymes
-  with the E-004 id-collision guard). **Standard** · **ready** · small (~1h).
+- **Idempotent-mint guard for `propose-epic`** (surfaced by E-039) → **pulled → E-043 (in flight).**
+  Root cause grounded: the effect re-mints `nextEpicId`=max+1 each run (TOCTOU-safe, not idempotent);
+  the fix is title-keyed adoption before minting. **Standard.**
 - **Steer ranker demotes self-referential targets** (surfaced by E-037 + E-039) — `vend steer`/
   `survey` keep ranking *"run the sweep"* meta-signals #1, which propose-epic can't cleanly mint; the
   ranker should demote introspective/self-referential targets beneath concrete product demand.
