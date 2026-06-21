@@ -23,6 +23,8 @@ import { join } from "node:path";
 import { allocate } from "../budget/wallet.ts";
 import type { Budget } from "../budget/budget.ts";
 import { spendDown, type SessionResult, type StepSignal } from "../engine/spend.ts";
+import { castPreflight } from "../doctor/preflight.ts";
+import type { DoctorReport } from "../doctor/doctor-core.ts";
 import { castProposeDecomposeChain } from "./chain-propose-decompose.ts";
 import { proposeEpicPlay } from "./propose-epic.ts";
 import { decomposeEpicPlay } from "./decompose-epic.ts";
@@ -78,6 +80,12 @@ const ACTIVE_DIRS = ["docs/active/epic", "docs/active/stories", "docs/active/tic
  * settled session carries the {@link SessionResult} for the receipt.
  */
 export type WorkResult =
+  /** The environment failed the doctor preflight (T-042-04): a broken dependency — a CLEAN refusal
+   *  at the door, BEFORE the board is read, the wallet is funded, or any token is metered (P3/P4/P7,
+   *  mirroring lisa's check_required_deps-before-run_loop). Carries the rendered {@link DoctorReport}
+   *  so the CLI prints the SAME named-check + fix-it-hint surface `vend doctor` emits and exits with
+   *  its exitCode — a successful refusal, not a crash, like the no-board/empty-board/stale-board family. */
+  | { readonly kind: "unfit-env"; readonly report: DoctorReport }
   | { readonly kind: "no-board"; readonly tried: readonly string[] }
   | { readonly kind: "empty-board"; readonly boardPath: string }
   /** The board predates the project's live state (T-027-01, E-027): a CLEAN refusal (the CLI renders
@@ -146,6 +154,13 @@ async function newestActiveMtimeMs(root: string): Promise<number> {
  */
 export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
   const root = opts.projectRoot ?? process.cwd();
+
+  // Doctor preflight (T-042-04): refuse a cast against a broken environment at the DOOR — before the
+  // board is read, the wallet is funded, or any token is metered (P3/P4/P7). Reuses the `vend doctor`
+  // check (probe → render) exactly as lisa runs check_required_deps before its run_loop. A broken dep
+  // is returned as DATA (a red DoctorReport) — never a mid-run crash after a budget is committed.
+  const preflight = await castPreflight();
+  if (!preflight.ok) return { kind: "unfit-env", report: preflight };
 
   const board = await readBoard(root, opts.boardPath);
   if (!board) {

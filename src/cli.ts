@@ -662,8 +662,10 @@ if (import.meta.main) {
     // (which pull is running against the two-denomination burn, IA-8) — never the raw executor stream.
     // On a settled session it prints the receipt (cleared / per-cast cost / remaining / stop reason,
     // the andon rendered amber per IA-9) and exits 0 — an andon is a SUCCESSFUL refusal, not a crash;
-    // only a missing/empty board (a broken precondition) exits non-zero. Lazy import keeps the shell
-    // (and its BAML addon) off the pure-parse path, exactly as the other arms.
+    // only a broken precondition (unfit env / missing / empty / stale board) exits non-zero. The
+    // doctor preflight (T-042-04) runs first inside `castWork`: a broken dep refuses at the door with
+    // the `vend doctor` report before any budget is committed. Lazy import keeps the shell (and its
+    // BAML addon) off the pure-parse path, exactly as the other arms.
     const { castWork, DEFAULT_MACRO_BUDGET } = await import("./play/work.ts");
     const { renderReceipt, formatStepSignal, renderStaleBoard } = await import("./play/work-core.ts");
     const funded = parsed.budget ?? DEFAULT_MACRO_BUDGET;
@@ -674,6 +676,13 @@ if (import.meta.main) {
       ...(parsed.intervened !== undefined ? { intervened: parsed.intervened } : {}),
       onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded)}\n`),
     });
+    if (result.kind === "unfit-env") {
+      // The doctor preflight refused (T-042-04): a broken dependency. Print the doctor report (the
+      // named checks + fix-it hints) and exit with its code — a clean precondition refusal at the
+      // door, before any budget was committed, exactly like the no-board / stale-board family.
+      process.stderr.write(`${result.report.report}\n`);
+      process.exit(result.report.exitCode);
+    }
     if (result.kind === "no-board") {
       process.stderr.write(
         `no staged board found (tried ${result.tried.join(", ")}) — run \`vend steer\` or \`vend survey\` first\n`,
