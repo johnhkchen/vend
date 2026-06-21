@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`projection-to-svg-renderer`** (Frontier 4 / P5·P3) — render the work-graph as a large static SVG: a THIRD consumer of E-021's `Projection` IR (beside `paper.ts`), MCP-independent, so a non-dev teammate sees the whole board as a portable file. E-055, **minted + decomposed live by `vend chain`** — honored every scope pin (deterministic layout, mirror paper.ts, Linear/round-trip named out-of-scope). | **High** (the unblocked visual half of the non-dev round-trip) | **active → E-055** — T-055-01 pure SVG primitives + deterministic grid/swimlane geometry → T-055-02 `projectionToSvg(projection, overlays?)` core (one rect/card, group label/group, edge/link, honest-empty, byte-identical, never writes back) → T-055-03 CLI/file seam (loadGraph → projectGraph → write .svg, authority-guard green). FREE/deterministic. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -190,12 +188,10 @@ live-join re-cast remain.) **High.**
 
 ### Frontier 4 — The non-dev round-trip (P5)
 
-- **SVG renderer → PULLING (the MCP-independent visual surface — an alternative to Linear).** Render the
-  work-graph as a **large static SVG**: a second consumer of E-021's `Projection` IR (`src/present/`,
-  beside `paper.ts`'s markdown/Mermaid), so a non-dev teammate sees the whole board at a glance — no Linear
-  MCP, no external integration, just a file. Pure projection → SVG markup, deterministic (assert
-  structure), one-way-authority guarded (Vend's graph never touched). The visual half of the non-dev
-  round-trip, unblocked. **High.**
+- ~~SVG renderer~~ → **done → E-055 (cleared).** A THIRD consumer of E-021's `Projection` IR renders the
+  work-graph to a large static SVG (`projectionToSvg` + the `vend svg` seam); MCP-independent, deterministic,
+  one-way-authority. Live-proven on the real board (133 rect / 89 line / 195 text). The visual half of the
+  non-dev round-trip, delivered as a portable file — no Linear needed.
 - **Linear renderer (live)** — project the work-graph into actual Linear issues. **DEFERRED — blocked on a
   Linear MCP (not connected).** E-021 built the MCP-independent presentation layer per
   `pm/linear-surface-prep.md`, which defers live issue-creation to "the MCP stage." The SVG renderer above
