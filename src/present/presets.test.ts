@@ -43,6 +43,15 @@ describe("seat / preset table (pure)", () => {
     expect(defaultPresetForSeat("dev")).toBe(DEV_PRESET);
   });
 
+  test("the designer default groups by the coarse status axis; dev keeps epic (T-056-01)", () => {
+    // The non-dev default is re-aimed from the fine `story` axis (~62 columns on the live board)
+    // to a coarse axis already in GROUPINGS, so the default `vend svg` is glanceable.
+    expect(defaultPresetForSeat("designer").groupBy).toBe("status");
+    expect(DESIGNER_PRESET.groupBy).toBe("status");
+    // DEV_PRESET's finer `epic` axis is deliberately left unchanged.
+    expect(DEV_PRESET.groupBy).toBe("epic");
+  });
+
   test("loading the 'designer' preset by name returns plain · low · tree (AC clause 1)", () => {
     const spec = presetByName("designer");
     expect(spec).toBe(DESIGNER_PRESET);

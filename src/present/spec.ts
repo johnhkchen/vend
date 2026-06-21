@@ -122,7 +122,7 @@ export const DESIGNER_PRESET: PresentationSpec = Object.freeze({
     "baml_internals",
     "raw_acceptance_criteria",
   ]) as readonly DetailField[],
-  groupBy: "story",
+  groupBy: "status",
   metaphor: "tree",
   labels: Object.freeze({
     status: Object.freeze({ open: "To do", in_progress: "In progress", done: "Done" }),

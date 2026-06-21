@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { buildGraph, type RawNode, type WorkGraph } from "../graph/model.ts";
+import { loadWorkGraph } from "../graph/load.ts";
 import { DESIGNER_PRESET } from "./spec.ts";
 import { projectGraph } from "./project.ts";
 import { projectionToSvg } from "./projection-svg.ts";
@@ -168,7 +169,7 @@ describe("writeBoardSvg — writes a valid .svg from the projected board", () =>
     }
   });
 
-  test("the seat selects the spec: dev (groupBy epic) differs from designer (groupBy story)", async () => {
+  test("the seat selects the spec: dev (groupBy epic) differs from designer (groupBy status)", async () => {
     const dir = await tempDir();
     try {
       const graph = miniGraph();
@@ -248,6 +249,27 @@ describe("writeBoardSvg — the seam writes the staged artifact, never docs/acti
       // the artifact landed under the temp .vend-style dir, NOT under docs/active.
       expect(result.path.startsWith(dir)).toBe(true);
       expect(result.path).not.toContain("docs/active");
+      expect(await exists(result.path)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the default vend svg collapses the live board to a glanceable handful of status groups, not ~62 (T-056-01)", async () => {
+    const dir = await tempDir();
+    try {
+      // Default seat = designer = the coarse `status` axis, over the LIVE board (no injected graph).
+      const result = await writeBoardSvg({ outDir: dir });
+      expect(result.groupCount).toBeLessThanOrEqual(6); // a handful of columns, not a strip
+
+      // Non-vacuous: the SAME live board under the old `story` axis is far wider — proving the
+      // collapse is real, not an artifact of an empty/tiny board.
+      const live = await loadWorkGraph();
+      const storyGroups = projectGraph(live, { ...DESIGNER_PRESET, groupBy: "story" }).groups.length;
+      expect(storyGroups).toBeGreaterThan(6); // the strip was genuinely wide (guards the comparison)
+      expect(result.groupCount).toBeLessThan(storyGroups);
+
+      // Observable in the written artifact.
       expect(await exists(result.path)).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
