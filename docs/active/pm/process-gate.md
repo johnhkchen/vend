@@ -1,6 +1,6 @@
 ---
-ready: false          # ← processed 2026-06-20 (one-shot consumed); raise again for the next cycle
-requested_at: 2026-06-20
+ready: true           # ← RAISED 2026-06-21 for the visual-channel cycle (one-shot; flip to false on synthesis)
+requested_at: 2026-06-21
 ---
 
 # Process gate — "I'm ready for you to process this"
@@ -25,6 +25,40 @@ a **preliminary draft**, not a decision.
   any signal to the active board while the gate is down.
 
 ## Focus / notes for the next processing cycle
+
+_**Visual-channel cycle — RAISED 2026-06-21 (ready, awaiting synthesis).**_
+
+**Focus: the non-dev visual channel — turn the strategy stack into a ranked batch.** A full
+discovery→strategy stack was built and committed this cycle (`d4d649b`): `persona-research.md` →
+`pestle-analysis.md` → `product-strategy.md` → `svg-artifact-discovery.md` → `OKRs-vend-Q3-2026.md`
+(+ `hero_loteria.PNG`). The synthesis run should **read that stack as its input** and rank the open
+demand against it — not re-discover.
+
+**What the stack already decided (carry into the ranking, don't re-litigate):**
+- **North Star** = cleared runs that pass gates without intervention. **OMTM** = time-to-first-driven-
+  board for a non-dev. **Moat** = executor-agnostic neutrality (N4) + accrued playbooks.
+- **Macro:** strongest tailwind = the survey-proven trust collapse (gates are the answer); #1 threat =
+  the executor (Claude Code) absorbing orchestration + visual surfaces — a clock on shipping the
+  non-dev channel.
+- **Riskiest must-be-true:** the non-dev channel *converts* (push is [S]-proven; pull is hypothesis).
+
+**Candidate pulls the stack surfaces (un-elaborated, PE-6 — for the synthesis to rank, not a decision):**
+- **E-055** `projection-to-svg-renderer` — **already active on the board**; `svg-artifact-discovery.md`
+  carries its design inputs (stable-under-delta layout; the DL-9/DL-2 reconciliation to ratify first).
+- The **hackathon driveable example** — `brief-hackathon-example.md` is build-ready; the OMTM engine.
+- **Homebrew delivery** (`dist` JS-mode + justfile; spike-green) — the install channel.
+- **Open-model runner** (Frontier 2, P6) — the moat/economic hedge against the subscription seam.
+
+**The focus question the OKRs frame (the synthesis should take a position):** which risk does the next
+pull buy down — **unproven trust (Set A)**, **unproven channel (Set B, the OMTM's pick)**, or an
+**unhedged platform/economic flank (Set C)**? The canvas sequences *author→operator→designer* and points
+the OMTM at the **channel**; the synthesis should recommend one next pull with that tension named.
+
+**Guardrails (unchanged):** read-never-invent (PE-1); honest-empty if the gradient is flat (IA-4);
+recommend-never-auto-cast (IA-5); the loop auto-drains tactical correctness fixes — keep those out of the
+strategic batch. Promotion stays a human pull. Flip the gate to `false` on synthesis (one-shot).
+
+---
 
 _**Frontier 7 continuation cycle — PROCESSED 2026-06-20 (gate consumed, one-shot, back down).**
 Focus confirmed (continue Frontier 7) and synthesized into `proposed-batch.md`: 6 ranked signals,
