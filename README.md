@@ -11,21 +11,22 @@ Code, behind an interface so open models slot in later.
 
 ## Set up a fresh device
 
-You need [Bun](https://bun.sh) ≥ 1.3.9, the [Doppler CLI](https://docs.doppler.com/docs/cli),
-and [Claude Code](https://claude.com/claude-code).
+You need [Bun](https://bun.sh) ≥ 1.3.9, [just](https://github.com/casey/just), the
+[Doppler CLI](https://docs.doppler.com/docs/cli), and [Claude Code](https://claude.com/claude-code).
 
 ```bash
 git clone https://github.com/johnhkchen/vend.git
 cd vend
-bun install
-doppler setup           # adopts doppler.yaml (project: vend, config: dev)
-claude login            # the default executor authenticates here, not via a key
-bun run hooks:install   # the test-green pre-commit gate
-doppler run -- bun run check
+doppler login   # once per device (browser)
+claude login    # the executor's auth — needed for live drives, not a repo key
+just setup      # deps, Doppler config, git hooks, then verifies the gate
 ```
 
-`bun run check` regenerates the BAML client, typechecks, and runs the suite. It should end
-green.
+`just setup` is idempotent. It runs `bun install`, adopts `doppler.yaml`, installs the
+pre-commit gate, and ends with `doppler run -- bun run check` — which regenerates the BAML
+client, typechecks, and runs the suite. A green run means the device is ready.
+
+To do it by hand, run the steps inside the `setup` recipe in `justfile`.
 
 ## Secrets
 

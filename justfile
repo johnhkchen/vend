@@ -16,6 +16,32 @@ decompose_budget := "600000,350000"
 default:
     @just --list
 
+# One-gesture fresh-device setup: deps, Doppler, git hooks, then verify the gate.
+# Idempotent — safe to re-run. Interactive logins (doppler, claude) are checked
+# and guided, never forced. See README.md for the manual fallback.
+setup:
+    #!/usr/bin/env sh
+    set -e
+    for t in bun doppler; do
+      command -v "$t" >/dev/null 2>&1 || { echo "✗ missing required tool: $t — install it, then re-run \`just setup\`"; exit 1; }
+    done
+    echo "▸ 1/5  Doppler auth"
+    doppler me >/dev/null 2>&1 || { echo "  ✗ not logged in — run:  doppler login   then re-run \`just setup\`"; exit 1; }
+    echo "▸ 2/5  bun install"
+    bun install
+    echo "▸ 3/5  Doppler config (project: vend, config: dev)"
+    doppler setup --no-interactive
+    echo "▸ 4/5  git hooks (test-green pre-commit)"
+    bun run hooks:install
+    echo "▸ 5/5  verify the gate under Doppler"
+    doppler run -- bun run check
+    if command -v claude >/dev/null 2>&1; then
+      echo "ℹ claude CLI present — for live drives ensure you've run:  claude login"
+    else
+      echo "⚠ claude CLI not found — install Claude Code + run \`claude login\` (needed for live drives)"
+    fi
+    echo "✓ setup complete — fresh device is ready."
+
 # Pull the next epic. Smart resume: if the newest epic was minted but never
 # decomposed (the chain's decompose stage failed/exhausted), resume JUST the
 # decompose with a fatter budget — no wasteful re-propose. Otherwise cast a
