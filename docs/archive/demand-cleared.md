@@ -17,6 +17,10 @@ signal clears, crystallize it to one line here and delete its verbose board entr
 - **E-009 — register ProposeEpic** — the play above decompose: a demand signal → an epic card. `signal → epic` made real.
 - **E-011 — chain (signal → tickets)** — `vend chain <signal>` casts ProposeEpic → DecomposeEpic as one gesture; proven on both the success and the andon-halt path. "Vend the whole roadmap" is real.
 
+## Graph-structured orchestration (the v1 vision · P1/P6)
+
+- **E-046 — typed-DAG fan-out/join substrate** — the foundational slice of the v1 vision's named capability ("typed, graph-structured agent orchestration"). Generalized the linear chain (`runChain` — a *path* graph) into a **typed DAG**, mirroring the chain's pure-core ⊥ impure-shell split: `dag-core.ts` (the `DagNode`/`DagEdge`/`DagSpec` model + a pure/total deterministic `topoSort` + `validateDag` rejecting dangling edges, dup ids, and **cycles**); `graph-core.ts` (`runGraph` — the pure executor: a **join** node receives a *multi-entry* upstream map (the load-bearing generalization — `upstream: string` → `NodeUpstreams`), **fan-out** feeds all downstreams, halt skips only the **dependent subgraph** so independent siblings run on); `graph.ts` (`castGraph` — the impure concurrent **wave dispatcher** running independent ready nodes in parallel, returning a topo-ordered deterministic `GraphResult`). Proven with a deterministic **diamond example** (A→{B,C}→D, stub nodes) + the rigorous **fails-vs-linear** test (the 2-upstream join is inexpressible by `runChain` — over any linearization, D's step gets a single upstream string). +34 tests (1121). *(Autonomously minted by E-045's sweep, hand-decomposed; conditional edges, cross-branch budget, a live real-play graph, and the open-model runner are named follow-ons.)*
+
 ## The counter & shelf — the two-gesture surface (P2)
 
 - **E-003 — context-aware shelf** — bare `vend` renders a ranked menu driven by playbooks + live project state, persisted to `.vend/menu.json`. The early CLI of the two-gesture counter.

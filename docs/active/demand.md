@@ -83,9 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`typed-dag-fan-out-join-substrate`** (Frontier 3 — the v1 vision's centerpiece) — generalize the linear chain into a typed DAG: a node/edge model + a topological executor with the first non-linear shapes (**fan-out** + **join**). E-046 (autonomously minted by E-045), **decompose resumed by HAND** (the architectural keystone warrants careful node/edge slicing). | **High/Keystone** (P1/P6 — the composition substrate everything downstream sits on) | **active → E-046** — hand-decomposed into S-046-01 (T-046-01 graph model + topoSort → T-046-02 `runGraph` pure core → T-046-03 `castGraph` shell + worked example + fails-vs-linear test). Free/deterministic (stub nodes; a live real-play graph is downstream). Awaiting `lisa loop`. |
+*Nothing in flight — E-046 done: the **typed-DAG substrate is built** (`dag-core`/`graph-core`/`graph`
+— fan-out, join, topological + parallel execution, proven fails-vs-linear). The v1 vision's named
+capability now exists at its minimum honest form. Board benign all-clear. Pull below.*
 
 ---
 
@@ -135,18 +135,19 @@ named by the charter principle it advances and the gap it closes:
 
 ### Frontier 3 — Graph-structured orchestration (the v1 vision)
 
-- **Multi-node DAG.** Plays composing into a real typed graph (fan-out, join,
-  conditional) beyond the linear propose→decompose chain. The architectural
-  centerpiece of "typed, graph-structured agent orchestration." **High/Keystone.**
-  **Minted → E-046 `typed-dag-fan-out-join-substrate`** (autonomously, by the E-045 sweep — this was
-  the concrete board #1 E-044 surfaced). **Decompose hit `budget-exhausted` (clean P7) ⇒ epic exists
-  but is un-decomposed (no stories/tickets yet) — a partial chain.** A future pull resumes
-  `decompose-epic` to clear it; until then E-046 is open and childless by budget, not by orphaning.
-  - ~~Resume E-046's decompose~~ → **done (hand-decomposed) → in flight:** S-046-01 (T-046-01 graph
-    model + topoSort → T-046-02 `runGraph` pure core → T-046-03 `castGraph` shell + worked example),
-    mirroring the chain's pure-core ⊥ shell split. *(Finding kept: the macro-wallet had depleted by the
-    decompose step — heavy epics may want a fatter macro budget or a per-step floor; a mild echo of the
-    E-038 envelope thread, noted not pulled.)*
+- **Multi-node DAG — foundational substrate ✅ done → E-046.** The typed graph (`dag-core`/`graph-core`/
+  `graph`) is built: a node/edge model + deterministic `topoSort`, `runGraph` (fan-out, **join** via a
+  multi-upstream map, halt-the-dependent-subgraph), and `castGraph` (concurrent wave dispatcher) —
+  proven fails-vs-linear (the diamond's 2-upstream join `runChain` can't express). The v1 vision's named
+  capability exists at its minimum honest form. **Remaining (E-046's named follow-ons):** **conditional
+  edges** (branch on a node's result), a **live real-play graph** (a real composed playbook cast,
+  metered — the deterministic stub example is the substrate proof), **cross-branch budget accounting**
+  (the macro-wallet across parallel branches), and cycle/error semantics. Each a downstream pull onto
+  the proven substrate. **High.**
+- **Decompose-budget finding** (from E-045) — the macro-wallet depleted by the decompose step on the
+  heavy DAG epic (E-046 minted but un-decomposed until the hand-resume). Heavy epics may want a fatter
+  macro budget or a per-step decompose floor; a mild echo of the E-038 envelope thread. **Standard**,
+  noted.
 - **Per-play executor / BAML-client selection.** A play declares *which model* it
   runs on — the natural successor to E-032 (per-play tooling) + E-035/E-036's
   selection seams. **Standard.** ~1 block.
