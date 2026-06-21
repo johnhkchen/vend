@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`measurement-funding-headroom`** (Frontier 6 / P7·P3) — break the envelope censoring ratchet: FUND early/under-calibrated runs generously enough to **record** their actual usage (from the lower bound censored runs already log) instead of terminating off a thin guess. E-050, **hand-authored** (the fix for the twice-confirmed E-045/E-049 finding; using the broken decompose to author its own fix would be circular). | **High** (P7 — turns the budget contract from a self-censoring ratchet into a self-calibrating loop; the IA-14 auto-widen `recalibrate.ts` defers) | **active → E-050** — hand-decomposed: T-050-01 pure `fundingEnvelope` (cold-start/high-censored ⇒ `max(priced, maxCensoredActual × MEASUREMENT_HEADROOM)`; trusted-measured ⇒ priced) → T-050-02 thread it into the cast funding path (`resolveStepBudgets` + `work.ts`), price/shelf label UNCHANGED (honest p90, IA-8), deterministic E-049-shaped fund-to-complete proof, P7 finite-guard. Free/deterministic. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -171,15 +169,12 @@ live-join re-cast remain.) **High.**
     `capture-note`. With one shared wave-level wallet, both branches can finish under a bounded envelope;
     a live re-cast of the `survey → [propose ×2] → capture-note` diamond would prove the join end-to-end.
     **Standard** (free-ish; a small bounded live cast). The honest closer on E-046/E-047's substrate.
-- ~~**Decompose-envelope under-bounds — now TWICE confirmed (E-045, E-049).**~~ → **pulled → E-050
-  (`measurement-funding-headroom`), in flight.** The recalibrated `decompose-epic` envelope (~120k tokens)
-  is too thin for a real epic: E-046 depleted it, and E-049's `vend chain` decompose exhausted at ~265k
-  against 120k, clearing only when bumped to 350k. Diagnosis (E-050): the ratchet is that censored runs
-  are excluded from the p90 sample yet their thin envelope keeps funding the next run — even though a
-  censored run already LOGS its actual usage (264,866 tokens). The fix funds early/under-calibrated runs
-  above that observed lower bound so they record (the IA-14 auto-widen `recalibrate.ts` defers; the
-  token twin of E-038). See **In flight** above. *(`just next`'s manual 350k budget papers over this; E-050
-  is the honest fix in the calibration.)*
+- ~~**Decompose-envelope under-bounds (E-045, E-049).**~~ → **done → E-050 (`measurement-funding-headroom`,
+  cleared, crystallized).** Broke the censoring ratchet — `fundingEnvelope` funds early/under-calibrated
+  runs above the lower bound censored runs already log (`max(priced, maxCensoredActual × headroom)`), so
+  they RECORD rather than terminate off a guess; the quoted price stays the honest p90 (IA-8, GUARD ≠
+  price); P7 holds (finite guard). The IA-14 auto-widen `recalibrate.ts` deferred; the token twin of
+  E-038. 1176 tests. *(`just next`'s manual 350k budget can now retire — the calibration self-corrects.)*
 - **Per-play executor / BAML-client selection.** A play declares *which model* it
   runs on — the natural successor to E-032 (per-play tooling) + E-035/E-036's
   selection seams. **Standard.** ~1 block.
