@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`svg-glanceable-default-and-edge-payload`** (Frontier 4 / P5) — turn the 62-column SVG strip into the one glanceable, decision-bearing picture: coarse default grouping + visual weight on blocked edges. E-056, **minted + decomposed live by `vend chain`** — honored every scope pin (only flip the default, no new axes, no palette redesign, determinism/one-way-authority held). | **High** (makes the render-and-watch validation finally runnable; serves Maya's "one picture" + Devraj's funding map) | **active → E-056** — S-056-01: T-056-01 flip `DESIGNER_PRESET.groupBy` story→coarse (`status`, ≈5 cols); S-056-02: T-056-02 add a `blocked` flag to `ProjectionLink` (computed in `projectGraph` from graph status) → T-056-03 weight blocked edges in `projectionToSvg` (heavy stroke; satisfied stay light). FREE/deterministic, byte-identical, one-way-authority. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -206,10 +204,11 @@ live-join re-cast remain.) **High.**
 
 **SVG surface design-inputs (boarded from `pm/persona-research.md` — WIP, not committed). The glanceability +
 edges fix is in flight (above); these are the rest the personas sharpened:**
-- **`vend svg` glanceability + edges-as-payload** → **PULLING (staged).** Coarse default grouping (the
-  designer preset groups by `epic` → 62 columns) + visual weight on blocked / critical-path edges
-  (`ProjectionLink` is bare `{from,to}` today). The "one picture" + Devraj's funding map. **High** (gates
-  the render-and-watch validation — it fails at 62-wide today).
+- ~~`vend svg` glanceability + edges-as-payload~~ → **done → E-056 (cleared).** Coarse default grouping
+  (`DESIGNER_PRESET.groupBy` story→`status`) + `blocked` flag on `ProjectionLink` + heavy/red stroke on
+  blocked edges. The "one picture" + Devraj's funding map. *(Finding: on a 100%-done board `status`
+  collapses to one column — `leverage` (4 stable tiers) may glance better on a maturing board; small tuning
+  signal, **Leaf**.)*
 - **Color-blind redundancy** — status rides color tokens alone (chosen for card semantics, not contrast);
   add a redundant shape/position/label signal so status survives without color. **Standard.** Accessibility gap.
 - **Layout stability-under-delta** — the deterministic "no force-directed" layout is an *accessibility*
