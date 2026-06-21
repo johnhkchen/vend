@@ -83,10 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-044 closed the last E-039 follow-up (steer/survey now demote self-referential
-meta-tasks beneath concrete demand; live confirmation rides the next steer cast). Board benign
-all-clear. The PM staged a **Frontier 7 continuation** (hackathon example brief prepped,
-`pm/brief-hackathon-example.md`); Frontier 1's residual is the forward-E1 cadence. Pull below.*
+| Signal | Value | Status |
+|---|---|---|
+| **`forward-e1-cadence-sweep`** (Frontier 1 keystone) — the next bounded `--no-intervened` sweep: advance forward-E1 (8/10, 4 cleared) past the **≥10 bar** (one cleared chain crosses it) + live-confirm **E-044** (concrete #1) + **E-043** (no orphan). Metered, bounded by P7. | **Keystone** (the trust bar provisional since E-014) | **active → E-045** — live cadence sweep (metered) → settle + the ≥10-bar verdict (met/short, honest composition, no over/under-claim). Awaiting `lisa loop`. |
 
 ---
 
@@ -101,7 +100,10 @@ all-clear. The PM staged a **Frontier 7 continuation** (hackathon example brief 
   83 s, past the 72,785 ms wall** that censored E-037 ⇒ **E-038 proven live, in flight.** Clean P7
   **wallet-exhausted** stop; auth==exec held (E-025). (Board #1 was self-referential again — re-pointed
   at concrete demand before casting; a ranker follow-up, not a blocker.)
-- **Accrue cleared forward-E1 to ≥10.** Each `vend work --no-intervened` sweep that *clears* a pull
+- **Accrue cleared forward-E1 to ≥10** → **pulled → E-045 (in flight):** the next bounded
+  `--no-intervened` sweep — one cleared chain takes forward 8/10 → ≥10 (the bar provisional since
+  E-014), and it doubles as the live confirmation of E-043 (no orphan) + E-044 (concrete #1).
+  Each `vend work --no-intervened` sweep that *clears* a pull
   adds a genuine forward record. E-039 added the **first 4 cleared** forward records (ledger 30–33,
   `intervened:false`+`success`): forward sample **4/10 → 8/10**, of which **0 → 4 are now cleared**
   (the prior 4 were all censored). **+2 reports to the sample bar (≈1 cleared pull); ≈+3 more cleared
