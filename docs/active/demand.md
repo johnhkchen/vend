@@ -83,9 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-043 closed the double-mint gap (propose-epic now idempotent on title). Board
-benign all-clear. The PM staged a **Frontier 7 continuation** batch (demonstrate + ship — example
-template, delivery); Frontier 1's residual is the forward-E1 cadence. Pull below.*
+| Signal | Value | Status |
+|---|---|---|
+| **`steer-ranker-concrete-demand`** (Frontier 1/7 follow-up) — both live sweeps ranked a self-referential "run the sweep" #1; an unattended sweep (P4) can't re-point. Recalibrate the steer/survey ranker prompt so a signal must be **concrete product demand**; demote operational meta-tasks beneath it. Prompt-only (E-020 style), not a brittle keyword gate. | **Standard** (P4 — unattended autonomy clears real work) | **active → E-044** — single ticket (recalibrate `steer.baml` + `survey.baml`) + deterministic contract assertion; live confirmation rides the next steer cast. Awaiting `lisa loop`. |
 
 ---
 
@@ -189,10 +189,9 @@ batch — the human pulls (pull-discipline).*
 
 - ~~Idempotent-mint guard for `propose-epic`~~ → **done → E-043** (`proposeEpicEffect` adopts an
   existing same-title epic before minting; the loop can now retry a mint without orphaning a card).
-- **Steer ranker demotes self-referential targets** (surfaced by E-037 + E-039) — `vend steer`/
-  `survey` keep ranking *"run the sweep"* meta-signals #1, which propose-epic can't cleanly mint; the
-  ranker should demote introspective/self-referential targets beneath concrete product demand.
-  **Standard** (board-quality; both live sweeps hit it). small.
+- **Steer ranker demotes self-referential targets** (surfaced by E-037 + E-039) → **pulled → E-044
+  (in flight).** Prompt-only recalibration of `steer.baml` + `survey.baml` (the E-020 style); a brittle
+  keyword gate was the explicit non-goal. **Standard.**
 
 ---
 
