@@ -179,6 +179,121 @@ export function formatEnvelopeLabel(result: RecalibrateResult): string {
   return successes === 0 ? "estimate (no data)" : `estimate (${successes} casts)`;
 }
 
+// ── Measurement-funding headroom (T-050-01, IA-14) ──────────────────────────────────────
+// The GUARD a cast is RUN under, distinct from the PRICE the shelf QUOTES. `recalibrate`
+// bounds a play's cost at the tier percentile over its SUCCESSFUL runs and right-censors
+// andon'd runs OUT of that sample (IA-13, correct — their true cost is only a lower bound).
+// But handing that thin percentile (or, cold-start, the hand prior) straight back as the
+// FUNDING envelope is the censoring ratchet: an under-bounding prior censors the run, the
+// censored run feeds nothing back, and the next run is funded at the same thin guess and
+// censors again. `recalibrate` (above) READS the censored rate into `confidence` but does
+// not ACTUATE on it (the IA-14 deferral). `fundingEnvelope` actuates it — the TOKEN analogue
+// of budget.ts's `timeoutMsFor`/`TIMEOUT_HEADROOM`, generalized over BOTH dimensions: when a
+// play is under-calibrated, fund it at `max(price, maxCensoredActual × headroom)` so the run
+// clears every observed wall, FINISHES, and lands a success the percentile can finally bind to.
+//
+// GUARD ≠ PRICE (IA-8, charter P7): this NEVER mutates `recalibrate`'s returned `envelope`,
+// the percentile math, or `formatEnvelopeLabel` — the quoted estimate stays the honest p90.
+// The headroom is a bounded (finite, ≥2) runaway-tolerant funding floor, exactly as
+// `TIMEOUT_HEADROOM` is for the wall-clock kill-switch. PURE/TOTAL like the rest of this
+// module: plain values in, a fresh `Budget` out; no fs, clock, or process. A well-calibrated
+// play (measured source, low censored rate) is funded at the price verbatim — back-compat.
+
+/** Headroom a measurement-funded envelope gets ABOVE the largest observed lower bound (a
+ *  censored run's logged actual). Mirrors budget.ts `TIMEOUT_HEADROOM` — one warranted factor
+ *  for the class (double the observed wall), not a patch for a data point. ≥2 and finite, so the
+ *  funded guard stays bounded (P7). The token+time analogue of the wall-clock kill-switch's slack:
+ *  it clears the observed wall so a heavy cast FINISHES and RECORDS, breaking the censoring ratchet. */
+export const MEASUREMENT_HEADROOM = 2;
+
+/** Censored-rate threshold at/above which a `measured`-source play is treated as under-calibrated
+ *  and auto-widened (the IA-14 actuation `recalibrate`'s `:14-16` comment defers). When runs are
+ *  andon'd-at-envelope at least this often (~1 in 3), the percentile over the surviving successes is
+ *  provably under-bounding the tail — so the FUNDING envelope (not the price) is widened to let the
+ *  next heavy run finish. Cold-start (`source: "prior"`) is always under-calibrated regardless. */
+export const CENSORED_WIDEN_RATE = 1 / 3;
+
+/** Knobs for {@link fundingEnvelope}; all default to the module constants. */
+export interface FundingOptions {
+  /** Recency window for reading censored actuals; default {@link DEFAULT_WINDOW}. MUST match the
+   *  `window` the producing {@link recalibrate} call used, so magnitudes and the rate agree. */
+  readonly window?: number;
+  /** Censored-rate auto-widen threshold; default {@link CENSORED_WIDEN_RATE}. */
+  readonly widenRate?: number;
+  /** Headroom factor above the observed lower bound; default {@link MEASUREMENT_HEADROOM}. */
+  readonly headroom?: number;
+}
+
+/** The envelope a cast is FUNDED (run) under, plus whether headroom actually lifted it above the
+ *  price. `envelope` is ≥ the priced envelope per dimension; `widened` is `true` iff some dimension
+ *  came out strictly above its price (for an honest funding label / the caller's log). */
+export interface FundingResult {
+  readonly envelope: Budget;
+  readonly widened: boolean;
+}
+
+/** Fund one dimension: clear the largest observed censored lower bound by `headroom`, never falling
+ *  below the price. With no censored actual to read (pure cold-start), give the PRICE headroom so a
+ *  first run still gets room to record. Reuses {@link positiveInt} for the budget-dimension contract. */
+function fundDimension(priced: number, censoredActuals: readonly number[], headroom: number): number {
+  const floor = censoredActuals.length > 0 ? Math.max(...censoredActuals) * headroom : priced * headroom;
+  return positiveInt(Math.max(priced, floor));
+}
+
+/**
+ * Derive the FUNDING envelope (the guard a cast runs under) from a {@link RecalibrateResult} and the
+ * play's records. PURE/TOTAL. The price (`result.envelope`) is left untouched — this is a strict
+ * post-processor, never a re-derivation (guard ≠ price, IA-8). A play is UNDER-CALIBRATED when it is
+ * cold-start (`source: "prior"`) OR its windowed censored rate `censored / (successes + censored)`
+ * (read from `result.confidence`) is ≥ `widenRate` — the percentile is provably under-bounding. When
+ * under-calibrated, each dimension is funded at `max(priced, maxCensoredActual × headroom)`, reading
+ * the windowed CENSORED runs' logged `totalTokens` / `wallClockMs` as lower bounds (with the
+ * `priced × headroom` fallback when there is no censored history to read). When trusted-measured the
+ * price is returned verbatim. `widened` flags whether headroom lifted any dimension above its price.
+ */
+export function fundingEnvelope(
+  play: string,
+  records: readonly RunRecord[],
+  result: RecalibrateResult,
+  opts: FundingOptions = {},
+): FundingResult {
+  const window = opts.window ?? DEFAULT_WINDOW;
+  const widenRate = opts.widenRate ?? CENSORED_WIDEN_RATE;
+  const headroom = opts.headroom ?? MEASUREMENT_HEADROOM;
+  const priced = result.envelope;
+
+  // Scalar gate: `source` and the censored counts are run-outcome properties, not per-dimension,
+  // so the under-calibration decision is shared — only the funding `max` below is per-dimension.
+  const { successes, censored } = result.confidence;
+  const sample = successes + censored;
+  const censoredRate = sample > 0 ? censored / sample : 0;
+  const underCalibrated = result.source === "prior" || censoredRate >= widenRate;
+
+  // Trusted-measured + clean: the bound is earned from real successes — fund at the price, no
+  // headroom (back-compat — a well-calibrated play is unchanged). Copy so callers can't alias.
+  if (!underCalibrated) {
+    return { envelope: { ...priced }, widened: false };
+  }
+
+  // Re-window the censored runs to read their logged actual magnitudes — the lower bounds
+  // `recalibrate` right-censored OUT of the percentile but which are the very floor to clear. Same
+  // `window` as the producing recalibrate call, so these agree with the `confidence` rate above.
+  const windowedCensored = forPlay(records, play)
+    .slice(-window)
+    .filter((r) => CENSORED_OUTCOMES.includes(r.outcome));
+  const censoredTokens = windowedCensored.map(totalTokens);
+  const censoredTimes = windowedCensored.map(wallClockMs).filter((ms): ms is number => ms !== null);
+
+  const tokens = fundDimension(priced.tokens, censoredTokens, headroom);
+  const timeMs = fundDimension(priced.timeMs, censoredTimes, headroom);
+  const envelope: Budget = { timeMs, tokens };
+
+  // Honest flag: each funded dimension is `max(priced, …) ≥ priced`, so `widened` is true iff some
+  // dimension came out STRICTLY above its price — i.e. headroom was actually applied.
+  const widened = envelope.tokens > priced.tokens || envelope.timeMs > priced.timeMs;
+  return { envelope, widened };
+}
+
 // ── Reference-class bias correction (T-013-03, IA-16) ───────────────────────────────────
 // The OUTSIDE view: "we usually overestimate by ~80%." Where `recalibrate` bounds a play's
 // cost from its OWN percentile history, `calibrate` learns the systematic ESTIMATE-vs-ACTUAL

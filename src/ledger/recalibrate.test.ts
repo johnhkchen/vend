@@ -4,12 +4,15 @@ import type { Budget } from "../budget/budget.ts";
 import {
   type BiasPrior,
   calibrate,
+  CENSORED_WIDEN_RATE,
   COLD_START_MIN_SUCCESSES,
   DEFAULT_SHRINKAGE,
   formatCorrectionLabel,
   formatEnvelopeLabel,
+  fundingEnvelope,
   IDENTITY_FACTOR,
   learnBiasFactor,
+  MEASUREMENT_HEADROOM,
   percentile,
   recalibrate,
   TIER_PERCENTILE,
@@ -397,5 +400,123 @@ describe("formatCorrectionLabel — honest correction (AC #4)", () => {
   test("no data at either level reads 'uncorrected (no data)'", () => {
     const empty: BiasPrior = { factor: IDENTITY_FACTOR, n: 0 };
     expect(formatCorrectionLabel(calibrate({ timeMs: 1, tokens: 1 }, KEY, [], empty))).toBe("uncorrected (no data)");
+  });
+});
+
+// ── T-050-01: measurement-funding headroom (fundingEnvelope) ─────────────────────────────
+// The FUNDING guard a cast runs under, distinct from the PRICE the shelf quotes. Every case
+// feeds REAL recalibrate(...) output into fundingEnvelope (never a hand-faked RecalibrateResult),
+// so the price→funding seam is exercised exactly as production wires it. Pure — fabricated
+// RunRecord fixtures via the existing `recordOf` writer, no fs/clock/spawn.
+
+describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
+  test("E-049 shape: 120k prior + a censored run logging ~265k ⇒ funding ≥ 265k × headroom (AC #1/#3a)", () => {
+    const prior: Budget = { timeMs: 120_000, tokens: 120_000 };
+    const records = [
+      recordOf({ tokens: 60_000 }),
+      recordOf({ tokens: 60_000 }), // 2 successes < cold-start threshold ⇒ source "prior"
+      recordOf({ tokens: 264_866, outcome: "budget-exhausted" }), // logged lower bound, right-censored
+    ];
+    const result = recalibrate("p", records, "standard", prior);
+    expect(result.source).toBe("prior");
+    expect(result.envelope.tokens).toBe(120_000); // the price is the prior, untouched
+
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(widened).toBe(true);
+    expect(envelope.tokens).toBe(264_866 * MEASUREMENT_HEADROOM); // clears the observed wall
+    expect(envelope.tokens).toBeGreaterThanOrEqual(265_000); // room to finish and RECORD
+  });
+
+  test("pure cold-start, no censored history ⇒ price × headroom both dims (AC #3b)", () => {
+    const result = recalibrate("p", [], "leaf", PRIOR); // no data ⇒ source "prior", envelope == PRIOR
+    expect(result.source).toBe("prior");
+    const { envelope, widened } = fundingEnvelope("p", [], result);
+    expect(envelope.tokens).toBe(PRIOR.tokens * MEASUREMENT_HEADROOM);
+    expect(envelope.timeMs).toBe(PRIOR.timeMs * MEASUREMENT_HEADROOM);
+    expect(widened).toBe(true);
+  });
+
+  test("trusted-measured + clean ⇒ funding == price, no headroom (back-compat, AC #3c)", () => {
+    const records = Array.from({ length: 5 }, (_, i) => recordOf({ tokens: 1000 * (i + 1), durationMs: 1000 * (i + 1) }));
+    const result = recalibrate("p", records, "standard", PRIOR); // measured, 0 censored
+    expect(result.source).toBe("measured");
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(envelope).toEqual(result.envelope); // verbatim
+    expect(widened).toBe(false);
+  });
+
+  test("high censored rate auto-widens a MEASURED source (the IA-14 actuation, AC #3d)", () => {
+    const records = [
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 2000 }),
+      recordOf({ tokens: 3000 }), // 3 successes ⇒ source stays "measured"
+      recordOf({ tokens: 500_000, outcome: "budget-exhausted" }),
+      recordOf({ tokens: 500_000, outcome: "budget-exhausted" }),
+      recordOf({ tokens: 500_000, outcome: "timed-out" }), // censored rate 3/6 = 0.5 ≥ 1/3
+    ];
+    const result = recalibrate("p", records, "standard", PRIOR, { minSuccesses: 3 });
+    expect(result.source).toBe("measured"); // the PRICE is still the honest measured p90
+    expect(result.confidence.censored).toBe(3);
+
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(widened).toBe(true);
+    expect(envelope.tokens).toBeGreaterThan(result.envelope.tokens); // funded above the price
+    expect(envelope.tokens).toBe(500_000 * MEASUREMENT_HEADROOM);
+  });
+
+  test("per-dimension independence: tokens widen while time does not (AC #1)", () => {
+    const prior: Budget = { timeMs: 1_000_000, tokens: 100 }; // huge time prior, tiny token prior
+    const records = [
+      recordOf({ tokens: 100 }),
+      recordOf({ tokens: 100 }), // cold-start ⇒ source "prior"
+      recordOf({ tokens: 50_000, durationMs: 60_000, outcome: "budget-exhausted" }),
+    ];
+    const result = recalibrate("p", records, "standard", prior);
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(widened).toBe(true);
+    // tokens: max(100, 50_000 × 2) = 100_000 — widened
+    expect(envelope.tokens).toBe(50_000 * MEASUREMENT_HEADROOM);
+    // time: max(1_000_000, 60_000 × 2 = 120_000) = 1_000_000 — NOT widened (price already dominates)
+    expect(envelope.timeMs).toBe(1_000_000);
+  });
+
+  test("does NOT mutate recalibrate's envelope, percentile, or label (guard ≠ price, AC #2)", () => {
+    const records = [
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 2000 }),
+      recordOf({ tokens: 3000 }),
+      recordOf({ tokens: 999_999, outcome: "budget-exhausted" }),
+      recordOf({ tokens: 999_999, outcome: "timed-out" }), // rate 2/5 = 0.4 ≥ 1/3 ⇒ widens
+    ];
+    const result = recalibrate("p", records, "standard", PRIOR, { minSuccesses: 3 });
+    const envelopeSnapshot = { ...result.envelope };
+    const labelBefore = formatEnvelopeLabel(result);
+
+    const funded = fundingEnvelope("p", records, result);
+    expect(funded.widened).toBe(true);
+    expect(result.envelope).toEqual(envelopeSnapshot); // the priced envelope is untouched
+    expect(formatEnvelopeLabel(result)).toBe(labelBefore); // the honest label is untouched
+  });
+
+  test("totality: empty and degenerate inputs return a valid positive-int Budget, no throw (AC #1)", () => {
+    const coldEmpty = fundingEnvelope("p", [], recalibrate("p", [], "leaf", PRIOR));
+    expect(Number.isInteger(coldEmpty.envelope.tokens)).toBe(true);
+    expect(Number.isInteger(coldEmpty.envelope.timeMs)).toBe(true);
+    expect(coldEmpty.envelope.tokens).toBeGreaterThan(0);
+    expect(coldEmpty.envelope.timeMs).toBeGreaterThan(0);
+
+    // A degenerate censored run logging zero tokens with unparseable stamps: still positive, ≥ price.
+    const prior: Budget = { timeMs: 10, tokens: 10 };
+    const records = [recordOf({ tokens: 0, outcome: "budget-exhausted", startedAt: "bad", endedAt: "bad" })];
+    const result = recalibrate("p", records, "leaf", prior);
+    const { envelope } = fundingEnvelope("p", records, result);
+    expect(envelope.tokens).toBeGreaterThanOrEqual(prior.tokens);
+    expect(envelope.timeMs).toBeGreaterThan(0);
+  });
+
+  test("constants are the documented bounded values", () => {
+    expect(MEASUREMENT_HEADROOM).toBeGreaterThanOrEqual(2);
+    expect(Number.isFinite(MEASUREMENT_HEADROOM)).toBe(true);
+    expect(CENSORED_WIDEN_RATE).toBeCloseTo(1 / 3, 10);
   });
 });
