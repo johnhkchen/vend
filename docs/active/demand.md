@@ -83,7 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
+| Signal | Value | Status |
+|---|---|---|
+| **`annotation-to-demand-round-trip`** (Frontier 4 / P1·P4·P5) — a non-dev annotates a node on the rendered board → returns as a PROPOSED, priced demand signal a steward pulls (reuses `expand-fragment`'s clearing + `pm/staged/` one-way-authority; new = annotation shape + provenance/back-link + a `vend annotate` seam). E-057, **minted + decomposed live by `vend chain`** — reuse-honoring, named the live-fetch + status-dashboard as out-of-scope follow-ons. | **High** (Maya's telephone-killer; closes the non-dev round-trip end-to-end) | **active → E-057** — S-057-01: T-057-01 pure Annotation + provenance/back-link render → T-057-02 thread it through expand's staging (stage to `pm/staged/`, never the board) · S-057-02: T-057-03 `vend annotate <node> "<text>" [--seat]` CLI seam (MCP-independent). FREE-to-build (stub the cast, like expand's tests). Awaiting `lisa loop`. |
 
 ---
 
