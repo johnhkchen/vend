@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { Budget, Usage } from "./budget.ts";
-import { allocate, canAfford, debit, formatWallet, remaining, type Wallet } from "./wallet.ts";
+import {
+  allocate,
+  canAfford,
+  debit,
+  debitWave,
+  formatWallet,
+  remaining,
+  type Wallet,
+} from "./wallet.ts";
 
 // T-024-01 macro-wallet: pure module, fabricated inputs only — no spawn, no fs, no clock
 // (mirrors budget.test.ts's "fake inputs" rule). Every export and branch is covered here;
@@ -64,6 +72,17 @@ describe("canAfford", () => {
   test("a depleted wallet affords nothing positive", () => {
     const spent = debit(w, macro(30_000, 100_000)).wallet;
     expect(canAfford(spent, macro(1, 1))).toBe(false);
+  });
+
+  // T-048-03 characterization: pins the documented "safe-refuse" — a non-finite
+  // predicted price naturally fails the `<=` comparison, so canAfford returns false
+  // rather than admitting an unbounded cast. (Test-only; behavior already present.)
+  test.each([Infinity, NaN])("refuses a non-finite predicted timeMs: %p", (t) => {
+    expect(canAfford(w, macro(t, 10_000))).toBe(false);
+  });
+
+  test.each([Infinity, NaN])("refuses a non-finite predicted tokens: %p", (n) => {
+    expect(canAfford(w, macro(10_000, n))).toBe(false);
   });
 });
 
@@ -145,6 +164,72 @@ describe("debit — a sequence depletes monotonically to zero", () => {
     const over = debit(w, macro(5_000, 5_000));
     expect(over.wallet.remaining).toEqual({ timeMs: 0, tokens: 0 });
     expect(over.overshoot).toEqual({ timeMs: 5_000, tokens: 5_000 });
+  });
+});
+
+describe("debitWave — fold a concurrent wave (E-048: tokens SUM, wall-clock MAX)", () => {
+  test("all-fit: tokens are SUMMED but wall-clock is the MAX of the branch times", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const out = debitWave(w, [macro(8_000, 30_000), macro(6_000, 20_000)]);
+    // tokens: 30k + 20k = 50k summed → 50k left; time: MAX(8k, 6k) = 8k → 22k left (NOT 30k−14k).
+    expect(out.wallet.remaining).toEqual({ timeMs: 22_000, tokens: 50_000 });
+    expect(out.overshoot).toEqual({ timeMs: 0, tokens: 0 });
+  });
+
+  test("wall-clock is MAX, not SUM — a naive sum would over-charge time", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const out = debitWave(w, [macro(10_000, 10_000), macro(9_000, 10_000), macro(7_000, 10_000)]);
+    // If time were summed it would be 26_000 spent (4_000 left). MAX is 10_000 spent → 20_000 left.
+    expect(out.wallet.remaining.timeMs).toBe(20_000);
+    expect(out.wallet.remaining.tokens).toBe(70_000); // 3 × 10k summed
+  });
+
+  test("single-element wave EQUALS the sequential debit (back-compat, Budget actual)", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const a = macro(12_000, 45_000);
+    expect(debitWave(w, [a])).toEqual(debit(w, a));
+  });
+
+  test("single-element wave EQUALS the sequential debit (back-compat, Usage actual)", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const u = usage({ input_tokens: 600, output_tokens: 100, cache_read_input_tokens: 300 });
+    expect(debitWave(w, [u])).toEqual(debit(w, u));
+  });
+
+  test("empty wave is a no-op (delta {0,0}) — wallet unchanged, no overshoot", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const out = debitWave(w, []);
+    expect(out.wallet.remaining).toEqual({ timeMs: 30_000, tokens: 100_000 });
+    expect(out.overshoot).toEqual({ timeMs: 0, tokens: 0 });
+  });
+
+  test("token overshoot is surfaced ONCE (collective sum), floored — not double-counted", () => {
+    const w: Wallet = { funded: macro(30_000, 100_000), remaining: macro(20_000, 5_000) };
+    const out = debitWave(w, [macro(1_000, 4_000), macro(1_000, 4_000)]);
+    // tokens: 8k summed vs 5k remaining → floor 0, overshoot 3k surfaced once (not 4k+4k).
+    expect(out.wallet.remaining.tokens).toBe(0);
+    expect(out.overshoot.tokens).toBe(3_000);
+    // time: MAX(1k, 1k) = 1k → 19k left, no time overshoot.
+    expect(out.wallet.remaining.timeMs).toBe(19_000);
+    expect(out.overshoot.timeMs).toBe(0);
+  });
+
+  test("mixed Usage + Budget: tokens summed, Usage contributes 0 to the time MAX", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const out = debitWave(w, [
+      macro(9_000, 20_000),
+      usage({ input_tokens: 1_000, output_tokens: 500 }),
+    ]);
+    // tokens: 20k + 1_500 = 21_500 summed; time: MAX(9k, 0) = 9k (Usage has no time).
+    expect(out.wallet.remaining).toEqual({ timeMs: 21_000, tokens: 78_500 });
+    expect(out.overshoot).toEqual({ timeMs: 0, tokens: 0 });
+  });
+
+  test("does not mutate the input wallet (immutability)", () => {
+    const w = allocate(macro(30_000, 100_000));
+    const snapshot: Wallet = { funded: { ...w.funded }, remaining: { ...w.remaining } };
+    debitWave(w, [macro(5_000, 10_000), macro(3_000, 10_000)]);
+    expect(w).toEqual(snapshot);
   });
 });
 

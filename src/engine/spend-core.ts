@@ -101,6 +101,61 @@ export function fitNext<C>(
   return null;
 }
 
+/** The partition {@link authorizeWave} returns: the subset of a ready-set to dispatch CONCURRENTLY in
+ *  this wave (each fits the shared wallet), and the rest hard-STOPPED at the wave boundary (the
+ *  `fitNext` null-result generalized to a SET — the wallet-exhausted stop at wave granularity, which
+ *  T-048-02 turns into a clean wave-boundary halt). Generic over the candidate type `C`, like
+ *  {@link fitNext}; both arrays preserve the input ready-set order. */
+export interface WaveAuthorization<C> {
+  readonly dispatch: readonly C[];
+  readonly stopped: readonly C[];
+}
+
+/**
+ * GENERALIZE {@link fitNext} from selecting ONE candidate to authorizing a whole READY-SET against one
+ * shared wallet (E-048, the cross-branch budget contract). PURE, TOTAL, generic over `C`. Walks `readySet`
+ * IN THE GIVEN ORDER (already the `topoSort` declaration-order tie-break — NEVER re-sorted here) and
+ * greedily dispatches each node that still fits the shared envelope. The two IA-8 denominations DIVERGE
+ * under concurrency:
+ *   - wall-clock (MAX): each node's predicted `timeMs` must fit the FULL remaining time — EACH-fits, no
+ *     cumulative time (parallel branches overlap, so the wave's elapsed ≈ the longest, not the sum);
+ *   - tokens (SUM): the running CUMULATIVE tokens (incl. this node) must fit remaining tokens — the
+ *     collective ceiling, since every branch's burn is real.
+ * Both are expressed by affording the price against a per-node VIRTUAL wallet whose remaining tokens are
+ * depleted by the cumulative-so-far (time left whole), reusing {@link canAfford}'s single `<=` boundary
+ * and safe-refuse-on-non-finite — no second comparison. A node that does NOT fit goes to `stopped` and the
+ * walk CONTINUES: a later, smaller node may still fit (the `fitNext` skip-the-unaffordable-head behavior,
+ * "spend the wallet down"), and a stopped node never adds to the cumulative, so the wave can never
+ * overspend. The dispatched subset is what the wave runs concurrently; the stopped subset is P7's hard
+ * wall at the wave boundary.
+ */
+export function authorizeWave<C>(
+  wallet: Wallet,
+  readySet: readonly C[],
+  priceOf: (c: C) => Budget,
+): WaveAuthorization<C> {
+  const dispatch: C[] = [];
+  const stopped: C[] = [];
+  let cumulativeTokens = 0;
+  const { funded, remaining } = wallet;
+  for (const c of readySet) {
+    const price = priceOf(c);
+    // Virtual wallet: tokens depleted by the cumulative dispatched-so-far (SUM ceiling); time left whole
+    // (MAX — each-fits). canAfford then enforces BOTH denominations with its one `<=` / safe-refuse rule.
+    const virtual: Wallet = {
+      funded,
+      remaining: { tokens: remaining.tokens - cumulativeTokens, timeMs: remaining.timeMs },
+    };
+    if (canAfford(virtual, price)) {
+      dispatch.push(c);
+      cumulativeTokens += price.tokens;
+    } else {
+      stopped.push(c);
+    }
+  }
+  return { dispatch, stopped };
+}
+
 /**
  * The clean-stop decision — the THREE conditions that end a spend session (IA-9), each with its
  * reason. PURE, TOTAL. Precedence, checked in order:

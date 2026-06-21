@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { allocate, type Wallet } from "../budget/wallet.ts";
 import type { Budget } from "../budget/budget.ts";
-import { fitNext, shouldContinue, type BoardState } from "./spend-core.ts";
+import { authorizeWave, fitNext, shouldContinue, type BoardState } from "./spend-core.ts";
 
 // T-024-02 spend loop: the PURE decision core. We import ONLY ./spend-core.ts (never ./spend.ts,
 // which wires the impure cast) so this `bun test` process spawns NOTHING and touches no fs — an
@@ -56,6 +56,83 @@ describe("fitNext", () => {
       B: macro(5_000, 10_000), // both fit
     });
     expect(fitNext(wallet, ["A", "B"], price)).toBe("B");
+  });
+});
+
+describe("authorizeWave (the fitNext generalization to a ready-set — E-048)", () => {
+  test("all-fit: the whole ready-set is dispatched, none stopped", () => {
+    const wallet = fund(60_000, 100_000);
+    const price = priceTable({ A: macro(10_000, 20_000), B: macro(5_000, 10_000) });
+    const out = authorizeWave(wallet, ["A", "B"], price);
+    expect(out.dispatch).toEqual(["A", "B"]);
+    expect(out.stopped).toEqual([]);
+  });
+
+  test("partial — token-stop: tokens are CUMULATIVE, the overflowing tail is stopped", () => {
+    const wallet = fund(60_000, 50_000);
+    const price = priceTable({
+      A: macro(10_000, 40_000), // fits → cumulative 40k
+      B: macro(10_000, 20_000), // 40k + 20k = 60k > 50k → stopped
+    });
+    const out = authorizeWave(wallet, ["A", "B"], price);
+    expect(out.dispatch).toEqual(["A"]);
+    expect(out.stopped).toEqual(["B"]);
+  });
+
+  test("partial — time-stop: wall-clock is EACH-fits (not cumulative); a later node still fits", () => {
+    const wallet = fund(10_000, 100_000);
+    const price = priceTable({
+      A: macro(20_000, 10_000), // time 20k > 10k remaining → stopped (each-fits)
+      B: macro(5_000, 10_000), // time fits, tokens fit → dispatched even though A was stopped
+    });
+    const out = authorizeWave(wallet, ["A", "B"], price);
+    expect(out.dispatch).toEqual(["B"]);
+    expect(out.stopped).toEqual(["A"]);
+  });
+
+  test("continue-after-stop: a stopped middle node does not strand a smaller affordable tail", () => {
+    const wallet = fund(60_000, 50_000);
+    const price = priceTable({
+      A: macro(10_000, 30_000), // fits → cumulative 30k
+      B: macro(10_000, 40_000), // 30k + 40k = 70k > 50k → stopped, cumulative stays 30k
+      C: macro(10_000, 15_000), // 30k + 15k = 45k ≤ 50k → fits (skip-the-unaffordable-head)
+    });
+    const out = authorizeWave(wallet, ["A", "B", "C"], price);
+    expect(out.dispatch).toEqual(["A", "C"]);
+    expect(out.stopped).toEqual(["B"]);
+  });
+
+  test("none fit: every node is stopped (the wave-boundary hard wall)", () => {
+    const wallet = fund(5_000, 5_000);
+    const price = priceTable({ A: macro(10_000, 1_000), B: macro(1_000, 10_000) });
+    const out = authorizeWave(wallet, ["A", "B"], price);
+    expect(out.dispatch).toEqual([]);
+    expect(out.stopped).toEqual(["A", "B"]);
+  });
+
+  test("empty ready-set → empty partition (total)", () => {
+    const out = authorizeWave(fund(60_000, 100_000), [], priceTable({}));
+    expect(out).toEqual({ dispatch: [], stopped: [] });
+  });
+
+  test("exact-fit boundary (<=): cumulative tokens equal to remaining still dispatches", () => {
+    const wallet = fund(30_000, 50_000);
+    const price = priceTable({
+      A: macro(30_000, 30_000), // cumulative 30k, time exactly 30k
+      B: macro(30_000, 20_000), // 30k + 20k = 50k == remaining, time == remaining → fits
+    });
+    const out = authorizeWave(wallet, ["A", "B"], price);
+    expect(out.dispatch).toEqual(["A", "B"]);
+    expect(out.stopped).toEqual([]);
+  });
+
+  test("walks the GIVEN order — it does not re-sort the ready-set", () => {
+    const wallet = fund(60_000, 50_000);
+    const price = priceTable({ A: macro(10_000, 40_000), B: macro(10_000, 20_000) });
+    // Same prices, reversed input order: now B fits first (20k), A overflows (20k+40k>50k).
+    const out = authorizeWave(wallet, ["B", "A"], price);
+    expect(out.dispatch).toEqual(["B"]);
+    expect(out.stopped).toEqual(["A"]);
   });
 });
 

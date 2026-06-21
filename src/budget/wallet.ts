@@ -19,6 +19,10 @@
 //      the cast already ran, the burn is sunk), so `debit` FLOORS remaining at zero and
 //      SURFACES the overshoot rather than going negative-silently or throwing.
 //
+// Under CONCURRENCY (E-048) the two denominations DIVERGE: `debitWave` folds a settled wave by SUMMING
+// tokens (every branch's burn is real) but taking the MAX wall-clock (overlapping branches cost ~the
+// longest, not their sum) — a single-element wave equals the sequential `debit`.
+//
 // Reuses `Budget` / `Usage` / `countTokens` from budget.ts (the same two-denomination
 // types and the single definition of "spent") — NOT duplicated here. The ONE deliberate
 // divergence from budget.ts: `allocate` guards each funded dimension as a positive integer
@@ -139,6 +143,28 @@ export function debit(wallet: Wallet, actual: Usage | Budget): DebitResult {
       timeMs: overBy(delta.timeMs, rem.timeMs),
     },
   };
+}
+
+/**
+ * Fold a CONCURRENT wave's settled actuals into the one wallet, returning a NEW wallet (E-048). The two
+ * IA-8 denominations DIVERGE under concurrency: **tokens are SUMMED** (every branch's burn is real —
+ * detect-after, IA-8), but **wall-clock is the MAX** of the wave's actual times (overlapping branches
+ * cost ~the longest, not their sum — summing would over-charge the wall-clock envelope, the bug this
+ * fixes). The combined delta is debited through the single {@link debit} path, so the floor + the
+ * per-denomination overshoot are computed exactly ONCE (the collective token overshoot, not per branch).
+ * A SINGLE-element wave equals `debit(wallet, actual)` (max-of-one = that one, sum-of-one = that one —
+ * back-compat for the linear path), and an EMPTY wave is a no-op (delta `{0,0}`). A `Usage` actual carries
+ * no time, contributing `timeMs: 0` that `Math.max` harmlessly ignores. PURE / TOTAL.
+ */
+export function debitWave(wallet: Wallet, actuals: readonly (Usage | Budget)[]): DebitResult {
+  let tokens = 0;
+  let timeMs = 0;
+  for (const actual of actuals) {
+    const delta = actualToBudget(actual);
+    tokens += delta.tokens; // SUM — every branch's tokens are real
+    timeMs = Math.max(timeMs, delta.timeMs); // MAX — concurrent elapsed ≈ the longest branch
+  }
+  return debit(wallet, { tokens, timeMs });
 }
 
 /** What is left to spend, per denomination. A stable accessor so callers never reach into
