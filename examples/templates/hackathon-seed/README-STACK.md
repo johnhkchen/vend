@@ -15,7 +15,12 @@ npm install
 npm run dev      # dev server with a live preview of the React island
 npm run build    # emits ./dist (static site)
 npm run preview  # serve the built ./dist locally
+npm run board    # render the vend work-graph to .vend/work-graph.svg (runs `vend svg`)
 ```
+
+The **`/board`** route displays that rendered work-graph beside the app — a read-only static
+snapshot (re-run `npm run board` and refresh to update it). It only *displays* the board; the
+graph is never mutated. The board is empty until you drive the seed (see [`README.md`](./README.md)).
 
 `src/components/HackathonApp.tsx` is a live React island (`client:load` in `src/pages/index.astro`) —
 proof the `@astrojs/react` integration hydrates. Replace it with your real UI.

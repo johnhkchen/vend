@@ -1,0 +1,64 @@
+---
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// The /board view (T-058-04): the SHIPPED `vend svg` board, rendered beside the app the
+// designer already has open. No new renderer — this page only DISPLAYS the file `vend svg`
+// (E-055/E-056, src/present/svg-file.ts) writes. One-way authority is preserved: we READ,
+// never write, never mutate the graph.
+//
+// Build-time inline: `vend svg --seat designer` (a.k.a. `npm run board`) writes the board to
+// `.vend/work-graph.svg` at the project root — the same root the Astro build runs from
+// (process.cwd()). We read it here and inline the markup. A missing file is the NORMAL state
+// of a fresh seed (the board starts empty until `vend steer`), so a read failure degrades to
+// an honest-empty panel — the build stays green with or without a board. Static snapshot, no
+// live socket: re-run `npm run board` and refresh to update it (deterministic + dependency-light).
+const svgPath = join(process.cwd(), ".vend", "work-graph.svg");
+let boardSvg: string | null = null;
+try {
+  boardSvg = readFileSync(svgPath, "utf8");
+} catch {
+  boardSvg = null; // no board cast yet — render the empty-state panel below
+}
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Board — vend</title>
+  </head>
+  <body style="margin: 0; background: #fafafa; font-family: system-ui, sans-serif;">
+    <main style="max-width: 64rem; margin: 0 auto; padding: 2rem 1rem;">
+      <header style="margin-bottom: 1.5rem;">
+        <h1 style="margin: 0;">Work-graph board</h1>
+        <p style="color: #666; margin: 0.5rem 0 0;">
+          A read-only picture of the work, rendered by <code>vend svg</code>.
+          <a href="/">← back to the app</a>
+        </p>
+      </header>
+
+      {
+        boardSvg ? (
+          <section
+            aria-label="vend work-graph board"
+            style="overflow: auto; border: 1px solid #ddd; border-radius: 0.75rem; padding: 1rem; background: #fff;"
+            set:html={boardSvg}
+          />
+        ) : (
+          <section
+            style="border: 1px dashed #ccc; border-radius: 0.75rem; padding: 2rem; text-align: center; color: #666;"
+          >
+            <p style="margin: 0 0 0.5rem;"><strong>No board yet.</strong></p>
+            <p style="margin: 0;">
+              Render it with <code>npm run board</code> (which runs
+              <code>vend svg --seat designer</code>), then refresh this page.
+            </p>
+          </section>
+        )
+      }
+    </main>
+  </body>
+</html>

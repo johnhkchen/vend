@@ -66,8 +66,10 @@ vend steer --budget 600000,400000
 # 6. Clear the first slice, on a budget
 vend work --budget 1800000,1000000
 
-# 7. See it — render the board to a picture (beside your app)
-vend svg --seat designer --out board.svg
+# 7. See it — render the board to a picture, then open /board beside your app
+vend svg --seat designer          # or: npm run board → writes .vend/work-graph.svg
+#   → open the /board route in the running app (npm run dev / preview); the picture
+#     lives beside it, in the browser you already have open. Re-run + refresh to update.
 ```
 
 > **Budgets are `<ms>,<tokens>`** — e.g. `600000,400000` is ~10 minutes / 400k tokens.
@@ -83,6 +85,11 @@ vend svg --seat designer --out board.svg
 | `vend steer` | reads `SEED.md` → a ranked **board** + the real **forks** (the decisions) |
 | `vend work` | spends a budget down across the board, clearing slices until a clean stop |
 | `vend svg` | renders the live board to a **picture** — the designer's window |
+
+> **The picture, beside the app.** `vend svg` (or `npm run board`) writes the board to
+> `.vend/work-graph.svg`; the seed's **`/board`** route displays it — a **read-only static
+> snapshot** beside the running app. Re-run `npm run board` and refresh to update it. The
+> view only *displays* the board; it never mutates the graph (E-055/E-056 one-way authority).
 
 Reaching for the right play, in order: see [`shelf-note.md`](./shelf-note.md). (Or run
 `vend shelf` for the live, ranked menu.)

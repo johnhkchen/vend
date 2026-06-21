@@ -23,7 +23,11 @@ import HackathonApp from "../components/HackathonApp.tsx";
       <!-- The interactive React island (client:load forces hydration). -->
       <HackathonApp client:load />
 
-      <!-- T-058-04 will embed the vend SVG work-graph board beside the app here. -->
+      <!-- The vend work-graph board lives beside the app, on its own /board route
+           (rendered by `vend svg` → `npm run board`). Read-only — display only. -->
+      <p style="text-align: center; padding: 0 1rem 2rem;">
+        <a href="/board">▸ See the work-graph board</a>
+      </p>
     </main>
   </body>
 </html>
