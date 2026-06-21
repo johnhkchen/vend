@@ -57,77 +57,101 @@ export function resolveMaxTurns(override: number | undefined, dflt: number | und
 
 /**
  * The tagged result of {@link resolveTools} — the three states the cast path (T-032-02) branches
- * on. Discriminated first by `ok`, then (among the two successes) by `passthrough` vs `strict`:
- * - `{ ok: true, passthrough: true }` — the play declared NO `tools` ⇒ inherit the global MCP
- *   set, emit no scoping flags (byte-identical to today, back-compat).
- * - `{ ok: true, mcp, allowedTools, strict: true }` — the play declared `tools` and every
- *   required MCP id is present ⇒ emit `--mcp-config` (the `mcp` ids), `--allowedTools`, and
- *   `--strict-mcp-config`. An empty declaration (`tools: {}`) lands here with empty arrays:
- *   declaring the field opts into strict least-privilege, distinct from passthrough.
- * - `{ ok: false, missing }` — the play declared `tools` but one or more REQUIRED `mcp` ids are
- *   absent from `available` ⇒ the missing-MCP andon (T-032-02 refuses to dispense rather than
- *   silently inherit the wrong tool set).
+ * on. Discriminated first by `ok`, then (among the two successes) by `passthrough` vs `strict`.
+ * Both successes carry `deny` (the E-051 denylist, possibly `[]`) — it is ORTHOGONAL to the
+ * strict/passthrough split, so it rides on either:
+ * - `{ ok: true, passthrough: true, deny }` — the play SCOPES nothing (no `mcp`/`allow` declared:
+ *   `tools` absent, `tools: {}`, `tools: {skills}`, or `tools: {deny}`) ⇒ inherit the global MCP
+ *   set, emit no scoping flags (byte-identical back-compat), and emit `--disallowedTools` ONLY when
+ *   `deny` is non-empty. A deny-only declaration lands here — it denies without locking down.
+ * - `{ ok: true, mcp, allowedTools, deny, strict: true }` — the play declared `mcp` or `allow` and
+ *   every required MCP id is present ⇒ emit `--mcp-config` (the `mcp` ids), `--allowedTools`,
+ *   `--strict-mcp-config`, and (when non-empty) `--disallowedTools`. Declaring an allowlist/MCP is
+ *   what opts into strict least-privilege.
+ * - `{ ok: false, missing }` — the play declared `mcp` but one or more REQUIRED ids are absent from
+ *   `available` ⇒ the missing-MCP andon (T-032-02 refuses to dispense rather than silently inherit
+ *   the wrong tool set). `deny` is irrelevant on an andon (nothing is dispensed).
  */
 export type ResolvedTools =
-  | { readonly ok: true; readonly passthrough: true }
-  | { readonly ok: true; readonly mcp: readonly string[]; readonly allowedTools: readonly string[]; readonly strict: true }
+  | { readonly ok: true; readonly passthrough: true; readonly deny: readonly string[] }
+  | { readonly ok: true; readonly mcp: readonly string[]; readonly allowedTools: readonly string[]; readonly deny: readonly string[]; readonly strict: true }
   | { readonly ok: false; readonly missing: readonly string[] };
 
 /**
  * Resolve a play's {@link PlayTools} against the MCP server ids the project provides (E-032,
- * T-032-01). PURE — `available` is PASSED IN (the file read that produces it is T-032-02); this
- * is a decision, not I/O, exactly as {@link resolveMaxTurns} takes its numbers rather than
- * reaching for config. Three outcomes (see {@link ResolvedTools}): an UNDECLARED play (`declared`
- * undefined) → passthrough; a DECLARED play whose required `mcp` are all present → the strict
- * flags result; a DECLARED play missing one or more required `mcp` → the andon (`missing` lists
- * the absent ids in declared order). `skills` is CARRIED on the contract but NOT consulted here
- * (scope cut — this slice injects no skills). Returns fresh arrays so the result never aliases
- * the play's frozen literals.
+ * T-032-01; E-051 deny). PURE — `available` is PASSED IN (the file read that produces it is
+ * T-032-02); this is a decision, not I/O, exactly as {@link resolveMaxTurns} takes its numbers
+ * rather than reaching for config. Outcomes (see {@link ResolvedTools}):
+ * - UNDECLARED play (`declared` undefined) → passthrough, `deny: []`.
+ * - DECLARED but SCOPES nothing (no `mcp`/`allow` — e.g. `{}`, `{skills}`, or `{deny}`) →
+ *   passthrough carrying `deny`. Declaring a denylist alone does NOT opt into strict: `deny` is a
+ *   subtractive filter, independent of the allowlist, so a deny-only play keeps its global MCP set.
+ * - DECLARED `mcp`/`allow` with required `mcp` all present → the strict flags result, carrying `deny`.
+ * - DECLARED `mcp` missing one or more required ids → the andon (`missing` lists the absent ids in
+ *   declared order).
+ * `skills` is CARRIED on the contract but NOT consulted here (scope cut). Returns fresh arrays so
+ * the result never aliases the play's frozen literals.
  */
 export function resolveTools(declared: PlayTools | undefined, available: readonly string[]): ResolvedTools {
-  if (declared === undefined) return { ok: true, passthrough: true };
+  if (declared === undefined) return { ok: true, passthrough: true, deny: [] };
+  const deny = [...(declared.deny ?? [])];
   const required = declared.mcp ?? [];
   const have = new Set(available);
   const missing = required.filter((id) => !have.has(id));
   if (missing.length > 0) return { ok: false, missing };
-  return { ok: true, mcp: [...required], allowedTools: [...(declared.allow ?? [])], strict: true };
+  // Strict least-privilege is opted into by declaring an allowlist/MCP — NOT by declaring a denylist
+  // alone (deny is subtractive and orthogonal). A declaration that scopes nothing (no `mcp`/`allow`)
+  // stays passthrough and only carries its `deny` forward.
+  const scopes = declared.mcp !== undefined || declared.allow !== undefined;
+  if (!scopes) return { ok: true, passthrough: true, deny };
+  return { ok: true, mcp: [...required], allowedTools: [...(declared.allow ?? [])], deny, strict: true };
 }
 
-/** The seam flags a resolved cast threads into `dispense`/`buildArgs` (E-032, T-032-02) — the
- *  argv-shaped projection of a {@link ResolvedTools} strict result. All optional so the empty
- *  `{}` (passthrough / andon) spreads into `dispense` adding nothing (byte-identical argv). */
+/** The seam flags a resolved cast threads into `dispense`/`buildArgs` (E-032, T-032-02; E-051
+ *  `disallowedTools`) — the argv-shaped projection of a {@link ResolvedTools} success. All optional
+ *  so the empty `{}` (undeclared passthrough / andon) spreads into `dispense` adding nothing
+ *  (byte-identical argv). `disallowedTools` rides independently of the strict flags. */
 export interface ToolFlags {
   readonly mcpConfig?: string;
   readonly allowedTools?: readonly string[];
+  readonly disallowedTools?: readonly string[];
   readonly strictMcp?: boolean;
 }
 
 /**
  * Project a {@link resolveTools} result into the `buildArgs`/`dispense` tool flags (E-032,
- * T-032-02). PURE — this is the DECISION "resolved tools → which argv flags," kept here (not in
- * the impure `castPlay` shell) so the AC's live proof inspects it as an ordinary pure test.
+ * T-032-02; E-051). PURE — this is the DECISION "resolved tools → which argv flags," kept here (not
+ * in the impure `castPlay` shell) so the AC's live proof inspects it as an ordinary pure test.
  *
- * - PASSTHROUGH or `!ok` ⇒ `{}` — no flags. Passthrough is the undeclared back-compat path
- *   (byte-identical to today); `!ok` is the missing-capability andon, which `castPlay` handles
- *   BEFORE reaching here, so the `{}` is purely defensive.
+ * - `!ok` (andon) ⇒ `{}` — no flags. `castPlay` handles the missing-capability andon BEFORE
+ *   reaching here, so the `{}` is purely defensive.
+ * - PASSTHROUGH ⇒ `disallowedTools` ONLY when the play declared a non-empty `deny` (E-051); else
+ *   `{}` (the undeclared back-compat path, byte-identical to today). This is what lets a deny-only
+ *   play (e.g. propose-epic) make AskUserQuestion unavailable WITHOUT a strict lockdown — it keeps
+ *   its global MCP set and gains exactly `--disallowedTools`.
  * - STRICT ⇒ `strictMcp: true` (close the global firehose), `allowedTools` = the play's `allow`
- *   list PLUS one `mcp__<id>` wildcard per declared server, and `mcpConfig` (the `.mcp.json`
- *   path) ONLY when the play declares at least one MCP server.
+ *   list PLUS one `mcp__<id>` wildcard per declared server, `mcpConfig` (the `.mcp.json` path) ONLY
+ *   when the play declares at least one MCP server, and `disallowedTools` when `deny` is non-empty.
  *
  * Why fold `mcp__<id>` into `allowedTools`: `--allowedTools` is an allowlist that, once present,
  * gates ALL tools including MCP tools (named `mcp__<server>__*`). The wildcard entry per declared
  * id is what lets the cast actually CALL its declared servers' tools — so the scoping admits
  * "only its servers": strict closes global, `--mcp-config` loads the project file, the allowlist
  * permits exactly the declared servers (+ the play's built-ins). A play declaring only built-ins
- * (`allow`, no `mcp`) still opts into strict least-privilege but needs no `--mcp-config`.
+ * (`allow`, no `mcp`) still opts into strict least-privilege but needs no `--mcp-config`. The
+ * denylist (`--disallowedTools`) is independent: it subtracts named tools regardless of the
+ * allow/strict flags, and `buildArgs` emits it after `--allowedTools`, before `--strict-mcp-config`.
  */
 export function toolFlags(resolved: ResolvedTools, mcpConfigPath: string): ToolFlags {
-  if (!resolved.ok || "passthrough" in resolved) return {};
+  if (!resolved.ok) return {};
+  const denyFlag = resolved.deny.length > 0 ? { disallowedTools: resolved.deny } : {};
+  if ("passthrough" in resolved) return { ...denyFlag };
   const allowedTools = [...resolved.allowedTools, ...resolved.mcp.map((id) => `mcp__${id}`)];
   return {
     ...(resolved.mcp.length > 0 ? { mcpConfig: mcpConfigPath } : {}),
     allowedTools,
     strictMcp: true,
+    ...denyFlag,
   };
 }
 

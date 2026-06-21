@@ -124,12 +124,18 @@ export interface EffectResult {
  *   ids are matched against these; any required id absent raises the missing-MCP andon rather
  *   than silently inheriting the wrong set.
  * - `allow` — the built-in tool allowlist (e.g. `"Read"`, `"Grep"`) → `--allowedTools`.
+ * - `deny` — the built-in tool DENYLIST (e.g. `"AskUserQuestion"`) → `--disallowedTools` (E-051).
+ *   ORTHOGONAL to `allow`/`mcp`: a SUBTRACTIVE filter that needs no allowlist and does NOT opt the
+ *   cast into strict scoping — a declaration carrying ONLY `deny` stays passthrough (inherits the
+ *   global MCP set), it just makes the named tools unavailable. Empty/omitted ⇒ no flag. Set on the
+ *   autonomous plays to deny AskUserQuestion (no answerer on a piped cast); see {@link AUTONOMOUS_DENY}.
  * - `skills` — forward-compatible only. The field may exist, but THIS slice (T-032-01) injects
  *   no skills: `resolveTools` carries it structurally and emits nothing for it (E-032 scope cut).
  */
 export interface PlayTools {
   readonly mcp?: readonly string[];
   readonly allow?: readonly string[];
+  readonly deny?: readonly string[];
   readonly skills?: readonly string[];
 }
 

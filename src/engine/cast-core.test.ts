@@ -5,6 +5,7 @@ import type { StreamMessage } from "../executor/claude.ts";
 import { buildArgs } from "../executor/claude.ts";
 import type { PlayTools } from "./play.ts";
 import { DECOMPOSE_TOOLS } from "../play/decompose-epic-core.ts";
+import { AUTONOMOUS_DENY } from "../play/autonomous-deny.ts";
 import {
   castGateRows,
   classify,
@@ -153,18 +154,19 @@ describe("resolveTurnsUsed — harvest num_turns, total, never lies (T-015-02 AC
   });
 });
 
-describe("resolveTools — pure per-play MCP/tool resolution (T-032-01)", () => {
-  test("undeclared (tools undefined) ⇒ passthrough, no flags (back-compat)", () => {
-    expect(resolveTools(undefined, ["a", "b"])).toEqual({ ok: true, passthrough: true });
-    expect(resolveTools(undefined, [])).toEqual({ ok: true, passthrough: true });
+describe("resolveTools — pure per-play MCP/tool resolution (T-032-01; E-051 deny)", () => {
+  test("undeclared (tools undefined) ⇒ passthrough, no flags, empty deny (back-compat)", () => {
+    expect(resolveTools(undefined, ["a", "b"])).toEqual({ ok: true, passthrough: true, deny: [] });
+    expect(resolveTools(undefined, [])).toEqual({ ok: true, passthrough: true, deny: [] });
   });
 
-  test("declared + all required mcp present ⇒ strict flags result", () => {
+  test("declared + all required mcp present ⇒ strict flags result (deny [] when none declared)", () => {
     const declared: PlayTools = { mcp: ["a"], allow: ["Read"] };
     expect(resolveTools(declared, ["a", "b"])).toEqual({
       ok: true,
       mcp: ["a"],
       allowedTools: ["Read"],
+      deny: [],
       strict: true,
     });
   });
@@ -174,35 +176,55 @@ describe("resolveTools — pure per-play MCP/tool resolution (T-032-01)", () => 
     expect(resolveTools({ mcp: ["z", "a", "y"] }, ["a"])).toEqual({ ok: false, missing: ["z", "y"] });
   });
 
-  test("empty declaration ({}) ⇒ strict with empty arrays (declared ≠ passthrough)", () => {
-    expect(resolveTools({}, ["a", "b"])).toEqual({ ok: true, mcp: [], allowedTools: [], strict: true });
+  test("scopes-nothing declaration ({}) ⇒ passthrough (no mcp/allow ⇒ no strict lockdown), deny []", () => {
+    // E-051: only declaring `mcp`/`allow` opts into strict least-privilege. An empty object scopes
+    // nothing, so it inherits the global set — passthrough, not strict-empty.
+    expect(resolveTools({}, ["a", "b"])).toEqual({ ok: true, passthrough: true, deny: [] });
   });
 
-  test("allow only, no mcp ⇒ strict, nothing missing", () => {
+  test("allow only, no mcp ⇒ strict, nothing missing, deny []", () => {
     expect(resolveTools({ allow: ["Read", "Grep"] }, [])).toEqual({
       ok: true,
       mcp: [],
       allowedTools: ["Read", "Grep"],
+      deny: [],
       strict: true,
     });
   });
 
-  test("skills carried on the contract but NOT emitted (scope cut) ⇒ strict-empty", () => {
-    expect(resolveTools({ skills: ["decompose-epic"] }, [])).toEqual({
+  test("skills only (no mcp/allow) ⇒ passthrough (skills scoped nothing here), deny []", () => {
+    // skills is carried on the contract but emits nothing (scope cut) and does not scope an
+    // allowlist/MCP, so a skills-only declaration stays passthrough (E-051 discriminator).
+    expect(resolveTools({ skills: ["decompose-epic"] }, [])).toEqual({ ok: true, passthrough: true, deny: [] });
+  });
+
+  test("deny only (no mcp/allow) ⇒ passthrough carrying deny — denies WITHOUT a strict lockdown", () => {
+    // The propose-epic shape: a subtractive denylist that keeps the global MCP set.
+    expect(resolveTools({ deny: ["AskUserQuestion"] }, ["a"])).toEqual({
       ok: true,
-      mcp: [],
-      allowedTools: [],
+      passthrough: true,
+      deny: ["AskUserQuestion"],
+    });
+  });
+
+  test("mcp + allow + deny ⇒ strict result carrying the deny list (the decompose-epic shape)", () => {
+    expect(resolveTools({ mcp: ["a"], allow: ["Read"], deny: ["AskUserQuestion"] }, ["a"])).toEqual({
+      ok: true,
+      mcp: ["a"],
+      allowedTools: ["Read"],
+      deny: ["AskUserQuestion"],
       strict: true,
     });
   });
 
-  test("returned arrays are fresh — not aliases of the play's frozen literals", () => {
-    const declared: PlayTools = { mcp: ["a"], allow: ["Read"] };
+  test("returned arrays are fresh — not aliases of the play's frozen literals (incl. deny)", () => {
+    const declared: PlayTools = { mcp: ["a"], allow: ["Read"], deny: ["AskUserQuestion"] };
     const r = resolveTools(declared, ["a"]);
     if (!r.ok || !("strict" in r)) throw new Error("expected strict result");
     expect(r.mcp).not.toBe(declared.mcp);
     expect(r.allowedTools).not.toBe(declared.allow);
-    expect(r.mcp).toEqual(["a"]);
+    expect(r.deny).not.toBe(declared.deny);
+    expect(r.deny).toEqual(["AskUserQuestion"]);
   });
 });
 
@@ -232,15 +254,43 @@ describe("toolFlags — resolved tools → seam argv flags (T-032-02)", () => {
     expect(r.mcpConfig).toBeUndefined();
   });
 
-  test("empty declaration ({}) ⇒ strict, empty allowedTools, no mcpConfig", () => {
-    const r = toolFlags(resolveTools({}, ["a"]), PATH);
-    expect(r).toEqual({ allowedTools: [], strictMcp: true });
+  test("scopes-nothing declaration ({}) ⇒ {} (passthrough, no deny ⇒ no flags)", () => {
+    expect(toolFlags(resolveTools({}, ["a"]), PATH)).toEqual({});
   });
 
   test("multiple declared servers ⇒ one mcp__<id> wildcard each, in declared order", () => {
     const r = toolFlags(resolveTools({ mcp: ["a", "b"], allow: ["Read"] }, ["a", "b"]), PATH);
     expect(r.allowedTools).toEqual(["Read", "mcp__a", "mcp__b"]);
     expect(r.mcpConfig).toBe(PATH);
+  });
+
+  test("deny-only passthrough ⇒ disallowedTools ONLY (no allow/mcp/strict flags) — E-051", () => {
+    const r = toolFlags(resolveTools({ deny: ["AskUserQuestion"] }, ["a"]), PATH);
+    expect(r).toEqual({ disallowedTools: ["AskUserQuestion"] });
+    expect(r.allowedTools).toBeUndefined();
+    expect(r.strictMcp).toBeUndefined();
+    expect(r.mcpConfig).toBeUndefined();
+  });
+
+  test("strict + deny ⇒ the strict flags PLUS disallowedTools (the decompose-epic shape)", () => {
+    const r = toolFlags(
+      resolveTools({ mcp: ["codebase-memory-mcp"], allow: ["Read"], deny: ["AskUserQuestion"] }, ["codebase-memory-mcp"]),
+      PATH,
+    );
+    expect(r).toEqual({
+      mcpConfig: PATH,
+      allowedTools: ["Read", "mcp__codebase-memory-mcp"],
+      strictMcp: true,
+      disallowedTools: ["AskUserQuestion"],
+    });
+  });
+
+  test("empty deny ⇒ no disallowedTools flag (empty-omitted discipline)", () => {
+    expect(toolFlags(resolveTools({ deny: [] }, ["a"]), PATH)).toEqual({});
+    expect(toolFlags(resolveTools({ allow: ["Read"], deny: [] }, []), PATH)).toEqual({
+      allowedTools: ["Read"],
+      strictMcp: true,
+    });
   });
 });
 
@@ -269,5 +319,47 @@ describe("decompose-epic tool-scoping LIVE PROOF — built argv, no cast (T-032-
     expect(resolved).toEqual({ ok: false, missing: ["codebase-memory-mcp"] });
     // and the defensive projection emits nothing (castPlay andons before dispense)
     expect(buildArgs(toolFlags(resolved, PATH))).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+  });
+});
+
+describe("autonomous-deny LIVE PROOF — built argv carries --disallowedTools (T-051-02 AC)", () => {
+  const PATH = "/repo/.mcp.json";
+  const AVAILABLE = ["codebase-memory-mcp"];
+
+  // The denylist value as it reaches the argv: comma-joined into ONE element (buildArgs, T-051-01).
+  const DENY_VALUE = AUTONOMOUS_DENY.join(",");
+
+  /** Assert argv carries `--disallowedTools <DENY_VALUE>` as an adjacent flag+value pair. */
+  const carriesDeny = (argv: readonly string[]): void => {
+    const i = argv.indexOf("--disallowedTools");
+    expect(i).toBeGreaterThan(-1);
+    expect(argv[i + 1]).toBe(DENY_VALUE);
+  };
+
+  test("autonomous STRICT cast (mcp+allow+deny) ⇒ argv carries --disallowedTools AskUserQuestion", () => {
+    // The decompose-epic shape: strict scoping AND the denylist together.
+    const strictAutonomous: PlayTools = { mcp: ["codebase-memory-mcp"], allow: ["Read", "Grep", "Glob"], deny: AUTONOMOUS_DENY };
+    const argv = buildArgs(toolFlags(resolveTools(strictAutonomous, AVAILABLE), PATH));
+    carriesDeny(argv);
+    expect(argv).toContain("AskUserQuestion");
+    // deny is emitted AFTER the allowlist, BEFORE strict (the buildArgs order pinned by T-051-01).
+    expect(argv.indexOf("--allowedTools")).toBeLessThan(argv.indexOf("--disallowedTools"));
+    expect(argv.indexOf("--disallowedTools")).toBeLessThan(argv.indexOf("--strict-mcp-config"));
+  });
+
+  test("autonomous DENY-ONLY cast (passthrough) ⇒ --disallowedTools WITHOUT allow/strict flags", () => {
+    // The propose-epic shape: denies the unanswerable tool while keeping the global MCP set.
+    const denyOnly: PlayTools = { deny: AUTONOMOUS_DENY };
+    const argv = buildArgs(toolFlags(resolveTools(denyOnly, AVAILABLE), PATH));
+    carriesDeny(argv);
+    expect(argv).not.toContain("--allowedTools");
+    expect(argv).not.toContain("--strict-mcp-config");
+    expect(argv).not.toContain("--mcp-config");
+  });
+
+  test("interactive/TUI cast (undeclared) ⇒ NO --disallowedTools, argv byte-identical to base", () => {
+    const argv = buildArgs(toolFlags(resolveTools(undefined, AVAILABLE), PATH));
+    expect(argv).not.toContain("--disallowedTools");
+    expect(argv).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
   });
 });
