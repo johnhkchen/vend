@@ -54,12 +54,27 @@ export interface DagNode {
   readonly cast: NodeCast;
 }
 
+/**
+ * A branch predicate over an upstream node's `produced` result — decides whether THIS edge fires
+ * (E-049). Returns `true` ⇒ the edge threads `from` → `to`; `false` ⇒ the edge does not fire and
+ * `to`'s dependent subgraph cascade-skips as a branch-not-taken. PURE: a read over an already-
+ * produced string, injected like a node's `cast`.
+ */
+export type EdgePredicate = (produced: string) => boolean;
+
 /** A directed dependency edge `from → to`: the upstream (`from`) node's `produced` thread feeds the
  *  downstream (`to`) node. A node's IN-edges define its upstreams (≥2 = a JOIN); its OUT-edges its
  *  downstreams (≥2 = a FAN-OUT). */
 export interface DagEdge {
   readonly from: NodeId;
   readonly to: NodeId;
+  /** Optional branch predicate over the `from` node's `produced` result (E-049). When present, this
+   *  edge fires ONLY if it returns `true`; when it returns `false` the edge does not fire and `to`'s
+   *  dependent subgraph cascade-skips as a branch-not-taken (a distinct, observable skip andon).
+   *  Absent ⇒ the edge ALWAYS fires (the pre-E-049 unconditional fan-out). NOT consulted by
+   *  {@link validateDag}/{@link topoSort} — the structural dependency `from`→`to` holds regardless of
+   *  which branch is selected at run time. */
+  readonly when?: EdgePredicate;
 }
 
 /** The graph a playbook declares: its nodes and the directed edges between them. */

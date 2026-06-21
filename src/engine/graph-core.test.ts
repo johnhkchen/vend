@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { RunOutcome } from "../log/run-log.ts";
 import type { RunSummary } from "./cast.ts";
-import { runGraph } from "./graph-core.ts";
-import type { DagEdge, DagNode, DagSpec, NodeUpstreams } from "./dag-core.ts";
+import { runGraph, runGraphConcurrent, type GraphResult } from "./graph-core.ts";
+import { validateDag, type DagEdge, type DagNode, type DagSpec, type NodeUpstreams } from "./dag-core.ts";
+import { allocate } from "../budget/wallet.ts";
+import type { Budget } from "../budget/budget.ts";
 
 // T-046-02 runGraph: the PURE join/fan-out/halt core. We import ONLY ./graph-core.ts + ./dag-core.ts
 // (both type-only-import the impure cast.ts) so this `bun test` process loads no native addon and
@@ -205,5 +207,225 @@ describe("runGraph — purity, totality, determinism", () => {
     const result = await runGraph(spec([mk("A"), mk("B"), mk("C")], [edge("A", "B"), edge("A", "C")]));
     // B declared before C → B's leaf precedes C's in the produced map's insertion order.
     expect([...result.produced.keys()]).toEqual(["B", "C"]);
+  });
+});
+
+describe("runGraph — conditional edges select the taken branch (E-049, T-049-01)", () => {
+  // 1→{A,B} with MUTUALLY-EXCLUSIVE predicates over 1's produced. 1 produces "go-A", so the A-edge
+  // fires and the B-edge does not — A runs, B is a branch-not-taken skip. `whenEq`/`whenNeq` are the
+  // two out-edge predicates (a node's produced selects which downstream fires).
+  const whenEq = (want: string): DagEdge["when"] => (p: string) => p === want;
+  const whenNeq = (want: string): DagEdge["when"] => (p: string) => p !== want;
+
+  function predicated() {
+    const root = recordingNode("1", summary("success", "go-A"));
+    const a = recordingNode("A", summary("success", "pa"));
+    const b = recordingNode("B", summary("success", "pb"));
+    const graph = spec(
+      [root.node, a.node, b.node],
+      [
+        { from: "1", to: "A", when: whenEq("go-A") },
+        { from: "1", to: "B", when: whenNeq("go-A") },
+      ],
+    );
+    return { root, a, b, graph };
+  }
+
+  test("runs ONLY the matching branch; the not-taken node lands in `skipped`", async () => {
+    const { root, a, b, graph } = predicated();
+    const result = await runGraph(graph);
+
+    expect(root.calls).toEqual([{}]); // source
+    expect(a.calls).toEqual([{ "1": "go-A" }]); // predicate held → A cast with 1's produced
+    expect(b.calls).toEqual([]); // predicate false → B NEVER cast
+    expect(result.nodes.size).toBe(2); // only 1 and A cast
+    expect(result.skipped.map((s) => s.id)).toEqual(["B"]);
+    expect(Object.fromEntries(result.produced)).toEqual({ A: "pa" }); // only the taken leaf
+    expect(result.outcome).toBe("success");
+    expect(result.halted).toBe(true);
+  });
+
+  test("the not-taken reason reads 'branch not taken' — textually distinct from the halt andon", async () => {
+    const { graph } = predicated();
+    const result = await runGraph(graph);
+    const skip = result.skipped.find((s) => s.id === "B");
+
+    expect(skip?.reason).toContain("branch not taken");
+    expect(skip?.reason).not.toContain("dependent on halted upstream");
+    expect(skip?.blockedBy).toContain("1"); // the upstream whose edge predicate rejected its produced
+  });
+
+  test("validateDag still returns ok for the predicated spec (the predicate is ignored by validation)", () => {
+    const { graph } = predicated();
+    expect(validateDag(graph)).toEqual({ ok: true });
+  });
+
+  test("an edge with no predicate still fires unconditionally (back-compat)", async () => {
+    const a = recordingNode("A", summary("success", "pa"));
+    const b = recordingNode("B", summary("success", "pb"));
+    const result = await runGraph(spec([a.node, b.node], [edge("A", "B")]));
+
+    expect(b.calls).toEqual([{ A: "pa" }]); // unconditional edge → B ran, exactly as pre-E-049
+    expect(result.halted).toBe(false);
+    expect(Object.fromEntries(result.produced)).toEqual({ B: "pb" });
+  });
+
+  test("the not-taken branch cascade-skips its whole subgraph (reuses the halt machinery)", async () => {
+    const root = recordingNode("1", summary("success", "go-A"));
+    const a = recordingNode("A", summary("success", "pa"));
+    // B is not taken; C depends on B (neverNode — throws if cast) → C cascade-skips via the EXISTING
+    // dependent-on-halted-upstream path, proving the branch-not-taken reuse rather than reinvention.
+    const result = await runGraph(
+      spec(
+        [root.node, a.node, neverNode("B"), neverNode("C")],
+        [
+          { from: "1", to: "A", when: whenEq("go-A") },
+          { from: "1", to: "B", when: whenNeq("go-A") },
+          edge("B", "C"),
+        ],
+      ),
+    );
+
+    expect(a.calls).toEqual([{ "1": "go-A" }]); // taken branch ran
+    expect(result.skipped.map((s) => s.id)).toEqual(["B", "C"]); // the cascade
+    expect(result.skipped.find((s) => s.id === "B")?.reason).toContain("branch not taken");
+    expect(result.skipped.find((s) => s.id === "C")?.reason).toContain("dependent on halted upstream");
+    expect(Object.fromEntries(result.produced)).toEqual({ A: "pa" }); // A is the only surviving leaf
+  });
+});
+
+describe("runGraphConcurrent — conditional edges mirror runGraph (E-049, T-049-02)", () => {
+  // The CONCURRENT wave dispatcher must fire predicate edges byte-for-byte as the sequential reference:
+  // for the same predicated spec, the GraphResult's cast-node set, skipped ids+reasons, and produced map
+  // must be IDENTICAL under both executors (the AC's definition of "equal"). `walletRemaining` is present
+  // only on the budgeted concurrent path and absent on runGraph by design, so equality is asserted on the
+  // facets below, not a naive deep-equal.
+  const facets = (r: GraphResult) => ({
+    cast: [...r.nodes.keys()].sort(),
+    skipped: r.skipped.map((s) => ({ id: s.id, reason: s.reason, blockedBy: [...s.blockedBy] })),
+    produced: Object.fromEntries(r.produced),
+    outcome: r.outcome,
+    halted: r.halted,
+  });
+
+  const whenEq = (want: string): DagEdge["when"] => (p: string) => p === want;
+  const whenNeq = (want: string): DagEdge["when"] => (p: string) => p !== want;
+
+  // A COSTED stub (mirrors graph-example.ts) — carries `actuals` so the shared wallet's debitWave folds a
+  // real delta. tokens are carried as `input_tokens` so countTokens == that count.
+  const costed = (id: string, produced: string, price: Budget): DagNode => ({
+    id,
+    cast: async () => ({
+      runId: `run-${id}`,
+      outcome: "success",
+      materialized: true,
+      produced,
+      actuals: { usage: { input_tokens: price.tokens }, wallMs: price.timeMs },
+    }),
+  });
+
+  test("AC fan-out: concurrent equals sequential for the predicated 1→{A,B}", async () => {
+    // 1 produces "go-A": the A-edge fires, the B-edge is a branch-not-taken. Both executors agree.
+    const mkSpec = () =>
+      spec(
+        [
+          recordingNode("1", summary("success", "go-A")).node,
+          recordingNode("A", summary("success", "pa")).node,
+          recordingNode("B", summary("success", "pb")).node,
+        ],
+        [
+          { from: "1", to: "A", when: whenEq("go-A") },
+          { from: "1", to: "B", when: whenNeq("go-A") },
+        ],
+      );
+
+    const seq = await runGraph(mkSpec());
+    const con = await runGraphConcurrent(mkSpec());
+
+    expect(facets(con)).toEqual(facets(seq)); // byte-for-byte identical
+    expect(facets(con).cast).toEqual(["1", "A"]); // only the taken branch cast
+    expect(Object.fromEntries(con.produced)).toEqual({ A: "pa" });
+    expect(con.skipped.map((s) => s.id)).toEqual(["B"]);
+    expect(con.skipped.find((s) => s.id === "B")?.reason).toContain("branch not taken");
+  });
+
+  test("multi-wave predicated branch with a cascade: concurrent equals sequential", async () => {
+    // Waves: {1} → {A taken, B not-taken} → {C runs (A taken), D cascade-skips (B halted upstream)}.
+    const mkSpec = () =>
+      spec(
+        [
+          recordingNode("1", summary("success", "go-A")).node,
+          recordingNode("A", summary("success", "pa")).node,
+          neverNode("B"), // not taken — must never be cast
+          recordingNode("C", summary("success", "pc")).node,
+          neverNode("D"), // cascade-skipped below the not-taken B — must never be cast
+        ],
+        [
+          { from: "1", to: "A", when: whenEq("go-A") },
+          { from: "1", to: "B", when: whenNeq("go-A") },
+          edge("A", "C"),
+          edge("B", "D"),
+        ],
+      );
+
+    const seq = await runGraph(mkSpec());
+    const con = await runGraphConcurrent(mkSpec());
+
+    expect(facets(con)).toEqual(facets(seq));
+    expect(con.skipped.map((s) => s.id)).toEqual(["B", "D"]); // topo-ordered in both executors
+    expect(con.skipped.find((s) => s.id === "B")?.reason).toContain("branch not taken");
+    expect(con.skipped.find((s) => s.id === "D")?.reason).toContain("dependent on halted upstream");
+    expect(Object.fromEntries(con.produced)).toEqual({ C: "pc" }); // C is the surviving leaf
+  });
+
+  test("branch-not-taken under a budgeted wallet: facets equal sequential; wallet untouched by the skip", async () => {
+    // The predicated 1→{A,B} with COSTED nodes + a generously-funded shared wallet (nothing budget-stops,
+    // so the ONLY skip is the predicate's not-taken — keeping facets equal to the unbudgeted sequential).
+    const prices: Record<string, Budget> = {
+      "1": { tokens: 10_000, timeMs: 5_000 },
+      A: { tokens: 20_000, timeMs: 8_000 },
+      B: { tokens: 20_000, timeMs: 8_000 },
+    };
+    const mkSpec = () =>
+      spec(
+        [costed("1", "go-A", prices["1"] as Budget), costed("A", "pa", prices.A as Budget), costed("B", "pb", prices.B as Budget)],
+        [
+          { from: "1", to: "A", when: whenEq("go-A") },
+          { from: "1", to: "B", when: whenNeq("go-A") },
+        ],
+      );
+
+    const seq = await runGraph(mkSpec());
+    const wallet = allocate({ tokens: 200_000, timeMs: 100_000 }); // far above the taken path
+    const priceOf = (id: string): Budget => (prices[id] as Budget) ?? { tokens: 0, timeMs: 0 };
+    const con = await runGraphConcurrent(mkSpec(), { wallet, priceOf });
+
+    expect(facets(con)).toEqual(facets(seq)); // predicate firing identical under the budgeted path
+    expect(con.skipped.find((s) => s.id === "B")?.reason).toContain("branch not taken");
+    // The not-taken B was never dispatched, so it never debited: remaining = funded − (1 + A) only.
+    expect(con.walletRemaining).toEqual({
+      tokens: 200_000 - prices["1"]!.tokens - prices.A!.tokens, // 170_000 — B's 20k never charged
+      timeMs: 100_000 - Math.max(prices["1"]!.timeMs, 0) - prices.A!.timeMs, // single-node waves: MAX==that node
+    });
+  });
+
+  test("back-compat: an un-predicated diamond is identical under both executors", async () => {
+    const mkSpec = () =>
+      spec(
+        [
+          recordingNode("A", summary("success", "pa")).node,
+          recordingNode("B", summary("success", "pb")).node,
+          recordingNode("C", summary("success", "pc")).node,
+          recordingNode("D", summary("success", "pd")).node,
+        ],
+        [edge("A", "B"), edge("A", "C"), edge("B", "D"), edge("C", "D")],
+      );
+
+    const seq = await runGraph(mkSpec());
+    const con = await runGraphConcurrent(mkSpec());
+
+    expect(facets(con)).toEqual(facets(seq));
+    expect(facets(con).skipped).toEqual([]); // no predicate → nothing not-taken, nothing halted
+    expect(Object.fromEntries(con.produced)).toEqual({ D: "pd" });
   });
 });

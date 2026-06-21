@@ -4,7 +4,7 @@ import type { RunSummary } from "./cast.ts";
 import { runGraph } from "./graph-core.ts";
 import { runChain, type ChainStep } from "./chain-core.ts";
 import type { DagSpec, NodeUpstreams } from "./dag-core.ts";
-import { runDiamondExample, runSharedWalletFanout, runPerNodeFanout } from "./graph-example.ts";
+import { runDiamondExample, runSharedWalletFanout, runPerNodeFanout, runBranchingExample, branchingExample } from "./graph-example.ts";
 
 // T-046-03 — the DETERMINISTIC worked example (AC#2) + the fails-vs-linear proof (AC#3). We import
 // ONLY the pure cores (`runGraph`, `runChain`) + the stub example (both type-only-import the impure
@@ -180,5 +180,89 @@ describe("AC#3 (E-048): one shared wallet stops a fan-out the per-node budgets w
     expect(sharedTokens).toBeLessThanOrEqual(envelope); // shared: 80k ≤ 90k — inside the wall
     expect(perNode.totalSpent.tokens).toBeGreaterThan(envelope); // per-node: 120k > 90k — overspent
     expect(sharedTokens).toBeLessThan(perNode.totalSpent.tokens); // the wall saved 40k of tokens
+  });
+});
+
+// T-049-03 (E-049) — the CONDITIONAL-EDGE worked example. We drive the REAL pure dispatcher
+// (`runGraphConcurrent`, in graph-core.ts) — the one the impure `castGraph` delegates to, and which it
+// hands the caller's `edges` (every `when` included) straight through — with recording stubs: no
+// `castPlay`, no native addon, nothing spawned. So this proves the author path end-to-end (declare the
+// branch once on the edge; the not-taken subgraph is an observable skip) without value-importing
+// graph.ts. The reasons asserted below are the SAME contract T-049-01/02 pinned. NO LIVE MODEL.
+describe("AC (E-049): an authored edge predicate routes the branch; the not-taken subgraph skips", () => {
+  test('route "go": R→T fires; R→N does not — T,TD run, N AND its subgraph ND skip', async () => {
+    const { upstreamsSeen, result } = await runBranchingExample("go");
+
+    // Only the taken path cast — R, then T, then T's downstream TD. The not-taken handlers never ran.
+    expect([...result.nodes.keys()].sort()).toEqual(["R", "T", "TD"]);
+    expect(result.nodes.has("N")).toBe(false);
+    expect(result.nodes.has("ND")).toBe(false);
+
+    // The ROUTED data reached the taken branch: T saw R's produced ("go"); TD saw T's. The not-taken
+    // nodes are `undefined` — never cast (the observable skip, distinct from a cast with empty upstreams).
+    expect(upstreamsSeen.R).toEqual({}); // source — empty upstream map
+    expect(upstreamsSeen.T).toEqual({ R: "go" });
+    expect(upstreamsSeen.TD).toEqual({ T: "pt" });
+    expect(upstreamsSeen.N).toBeUndefined();
+    expect(upstreamsSeen.ND).toBeUndefined();
+
+    // The not-taken branch AND its dependent subgraph are observable skips, with the DISTINCT andons.
+    expect(result.skipped.map((s) => s.id).sort()).toEqual(["N", "ND"]);
+    const n = result.skipped.find((s) => s.id === "N");
+    const nd = result.skipped.find((s) => s.id === "ND");
+    // N: a BRANCH-NOT-TAKEN (its edge's predicate rejected R's produced) — textually distinct from halt.
+    expect(n?.reason).toMatch(/branch not taken/);
+    expect(n?.reason).not.toMatch(/dependent on halted upstream/);
+    expect(n?.blockedBy).toEqual(["R"]);
+    // ND: the cascade — the not-taken skip propagates through the SAME `dependent on halted upstream`
+    // machinery (reuse, not reinvent). The whole not-taken subgraph is accounted for, never dropped.
+    expect(nd?.reason).toMatch(/dependent on halted upstream/);
+
+    // A clean route is a SUCCESS (no cast failed) that nonetheless halted a subgraph (the not-taken one).
+    expect(result.outcome).toBe("success");
+    expect(result.halted).toBe(true);
+
+    // The graph's net output is the taken branch's sink only — the not-taken sink never produced.
+    expect(Object.fromEntries(result.produced)).toEqual({ TD: "ptd" });
+  });
+
+  test('route "stop": the mirror image — N,ND run, T AND its subgraph TD skip', async () => {
+    const { upstreamsSeen, result } = await runBranchingExample("stop");
+
+    // The SAME declared graph now routes the other way, by data alone.
+    expect([...result.nodes.keys()].sort()).toEqual(["N", "ND", "R"]);
+    expect(result.nodes.has("T")).toBe(false);
+    expect(result.nodes.has("TD")).toBe(false);
+
+    expect(upstreamsSeen.N).toEqual({ R: "stop" });
+    expect(upstreamsSeen.ND).toEqual({ N: "pn" });
+    expect(upstreamsSeen.T).toBeUndefined();
+    expect(upstreamsSeen.TD).toBeUndefined();
+
+    expect(result.skipped.map((s) => s.id).sort()).toEqual(["T", "TD"]);
+    const t = result.skipped.find((s) => s.id === "T");
+    const td = result.skipped.find((s) => s.id === "TD");
+    expect(t?.reason).toMatch(/branch not taken/);
+    expect(t?.reason).not.toMatch(/dependent on halted upstream/);
+    expect(td?.reason).toMatch(/dependent on halted upstream/);
+
+    expect(result.outcome).toBe("success");
+    expect(result.halted).toBe(true);
+    expect(Object.fromEntries(result.produced)).toEqual({ ND: "pnd" });
+  });
+
+  test("both routes are ONE declared graph — only R's produced data differs (declare once, route by data)", () => {
+    // The edge TOPOLOGY (from/to) is identical across routes; the predicate is a pure read over R's
+    // produced. The author wired the branch ONCE — the run-time signal selects it, not a different graph.
+    const topology = (route: "go" | "stop") =>
+      branchingExample(route).spec.edges.map((e) => ({ from: e.from, to: e.to }));
+
+    expect(topology("go")).toEqual(topology("stop"));
+    expect(topology("go")).toEqual([
+      { from: "R", to: "T" },
+      { from: "R", to: "N" },
+      { from: "T", to: "TD" },
+      { from: "N", to: "ND" },
+    ]);
   });
 });

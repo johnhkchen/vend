@@ -160,3 +160,74 @@ export async function runPerNodeFanout(): Promise<{ result: GraphResult; totalSp
   }
   return { result, totalSpent: { tokens, timeMs } };
 }
+
+// ─── The CONDITIONAL-EDGE worked example (T-049-03, epic E-049) ─────────────────────────────────────
+//
+// E-049's "Done looks like": a playbook author declares a BRANCH once — a predicate on the edge — and
+// the not-taken subgraph is an OBSERVABLE skip, not a silent drop. This module builds that worked
+// example as a parametric ROUTER: one router node R fans out to two handler branches, and a mutually
+// exclusive `when` predicate on each out-edge selects exactly one. The SAME declared graph routes
+// either way purely by R's produced data — the essence of a conditional edge.
+//
+// It drives the PURE `runGraphConcurrent` (graph-core.ts) with `recordingStub`s — NO `castPlay`, NO
+// native addon, nothing spawned (the diamond/shared-wallet discipline). That is the dispatcher the
+// impure `castGraph` (graph.ts) DELEGATES to, and `castGraph` is PREDICATE-TRANSPARENT: it passes the
+// caller's `edges` (every `when` included) straight through (graph.ts:114) and neither reads nor
+// rewrites the predicate. So the predicate threading an author declares end-to-end is delivered
+// ENTIRELY here — exactly as the E-048 shared wallet (which also lives in `castGraph`) is proven by
+// `runSharedWalletFanout` driving the same pure dispatcher. Proving it here proves the author path
+// without value-importing graph.ts (which would load the executor seam). NO LIVE MODEL.
+//
+// What it proves: with route "go", R→T fires and R→N does NOT — T (and its downstream TD) run, while N
+// AND its dependent subgraph ND land in `skipped`: N as a BRANCH-NOT-TAKEN (its edge's predicate
+// rejected R's produced), ND as a cascade `dependent on halted upstream` (the not-taken skip propagates
+// through the SAME halt machinery — reuse, not reinvent). Route "stop" is the mirror image.
+
+/** The branching fixture: a router R fans out to two branches under mutually exclusive edge predicates.
+ *  `route` is the signal R produces ("go" ⇒ the T/TD branch is taken; "stop" ⇒ the N/ND branch is).
+ *  Edge topology is IDENTICAL for both routes — only R's produced data differs, so the author declared
+ *  the branch ONCE on the edges and the run-time data picks it. `seen[id]` is the live record of the
+ *  upstreams that node was cast with (empty ⇒ the node was skipped, never cast). */
+export function branchingExample(route: "go" | "stop"): {
+  spec: DagSpec;
+  seen: Record<NodeId, Record<string, string>[]>;
+} {
+  const r = recordingStub("R", route); // the router — its `produced` IS the routing signal
+  const t = recordingStub("T", "pt"); // taken-branch handler (fires on "go")
+  const td = recordingStub("TD", "ptd"); // taken-branch downstream (proves the taken subgraph runs)
+  const n = recordingStub("N", "pn"); // not-taken-branch handler (fires on "stop")
+  const nd = recordingStub("ND", "pnd"); // not-taken-branch downstream (proves the cascade skip)
+
+  const spec: DagSpec = {
+    nodes: [r.node, t.node, td.node, n.node, nd.node],
+    edges: [
+      { from: "R", to: "T", when: (produced) => produced === "go" }, // the branch — declared ONCE,
+      { from: "R", to: "N", when: (produced) => produced === "stop" }, // here, on the edge.
+      { from: "T", to: "TD" }, // plain edge: the taken branch's dependent subgraph
+      { from: "N", to: "ND" }, // plain edge: the not-taken branch's dependent subgraph
+    ],
+  };
+
+  return { spec, seen: { R: r.calls, T: t.calls, TD: td.calls, N: n.calls, ND: nd.calls } };
+}
+
+/** The result of running the branching example: the upstreams each node saw (`undefined` ⇒ that node
+ *  was NEVER cast — the observable skip, kept distinct from a node cast with an empty upstream map) and
+ *  the whole {@link GraphResult} (its `skipped` carries the branch-not-taken + cascade andons). */
+export interface BranchingTrace {
+  readonly upstreamsSeen: Record<NodeId, Record<string, string> | undefined>;
+  readonly result: GraphResult;
+}
+
+/** Run the branching example end-to-end through the pure `runGraphConcurrent` (the dispatcher
+ *  `castGraph` delegates to) and surface what each node saw. A node that was skipped has an empty
+ *  `calls` record ⇒ its `upstreamsSeen` entry is `undefined`. */
+export async function runBranchingExample(route: "go" | "stop"): Promise<BranchingTrace> {
+  const { spec, seen } = branchingExample(route);
+  const result = await runGraphConcurrent(spec); // no wallet — the predicate path is budget-independent
+  const upstreamsSeen: Record<NodeId, Record<string, string> | undefined> = {};
+  for (const id of Object.keys(seen)) {
+    upstreamsSeen[id] = seen[id]?.[0]; // each node casts at most once here; absent ⇒ undefined (skipped)
+  }
+  return { upstreamsSeen, result };
+}

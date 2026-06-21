@@ -41,7 +41,7 @@
 import type { RunOutcome } from "../log/run-log.ts";
 import type { RunSummary } from "./cast.ts";
 import { decideThread } from "./chain-core.ts";
-import { topoSort, type DagNode, type DagSpec, type NodeId, type NodeUpstreams } from "./dag-core.ts";
+import { topoSort, type DagEdge, type DagNode, type DagSpec, type NodeId, type NodeUpstreams } from "./dag-core.ts";
 import { authorizeWave } from "./spend-core.ts";
 import { debitWave, type Wallet } from "../budget/wallet.ts";
 import { countTokens, type Budget } from "../budget/budget.ts";
@@ -53,8 +53,10 @@ import { countTokens, type Budget } from "../budget/budget.ts";
  */
 export interface SkippedNode {
   readonly id: NodeId;
-  /** The in-edge upstream node(s) that did not proceed (failed, produced nothing, or were
-   *  themselves skipped) — the cause of this skip. */
+  /** The in-edge upstream node(s) whose edge did NOT fire — the cause of this skip. Either the
+   *  upstream did not proceed (failed, produced nothing, or was itself skipped — a HALT), or the
+   *  upstream proceeded but this edge's `when` predicate rejected its `produced` (a BRANCH-NOT-TAKEN,
+   *  E-049). The {@link reason} distinguishes the two. */
   readonly blockedBy: readonly NodeId[];
   /** The andon: which halted upstream(s) skipped this node, and why each did not proceed. */
   readonly reason: string;
@@ -131,7 +133,9 @@ export async function runGraph(spec: DagSpec): Promise<GraphResult> {
   // Adjacency over DECLARED endpoints only — an edge touching an unknown id contributes nothing
   // (parity with topoSort's "unknown endpoint → no dependency"); validateDag refuses dangling edges.
   // `inEdges` keys are exactly the declared ids, so `inEdges.has(id)` doubles as "id is declared".
-  const inEdges = new Map<NodeId, NodeId[]>();
+  // It stores the whole DagEdge (not just the from-id) so the per-edge `when` predicate (E-049) is in
+  // scope when deciding whether each in-edge fires.
+  const inEdges = new Map<NodeId, DagEdge[]>();
   const outDegree = new Map<NodeId, number>();
   for (const id of order) {
     inEdges.set(id, []);
@@ -139,7 +143,7 @@ export async function runGraph(spec: DagSpec): Promise<GraphResult> {
   }
   for (const edge of spec.edges) {
     if (!inEdges.has(edge.from) || !inEdges.has(edge.to)) continue; // unknown endpoint → ignored
-    inEdges.get(edge.to)?.push(edge.from);
+    inEdges.get(edge.to)?.push(edge);
     outDegree.set(edge.from, (outDegree.get(edge.from) ?? 0) + 1);
   }
 
@@ -151,25 +155,52 @@ export async function runGraph(spec: DagSpec): Promise<GraphResult> {
   let firstFail: RunSummary | undefined;
 
   for (const id of order) {
-    const upstreamIds = inEdges.get(id) ?? [];
+    const ins = inEdges.get(id) ?? [];
 
-    // HALT: a node runs only if EVERY upstream proceeded. Any upstream not in `proceeded` (failed,
-    // produced nothing, or was itself skipped) halts this node — and, via the cascade, its closure.
-    const blockedBy = upstreamIds.filter((from) => !proceeded.has(from));
-    if (blockedBy.length > 0) {
-      const causes = blockedBy.map((from) =>
-        haltReasonOf.has(from) ? `'${from}' (${haltReasonOf.get(from)})` : `'${from}' (upstream skipped)`,
-      );
-      skipped.push({ id, blockedBy, reason: `skipped — dependent on halted upstream ${causes.join(", ")}` });
+    // CLASSIFY each in-edge. An edge FIRES (is satisfied) iff its upstream proceeded AND its `when`
+    // predicate (if any) holds over that upstream's `produced` (E-049). A node runs iff EVERY in-edge
+    // fires. Two distinct unsatisfied kinds, kept apart so each is its own andon:
+    //  - halted   : the upstream did not proceed (failed / produced nothing / was itself skipped);
+    //  - not-taken: the upstream proceeded, but this edge's predicate rejected its `produced`.
+    const halted: NodeId[] = [];
+    const notTaken: NodeId[] = [];
+    for (const edge of ins) {
+      if (!proceeded.has(edge.from)) {
+        halted.push(edge.from);
+        continue;
+      }
+      if (edge.when !== undefined) {
+        const p = producedAll.get(edge.from); // proceeded ⇒ present; defensive: undefined ⇒ not-firing
+        if (p === undefined || !edge.when(p)) notTaken.push(edge.from);
+      }
+    }
+
+    // SKIP if any in-edge did not fire. A HALT is the louder andon and takes precedence over a
+    // not-taken (something upstream actually failed, vs. a successful branch decision); a node with
+    // ONLY not-taken in-edges gets the DISTINCT branch-not-taken reason — the cascade below it reuses
+    // the existing halted-upstream machinery (a skipped node never enters `proceeded`).
+    if (halted.length > 0 || notTaken.length > 0) {
+      const blockedBy = [...halted, ...notTaken];
+      const reason =
+        halted.length > 0
+          ? `skipped — dependent on halted upstream ${halted
+              .map((from) =>
+                haltReasonOf.has(from) ? `'${from}' (${haltReasonOf.get(from)})` : `'${from}' (upstream skipped)`,
+              )
+              .join(", ")}`
+          : `skipped — branch not taken: upstream ${notTaken
+              .map((from) => `'${from}'`)
+              .join(", ")} produced a result this edge's predicate rejected`;
+      skipped.push({ id, blockedBy, reason });
       continue;
     }
 
-    // JOIN: gather this node's upstreams' `produced`, keyed by from-node. Every upstream proceeded
+    // JOIN: gather this node's upstreams' `produced`, keyed by from-node. Every in-edge fired
     // ⇒ each `produced` is present and non-empty. Source ⇒ empty map; linear ⇒ 1-entry; join ⇒ many.
     const upstreams: NodeUpstreams = new Map(
-      upstreamIds.flatMap((from) => {
-        const p = producedAll.get(from);
-        return p === undefined ? [] : [[from, p] as const];
+      ins.flatMap((edge) => {
+        const p = producedAll.get(edge.from);
+        return p === undefined ? [] : [[edge.from, p] as const];
       }),
     );
 
@@ -282,8 +313,10 @@ export async function runGraphConcurrent(spec: DagSpec, budget?: ConcurrentBudge
   for (const node of spec.nodes) if (!byId.has(node.id)) byId.set(node.id, node);
 
   // Adjacency over DECLARED endpoints only — an edge touching an unknown id contributes nothing
-  // (parity with runGraph/topoSort). `inEdges` keys are exactly the declared ids in `order`.
-  const inEdges = new Map<NodeId, NodeId[]>();
+  // (parity with runGraph/topoSort). `inEdges` keys are exactly the declared ids in `order`. It stores
+  // the whole DagEdge (not just the from-id) so the per-edge `when` predicate (E-049) is in scope when
+  // the wave-skip step decides whether each in-edge fires — mirroring the sequential `runGraph`.
+  const inEdges = new Map<NodeId, DagEdge[]>();
   const outDegree = new Map<NodeId, number>();
   for (const id of order) {
     inEdges.set(id, []);
@@ -291,7 +324,7 @@ export async function runGraphConcurrent(spec: DagSpec, budget?: ConcurrentBudge
   }
   for (const edge of spec.edges) {
     if (!inEdges.has(edge.from) || !inEdges.has(edge.to)) continue; // unknown endpoint → ignored
-    inEdges.get(edge.to)?.push(edge.from);
+    inEdges.get(edge.to)?.push(edge);
     outDegree.set(edge.from, (outDegree.get(edge.from) ?? 0) + 1);
   }
 
@@ -312,21 +345,57 @@ export async function runGraphConcurrent(spec: DagSpec, budget?: ConcurrentBudge
   // upstreams proceeded; DISPATCHED iff (budget ? it fits the shared wallet : always).
   while (remaining.size > 0) {
     const wave = order.filter(
-      (id) => remaining.has(id) && (inEdges.get(id) ?? []).every((from) => decided.has(from)),
+      (id) => remaining.has(id) && (inEdges.get(id) ?? []).every((e) => decided.has(e.from)),
     );
     // `wave` is non-empty: `order` is a topo order over an acyclic graph, so the earliest remaining
     // node has all upstreams already decided. (Defensive: break to stay total rather than spin.)
     if (wave.length === 0) break;
 
-    // SKIP: a wave node with any non-proceeded upstream is halted (its downstreams cascade later).
-    const toSkip = wave.filter((id) => (inEdges.get(id) ?? []).some((from) => !proceeded.has(from)));
+    // SKIP: a wave node whose in-edges did not all FIRE. Classify each in-edge EXACTLY as the sequential
+    // `runGraph` (the reference this must equal): an edge fires iff its upstream proceeded AND its `when`
+    // predicate (if any) holds over that upstream's `produced` (E-049). Two distinct unsatisfied kinds:
+    //  - halted   : the upstream did not proceed (failed / produced nothing / was itself skipped);
+    //  - not-taken: the upstream proceeded, but this edge's predicate rejected its `produced`.
+    // A wave node is formed only once every upstream is `decided`, so `proceeded`/`producedAll` are
+    // already final for each in-edge here — the same settled state runGraph reads in topo order. The
+    // classification is memoized so the record loop below does not re-evaluate (user) predicates.
+    const classified = new Map<NodeId, { halted: NodeId[]; notTaken: NodeId[] }>();
+    const toSkip = wave.filter((id) => {
+      const halted: NodeId[] = [];
+      const notTaken: NodeId[] = [];
+      for (const edge of inEdges.get(id) ?? []) {
+        if (!proceeded.has(edge.from)) {
+          halted.push(edge.from);
+          continue;
+        }
+        if (edge.when !== undefined) {
+          const p = producedAll.get(edge.from); // proceeded ⇒ present; defensive: undefined ⇒ not-firing
+          if (p === undefined || !edge.when(p)) notTaken.push(edge.from);
+        }
+      }
+      classified.set(id, { halted, notTaken });
+      return halted.length > 0 || notTaken.length > 0;
+    });
     const skipSet = new Set(toSkip);
+    // A HALT is the louder andon and takes precedence over a not-taken (something upstream actually
+    // failed, vs. a successful branch decision); a node with ONLY not-taken in-edges gets the DISTINCT
+    // branch-not-taken reason. The downstream cascade reuses the existing halt machinery — a skipped
+    // node never enters `proceeded`, so its dependents classify their in-edge to it as halted. Reasons
+    // are byte-for-byte runGraph's, so a predicated spec's GraphResult is identical under both runners.
     for (const id of toSkip) {
-      const blockedBy = (inEdges.get(id) ?? []).filter((from) => !proceeded.has(from));
-      const causes = blockedBy.map((from) =>
-        haltReasonOf.has(from) ? `'${from}' (${haltReasonOf.get(from)})` : `'${from}' (upstream skipped)`,
-      );
-      skipped.push({ id, blockedBy, reason: `skipped — dependent on halted upstream ${causes.join(", ")}` });
+      const { halted, notTaken } = classified.get(id) ?? { halted: [], notTaken: [] };
+      const blockedBy = [...halted, ...notTaken];
+      const reason =
+        halted.length > 0
+          ? `skipped — dependent on halted upstream ${halted
+              .map((from) =>
+                haltReasonOf.has(from) ? `'${from}' (${haltReasonOf.get(from)})` : `'${from}' (upstream skipped)`,
+              )
+              .join(", ")}`
+          : `skipped — branch not taken: upstream ${notTaken
+              .map((from) => `'${from}'`)
+              .join(", ")} produced a result this edge's predicate rejected`;
+      skipped.push({ id, blockedBy, reason });
       decided.add(id);
       remaining.delete(id);
     }
@@ -360,9 +429,9 @@ export async function runGraphConcurrent(spec: DagSpec, budget?: ConcurrentBudge
     const cast = await Promise.all(
       dispatch.map(async (id) => {
         const upstreams: NodeUpstreams = new Map(
-          (inEdges.get(id) ?? []).flatMap((from) => {
-            const p = producedAll.get(from);
-            return p === undefined ? [] : [[from, p] as const];
+          (inEdges.get(id) ?? []).flatMap((e) => {
+            const p = producedAll.get(e.from);
+            return p === undefined ? [] : [[e.from, p] as const];
           }),
         );
         const node = byId.get(id);
