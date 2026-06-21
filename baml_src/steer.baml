@@ -76,6 +76,13 @@ function SteerProject(project: string, charter: string) -> Steer {
       padded with fake forks, is the WORST waste (overproduction).
 
     ## The board — author it by these rules (the *what*)
+    - CONCRETE DEMAND ONLY — a board signal must be concrete product demand: a buildable feature or
+      change to Vend ITSELF that DECOMPOSES INTO AN EPIC (it changes what Vend is or can do). A
+      self-referential / operational meta-task is NOT a demand signal — running Vend on itself, "run
+      the sweep", settling or closing a prior run, dogfooding the loop are PROCESS NOTES about
+      operating the machine, not product demand. DEMOTE such meta-tasks beneath ALL concrete demand,
+      or EXCLUDE them; NEVER rank one as a keystone. The test: does it change what Vend can DO
+      (concrete demand), or is it just OPERATING the machine (a process note, not a signal)?
     - ONE signal per real demand — a board-ready request for clearing (what to do + why it might
       matter), read off the project. For each signal:
       - NAME THE VALUE — set `advances` to the charter invariant id(s) it serves (e.g. [P2]) or the

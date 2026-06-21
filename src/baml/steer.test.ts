@@ -138,4 +138,16 @@ describe("SteerProject — render (b.request, offline, render-only key)", () => 
     expect(prompt).toContain("project STEERER");
     expect(prompt).toContain("FORKS");
   });
+
+  // T-044-01 concrete-demand recalibration: a deterministic prompt-contract assertion (no live model)
+  // that the recalibrated steering reached the rendered prompt — a board signal must be concrete
+  // product demand, self-referential / operational meta-tasks demoted beneath it or excluded. Live
+  // confirmation (the next vend steer staging a concrete #1, not "run the sweep") is DEFERRED.
+  test("the prompt carries the concrete-demand / anti-self-referential steering (T-044-01)", async () => {
+    const r = (await RESULTS)[3]!;
+    expect(r.ok).toBe(true);
+    const { prompt } = r as { prompt: string };
+    expect(prompt).toContain("concrete product demand");
+    expect(prompt).toContain("self-referential");
+  });
 });

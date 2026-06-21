@@ -118,4 +118,16 @@ describe("Survey — render (b.request, offline, render-only key)", () => {
     // The demand-surveyor framing is rendered too (the authored judgment, paid once).
     expect(prompt).toContain("demand-surveyor");
   });
+
+  // T-044-01 concrete-demand recalibration: the survey ranker shares the board shape with steer, so it
+  // carries the SAME steering (kept consistent). Deterministic prompt-contract assertion (no live
+  // model) that a board signal must be concrete product demand and self-referential / operational
+  // meta-tasks are demoted beneath it or excluded. Live confirmation is DEFERRED to the next cast.
+  test("the prompt carries the concrete-demand / anti-self-referential steering (T-044-01)", async () => {
+    const r = (await RESULTS)[3]!;
+    expect(r.ok).toBe(true);
+    const { prompt } = r as { prompt: string };
+    expect(prompt).toContain("concrete product demand");
+    expect(prompt).toContain("self-referential");
+  });
 });
