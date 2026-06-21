@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`cross-branch-budget-wallet`** (Frontier 3 / P7) — make the budget hard contract hold under concurrency: concurrent fan-out branches draw from **one shared wallet** with a correct hard stop, not per-branch budgets that overspend. E-048 (self-minted by E-047's live cast), **decompose resumed by HAND** (a P7 correctness fix). | **High** (P7 — the contract the product rests on, now under concurrency) | **active → E-048** — hand-decomposed: T-048-01 pure wave-budget core (`authorizeWave` + `debitWave` — **tokens SUM, wall-clock MAX** under concurrency) → T-048-02 thread one shared wallet through `castGraph` + deterministic shared-vs-per-node example. Free/deterministic; also unblocks E-047's live join. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -147,13 +145,20 @@ named by the charter principle it advances and the gap it closes:
   budget-exhaustion skipped the join; `work/T-047-02/graph-cast-log.md`), **cross-branch budget
   accounting** (the macro-wallet across parallel branches) → **minted → E-048
   (`cross-branch-budget-wallet`)** — the E-047 cast surfaced this gap live (per-branch envelopes, no
-  shared wave-level wallet) and minted the demand for it; minted-only, ready to decompose when pulled —
-  and cycle/error semantics. Each a downstream pull onto the proven substrate. **High.**
-  - ~~Decompose + build E-048 `cross-branch-budget-wallet`~~ → **done (hand-decomposed) → in flight:**
-    S-048-01 (T-048-01 pure wave-budget core — `authorizeWave` + `debitWave`, **tokens SUM / wall-clock
-    MAX** under concurrency → T-048-02 thread one shared wallet through `castGraph` + deterministic
-    shared-vs-per-node example). Also unblocks E-047's live join (a shared budget lets both branches
-    finish, so `capture-note` runs).
+  shared wave-level wallet) and minted the demand for it; **now done → E-048 (cleared, crystallized)** —
+  and cycle/error semantics. Each a downstream pull onto the proven substrate. (Cross-branch budget is now
+**done → E-048**, crystallized.) **High.**
+  - ~~Decompose + build E-048 `cross-branch-budget-wallet`~~ → **done → E-048 (CLEARED, crystallized).**
+    One shared wallet through `castGraph`'s wave dispatcher — `authorizeWave` + `debitWave` (**tokens SUM
+    / wall-clock MAX** under concurrency, single-element == sequential `debit`), single-chain/`spendDown`
+    UNCHANGED, deterministic shared-vs-per-node worked example (3-branch partial wave). P7 holds under
+    concurrency; 1150 tests. **Now unblocks E-047's live join** — a shared budget lets both branches
+    finish, so a live re-cast would run `capture-note` (the next downstream pull, below).
+  - **Live multi-upstream join re-cast (now unblocked by E-048).** E-047 proved concurrency live but the
+    2-upstream join stayed *stub-proven* — propose-1 budget-exhausted, so `castGraph` (correctly) skipped
+    `capture-note`. With one shared wave-level wallet, both branches can finish under a bounded envelope;
+    a live re-cast of the `survey → [propose ×2] → capture-note` diamond would prove the join end-to-end.
+    **Standard** (free-ish; a small bounded live cast). The honest closer on E-046/E-047's substrate.
 - **Decompose-budget finding** (from E-045) — the macro-wallet depleted by the decompose step on the
   heavy DAG epic (E-046 minted but un-decomposed until the hand-resume). Heavy epics may want a fatter
   macro budget or a per-step decompose floor; a mild echo of the E-038 envelope thread. **Standard**,
