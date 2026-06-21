@@ -83,9 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — E-046 done: the **typed-DAG substrate is built** (`dag-core`/`graph-core`/`graph`
-— fan-out, join, topological + parallel execution, proven fails-vs-linear). The v1 vision's named
-capability now exists at its minimum honest form. Board benign all-clear. Pull below.*
+| Signal | Value | Status |
+|---|---|---|
+| **`live-real-play-graph`** (Frontier 3 follow-on) — prove E-046's DAG substrate LIVE with real plays, not stubs: `survey → [propose-epic ×2 parallel] → capture-note (join)` through `castGraph`. The headline is **real concurrency** (2 real casts at once — the linear chain can't) + the multi-upstream join, live. Metered, bounded by P7. | **High** (the live confirmation of the v1-vision substrate) | **active → E-047** — build the real-play `DagSpec` (stub-tested wiring) + cast it live (metered) → settle (concurrency proof + honest first-composition read). The first composed playbook (modest). Awaiting `lisa loop`. |
 
 ---
 
@@ -140,8 +140,8 @@ capability now exists at its minimum honest form. Board benign all-clear. Pull b
   multi-upstream map, halt-the-dependent-subgraph), and `castGraph` (concurrent wave dispatcher) —
   proven fails-vs-linear (the diamond's 2-upstream join `runChain` can't express). The v1 vision's named
   capability exists at its minimum honest form. **Remaining (E-046's named follow-ons):** **conditional
-  edges** (branch on a node's result), a **live real-play graph** (a real composed playbook cast,
-  metered — the deterministic stub example is the substrate proof), **cross-branch budget accounting**
+  edges** (branch on a node's result), a **live real-play graph** → **pulled → E-047 (in flight)**
+  (`survey → [propose ×2] → note` through `castGraph` — real concurrency live), **cross-branch budget accounting**
   (the macro-wallet across parallel branches), and cycle/error semantics. Each a downstream pull onto
   the proven substrate. **High.**
 - **Decompose-budget finding** (from E-045) — the macro-wallet depleted by the decompose step on the
