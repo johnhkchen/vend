@@ -1,0 +1,21 @@
+▶ casting: Re-run the bounded metered sweep again after E-039 settles to accrue CLEARED fo…
+    ◇ 0/1000k · 1000k left   ⏱ 0s/1h · 1h left
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· rate_limit_event
+· user
+· assistant
+· assistant
+· user
+· user

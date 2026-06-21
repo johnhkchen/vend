@@ -1,0 +1,258 @@
+▶ casting: Author `vend init`
+    ◇ 0/1000k · 1000k left   ⏱ 0s/1h · 1h left
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· assistant
+· rate_limit_event
+· user
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ minted E-040 → /Volumes/ext1/swe/repos/vend/docs/active/epic/E-040.md
+· turns: 4
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· assistant
+· rate_limit_event
+· user
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ lisa validate ✓
+· turns: 5 / 15 cap
+✓ done   : Author `vend init`
+    ◇ 338.1k/1000k · 661.9k left   ⏱ 3m/1h · 56m left
+▶ casting: Author `vend doctor`
+    ◇ 338.1k/1000k · 661.9k left   ⏱ 3m/1h · 56m left
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· result (success)
+· effect ✓ minted E-042 → /Volumes/ext1/swe/repos/vend/docs/active/epic/E-042.md
+· turns: 5
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· rate_limit_event
+· user
+· user
+· assistant
+· assistant
+· result (success)
+· effect ✓ lisa validate ✓
+· turns: 3 / 15 cap
+✓ done   : Author `vend doctor`
+    ◇ 633.0k/1000k · 367.0k left   ⏱ 6m/1h · 53m left
+═ vend work — receipt ═
+
+Cast 2, cleared 2:
+  ✓ Author `vend init`   ◇ 338.1k   ⏱ 3m
+  ✓ Author `vend doctor`   ◇ 294.9k   ⏱ 2m
+
+wallet: ◇ 633.0k/1000k · 367.0k left   ⏱ 6m/1h · 53m left
+
+stopped: wallet exhausted — wallet can't afford the next pull (3 left on the board) — 366996 tokens / 3209678 ms left
+

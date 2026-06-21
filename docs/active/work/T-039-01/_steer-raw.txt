@@ -1,0 +1,72 @@
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· assistant
+· user
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ staged /Volumes/ext1/swe/repos/vend/docs/active/pm/staged/steer.md
+· turns: 7
+run run-2026-06-21T00-05-46-640Z: success (materialized: true)
