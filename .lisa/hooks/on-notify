@@ -1,0 +1,89 @@
+#!/bin/sh
+# Lisa notify hook -> ntfy.sh push notifications.
+#
+# The ntfy TOPIC is a private channel (anyone who knows the name can read it), so it is
+# kept OUT of version control. Configure it locally, either:
+#   - write the topic into .lisa/hooks/ntfy-topic   (gitignored), or
+#   - export LISA_NTFY_TOPIC in the loop's environment.
+# With no topic configured the hook is a silent no-op (safe default for a fresh clone).
+#
+# Contract:  on-notify <event> [detail]   ($1 mirrors $LISA_EVENT)
+# See `lisa hooks-guide` for the full env-var + stdin-payload contract.
+#
+# Design goal: every push is short, glanceable, plain English — never raw JSON,
+# never an absolute path (the project name lives in the title).
+
+# Resolve the topic from env or the gitignored topic file; no-op if neither is set.
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || HOOK_DIR=".lisa/hooks"
+TOPIC="${LISA_NTFY_TOPIC:-}"
+[ -z "$TOPIC" ] && [ -r "$HOOK_DIR/ntfy-topic" ] && TOPIC=$(head -n1 "$HOOK_DIR/ntfy-topic" | tr -d '[:space:]')
+[ -z "$TOPIC" ] && exit 0
+URL="https://ntfy.sh/$TOPIC"
+
+# Short, readable project name (basename of the absolute root).
+proj=$(basename "${LISA_PROJECT:-vend}")
+
+# Pull a single JSON string field's value out of a blob (best-effort, first match).
+json_field() {
+  printf '%s' "$2" | grep -o "\"$1\"[ ]*:[ ]*\"[^\"]*\"" | head -n1 \
+    | sed 's/.*:[ ]*"\(.*\)"/\1/'
+}
+
+case "$1" in
+  attention)
+    reason="${LISA_REASON:-attention}"
+    # Where: project, plus the ticket when the caller knows it.
+    where="$proj"
+    [ -n "$LISA_TICKET_ID" ] && where="$proj · $LISA_TICKET_ID"
+    prio="high"
+    tag="warning"
+
+    case "$reason" in
+      question)
+        # $2 is the question text; full Claude JSON is on stdin (carries options).
+        detail="${2:-agent is asking a question}"
+        payload=$(cat)
+        # Join the option labels into "A, B, C" — plain ASCII, always renders.
+        opts=$(printf '%s' "$payload" \
+          | grep -o '"label"[ ]*:[ ]*"[^"]*"' \
+          | sed 's/.*:[ ]*"\([^"]*\)"/\1/' \
+          | awk '{printf "%s%s", (NR>1 ? ", " : ""), $0}')
+        [ -n "$LISA_QUESTION_HEADER" ] && detail="$LISA_QUESTION_HEADER: $detail"
+        [ -n "$opts" ] && detail="$detail — options: $opts"
+        tag="speech_balloon"
+        ;;
+      permission)
+        # $2 (and stdin) is raw Claude JSON — extract the human message only.
+        raw="$2"
+        [ -z "$raw" ] && raw=$(cat)
+        detail=$(json_field message "$raw")
+        [ -z "$detail" ] && detail="Claude needs your permission to proceed"
+        tag="lock"
+        ;;
+      *)
+        # idle-without-artifact and anything else: $2 is already a human string.
+        detail="${2:-needs attention}"
+        tag="hourglass"
+        ;;
+    esac
+
+    curl -s \
+      -H "Title: lisa/$where needs you ($reason)" \
+      -H "Priority: $prio" \
+      -H "Tags: $tag" \
+      -d "$detail" \
+      "$URL" >/dev/null 2>&1
+    ;;
+  complete)
+    # The whole loop finished.
+    curl -s \
+      -H "Title: lisa/$proj — loop complete" \
+      -H "Priority: default" \
+      -H "Tags: white_check_mark" \
+      -d "Done: ${LISA_TICKETS_DONE:-?} tickets in ${LISA_DURATION_SECS:-?}s" \
+      "$URL" >/dev/null 2>&1
+    ;;
+esac
+
+# Never block the loop, even if curl fails or the network is down.
+exit 0
