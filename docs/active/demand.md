@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`node-throw-semantics-for-graph-runner`** (Frontier 3 / P3·P4·P6) — the last unbuilt graph primitive: a node whose cast THROWS becomes a deterministic marked node (not an uncaught `Promise.all` rejection that crashes the wave), halting only its dependents so independent siblings' work survives. E-054, **minted + decomposed live by `vend chain`** — and it correctly HONORED the signal's "do not re-propose cycle detection (done)" scoping. (Ran on E-053's rational band: propose floored at 350k, decompose capped at 700k — band live-proven.) | **High** (the last graph primitive; hardens the substrate the open-model runner stands on) | **active → E-054** — T-054-01 pure `errored` RunOutcome + helper (decideThread refuses it → halt path) → T-054-02 thread per-node try/catch into BOTH runners (runGraph for-loop :209, runGraphConcurrent Promise.all :429-441) → T-054-03 dual-runner throw-equivalence proof. FREE/deterministic. Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -171,10 +169,11 @@ live-join re-cast remain.) **High.**
     epics — the 2-upstream join proven live (took 4 metered runs; the live join also needed per-CAST
     budgets sized to real burn — a calibration note, not a substrate gap). **The DAG substrate (E-046→052)
     is now proven LIVE in full — no stub-gated property left.**
-  - ~~Remaining on the substrate: cycle detection + error/halt semantics~~ → **node-throw half pulled →
-    E-054 (in flight); cycle detection was ALREADY DONE** (grounding showed `validateDag`/`topoSort` +
-    both runners already refuse cycles, graph-core.ts:109-124 — not re-proposed). E-054 closes the genuine
-    gap: a throwing node → deterministic `errored` outcome, never a crashed wave. The last graph primitive.
+  - ~~Remaining on the substrate: cycle detection + error/halt semantics~~ → **done → E-054 (cleared).**
+    A throwing node → deterministic `errored` outcome routed through the existing halt path, in BOTH
+    runners; the wave never crashes, siblings survive. Cycle detection was ALREADY done (not re-proposed).
+    **The typed-DAG substrate (E-046→054) is now COMPLETE — the dispatcher is TOTAL over node behavior
+    (success / non-success / exception), nothing stub-gated or unbuilt left. Frontier 3 is cleared.**
 - ~~**Decompose-envelope under-bounds (E-045, E-049).**~~ → **done → E-050 (`measurement-funding-headroom`,
   cleared, crystallized).** Broke the censoring ratchet — `fundingEnvelope` funds early/under-calibrated
   runs above the lower bound censored runs already log (`max(priced, maxCensoredActual × headroom)`), so
