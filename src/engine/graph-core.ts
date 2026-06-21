@@ -229,7 +229,16 @@ export async function runGraph(spec: DagSpec): Promise<GraphResult> {
 
     const node = byId.get(id);
     if (node === undefined) continue; // unreachable (id ∈ order ⊆ declared); guards the Map lookup
-    const summary = await node.cast(upstreams);
+    // A throw is NOT a crash (E-054): a thrown cast becomes the `errored` node summary
+    // (T-054-01's pure helper) and routes through the SAME decideThread → halt-dependent-subgraph
+    // path below as every other non-success — so it never propagates out of runGraph, and the
+    // throwing node's transitive dependents skip while independent siblings still run.
+    let summary: RunSummary;
+    try {
+      summary = await node.cast(upstreams);
+    } catch {
+      summary = erroredSummary(id);
+    }
     summaries.set(id, summary);
     if (firstFail === undefined && summary.outcome !== "success") firstFail = summary;
 
@@ -459,7 +468,15 @@ export async function runGraphConcurrent(spec: DagSpec, budget?: ConcurrentBudge
         );
         const node = byId.get(id);
         if (node === undefined) return [id, undefined] as const; // unreachable (id ∈ order ⊆ declared)
-        return [id, await node.cast(upstreams)] as const;
+        // A throw is caught INSIDE the thunk into the `errored` summary (T-054-01) so `Promise.all`
+        // sees a RESOLVED member — the wave never rejects, sibling thunks dispatched in this same
+        // wave keep their settled results, and the throw cascade-skips its dependents through the
+        // existing halt machinery in the settle loop below. Parity with the sequential runGraph.
+        try {
+          return [id, await node.cast(upstreams)] as const;
+        } catch {
+          return [id, erroredSummary(id)] as const;
+        }
       }),
     );
 

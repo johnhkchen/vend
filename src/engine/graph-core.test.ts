@@ -46,6 +46,16 @@ const neverNode = (id: string): DagNode => ({
   },
 });
 
+// A node whose cast THROWS — the stimulus T-054-02's runners must ABSORB into an `errored`
+// summary. UNLIKE `neverNode` (whose throw asserts it was NOT called), this throw is expected:
+// the runner is required to catch it, not propagate it.
+const throwingNode = (id: string): DagNode => ({
+  id,
+  cast: async () => {
+    throw new Error(`cast for '${id}' threw (T-054-02 stub)`);
+  },
+});
+
 const edge = (from: string, to: string): DagEdge => ({ from, to });
 const spec = (nodes: readonly DagNode[], edges: readonly DagEdge[]): DagSpec => ({ nodes, edges });
 
@@ -460,5 +470,79 @@ describe("runGraphConcurrent — conditional edges mirror runGraph (E-049, T-049
     expect(facets(con)).toEqual(facets(seq));
     expect(facets(con).skipped).toEqual([]); // no predicate → nothing not-taken, nothing halted
     expect(Object.fromEntries(con.produced)).toEqual({ D: "pd" });
+  });
+});
+
+describe("a thrown cast becomes an 'errored' node, dependents skip, siblings survive (T-054-02)", () => {
+  // ONE fan-out + cascade shape exercises all four AC clauses:
+  //        A (source, success "pa")
+  //       / \
+  //   B(throws)  C (independent sibling, success "pc")
+  //      |
+  //      D (depends on B — neverNode: must NOT be cast; proves the cascade-skip)
+  // A→B, A→C, B→D. Fresh nodes per call so seq/con runs never cross-contaminate recorded calls.
+  const mkParts = () => {
+    const a = recordingNode("A", summary("success", "pa"));
+    const c = recordingNode("C", summary("success", "pc"));
+    const graph = spec(
+      [a.node, throwingNode("B"), c.node, neverNode("D")],
+      [edge("A", "B"), edge("A", "C"), edge("B", "D")],
+    );
+    return { a, c, graph };
+  };
+
+  // The cross-executor projection (same as the E-049 block) — used for the de-risking parity check.
+  const facets = (r: GraphResult) => ({
+    cast: [...r.nodes.keys()].sort(),
+    skipped: r.skipped.map((s) => ({ id: s.id, reason: s.reason, blockedBy: [...s.blockedBy] })),
+    produced: Object.fromEntries(r.produced),
+    outcome: r.outcome,
+    halted: r.halted,
+  });
+
+  // The four AC clauses, asserted identically against either runner over a fresh spec.
+  const assertAc = (r: GraphResult, c: ReturnType<typeof mkParts>["c"]) => {
+    // AC#1 — the throwing node is an 'errored' entry in GraphResult.nodes (caught, not propagated).
+    expect(r.nodes.get("B")?.outcome).toBe("errored");
+    // AC#2 — its transitive dependent D landed in `skipped` with a reason naming the halted upstream.
+    expect(r.nodes.has("D")).toBe(false); // D was never cast (neverNode would have thrown)
+    const skipD = r.skipped.find((s) => s.id === "D");
+    expect(skipD).toBeDefined();
+    expect(skipD?.blockedBy).toContain("B");
+    expect(skipD?.reason).toContain("halted upstream");
+    expect(skipD?.reason).toContain("errored"); // the andon carries decideThread's non-success reason
+    // AC#3 — the independent sibling C still completed, cast with its real JOIN map.
+    expect(r.nodes.has("C")).toBe(true);
+    expect(c.calls).toEqual([{ A: "pa" }]);
+    // Terminal outcome is the errored summary (first non-success in topo order); the run halted.
+    expect(r.outcome).toBe("errored");
+    expect(r.halted).toBe(true);
+    expect(Object.fromEntries(r.produced)).toEqual({ C: "pc" }); // only the surviving leaf
+  };
+
+  test("runGraph: throwing B → errored node, D skips, C survives, promise RESOLVES (never throws)", async () => {
+    const { c, graph } = mkParts();
+    // AC#4 — the `await` returning a GraphResult IS the proof the runner resolved, not rejected.
+    const r = await runGraph(graph);
+    assertAc(r, c);
+  });
+
+  test("runGraphConcurrent: same containment — the thrown thunk does not reject the Promise.all wave", async () => {
+    const { c, graph } = mkParts();
+    const r = await runGraphConcurrent(graph);
+    assertAc(r, c);
+  });
+
+  test("runGraphConcurrent RESOLVES on a throw (AC#4 as a first-class property, not an incidental)", async () => {
+    const { graph } = mkParts();
+    // If the catch were placed outside the dispatch thunk, Promise.all would reject and this fails.
+    await expect(runGraphConcurrent(graph)).resolves.toBeDefined();
+  });
+
+  test("both runners agree on the throwing spec (de-risks T-054-03's formal equivalence)", async () => {
+    const seq = await runGraph(mkParts().graph);
+    const con = await runGraphConcurrent(mkParts().graph);
+    expect(facets(con)).toEqual(facets(seq));
+    expect(facets(seq).cast).toEqual(["A", "B", "C"]); // A, the errored B, and the sibling C all cast
   });
 });
