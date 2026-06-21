@@ -83,9 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`idempotent-mint-guard`** (Frontier 7 follow-up) — `propose-epic` re-mints `nextEpicId`=max+1 each run (TOCTOU-safe, not idempotent), so a retry double-minted the doctor epic (E-042 + orphan E-041, same title). Key the mint on **title**: adopt an existing same-title epic before grabbing a fresh slot. | **Standard** (correctness the loop demonstrably hits; P3/P4) | **active → E-043** — single surgical ticket (pure title-dedup in `id-guard.ts` + `proposeEpicEffect` adopts) + deterministic twice-run proof. Awaiting `lisa loop`. |
+*Nothing in flight — E-043 closed the double-mint gap (propose-epic now idempotent on title). Board
+benign all-clear. The PM staged a **Frontier 7 continuation** batch (demonstrate + ship — example
+template, delivery); Frontier 1's residual is the forward-E1 cadence. Pull below.*
 
 ---
 
@@ -187,9 +187,8 @@ guard). **Remaining:** a driveable hackathon `examples/` template · Homebrew / 
 delivery · onboarding docs. **High** (foundation laid; example → delivery next). *Pull from the PM
 batch — the human pulls (pull-discipline).*
 
-- **Idempotent-mint guard for `propose-epic`** (surfaced by E-039) → **pulled → E-043 (in flight).**
-  Root cause grounded: the effect re-mints `nextEpicId`=max+1 each run (TOCTOU-safe, not idempotent);
-  the fix is title-keyed adoption before minting. **Standard.**
+- ~~Idempotent-mint guard for `propose-epic`~~ → **done → E-043** (`proposeEpicEffect` adopts an
+  existing same-title epic before minting; the loop can now retry a mint without orphaning a card).
 - **Steer ranker demotes self-referential targets** (surfaced by E-037 + E-039) — `vend steer`/
   `survey` keep ranking *"run the sweep"* meta-signals #1, which propose-epic can't cleanly mint; the
   ranker should demote introspective/self-referential targets beneath concrete product demand.
