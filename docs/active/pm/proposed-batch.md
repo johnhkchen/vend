@@ -1,5 +1,12 @@
 # PM — Proposed batch (distribution & onboarding cycle, synthesized 2026-06-20)
 
+> **STATUS — CONSUMED (swept 2026-06-20).** Processed; top pulls cleared live: **#1 `vend init`
+> → E-040** and **#3 `vend doctor` → E-042** (both done, via the macro-wallet sweep E-039 — which
+> also moved the keystone to *watched clearing*). **Carried forward as Frontier 7 board demand:**
+> #4 Homebrew delivery (D-1), and the examples X-1/X-2/X-3 (#2 + carried). #5 multi-node DAG and #6
+> stop-reason stay on their home frontiers (3 / 6). Kept in place (referenced by `demand.md`/E-040/
+> E-042); see `process-gate.md` for the reconciled reference state.
+
 > Synthesized by the orchestrator (full session context) from this session's deployability +
 > onboarding discovery (`deployability-discovery.md`, `onboarding-examples-discovery.md`),
 > ranked against the six live frontiers in `demand.md` (post-E-037). Signals **un-elaborated**
