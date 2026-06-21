@@ -83,7 +83,9 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
+| Signal | Value | Status |
+|---|---|---|
+| **`hackathon-designer-onboarding`** (Frontier 7 + 4 / P2·P5·P4) — the Set-B non-dev channel proof: a designer clones an Astro + React (→ Cloudflare) frontend seed, runs two gestures, and gets the SVG work-graph board *beside the running app* — understanding by picture, not code. E-058, **hand-authored** from a founder user-story + the build-ready brief (`pm/brief-hackathon-example.md`). | **High / keystone for Set B** (the riskiest must-be-true the PM desk flags; first real `vend steer` on a thin non-vend domain) | **active → E-058** — S-058-01 `vend init --template` seam (E-040 ext) · S-058-02 Astro+React+Cloudflare seed (scaffold → drive wiring) · S-058-03 serve the SVG board beside the app · S-058-04 **LIVE gold-master drive** (steer→work on the seed, capture EXPECTED-OUTCOME, forward-E1). Build free/deterministic; the closing drive is the one live cast (A3 make-or-break, de-risked by E-044). Awaiting `lisa loop`. |
 
 ---
 
