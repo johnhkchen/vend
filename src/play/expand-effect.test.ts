@@ -40,6 +40,14 @@ const FULL_SIGNAL: Signal = {
 
 const CHARTER = "P1 author-once. P2 two-gestures. P7 budget-hard. N1 not-a-copilot. N4 not-an-executor.";
 
+// A complete Annotation — the non-dev feedback the expand clearing prices into FULL_SIGNAL. Module
+// scope so BOTH the effect-threading test and the pure renderAnnotationProvenance block reference it.
+const FULL_ANNOTATION: Annotation = {
+  text: "this card's blocked edge is hard to spot on the board",
+  nodeId: "T-055-01",
+  seat: "designer",
+};
+
 const inputsFor = (fragment: string): ExpandFragmentInputs => ({
   fragment,
   charter: CHARTER,
@@ -48,6 +56,13 @@ const inputsFor = (fragment: string): ExpandFragmentInputs => ({
 
 const ctxFor = (root: string): CastContext<ExpandFragmentInputs> => ({
   inputs: inputsFor("this is rough"),
+  projectRoot: root,
+});
+
+/** A cast context whose inputs carry an annotation — the E-057 round-trip threaded through the
+ *  same effect: the staged signal must then carry the provenance trailer + back-link. */
+const annotatedCtxFor = (root: string): CastContext<ExpandFragmentInputs> => ({
+  inputs: { ...inputsFor("this is rough"), annotation: FULL_ANNOTATION },
   projectRoot: root,
 });
 
@@ -111,6 +126,41 @@ describe("expandFragmentEffect — stages the signal under the PM desk, never th
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  // AC#1 (T-057-02): an annotated cast — provenance threaded through the SAME effect — stages the
+  // trailer + back-link, and STILL writes nothing to the board (one-way authority holds, inherited
+  // not weakened). Stubs the cast exactly as the tests above do: a direct effect call on a temp root.
+  test("an annotated cast stages the provenance trailer + back-link, board untouched", async () => {
+    const root = await seedRoot();
+    try {
+      const res = await expandFragmentEffect(FULL_SIGNAL, annotatedCtxFor(root));
+      expect(res.ok).toBe(true);
+
+      const written = await readFile(
+        join(root, STAGING_DIR, `${slugify(FULL_SIGNAL.what)}.md`),
+        "utf8",
+      );
+      // the provenance trailer names the human source (seat X on node Y) quoting the priced signal.
+      expect(written).toContain("Provenance:");
+      expect(written).toContain(FULL_ANNOTATION.seat); // "designer"
+      expect(written).toContain(FULL_ANNOTATION.nodeId); // "T-055-01"
+      // the back-link references the annotated work item with a board-relative href.
+      expect(written).toContain("Back to the annotated work item");
+      expect(written).toContain(`[\`${FULL_ANNOTATION.nodeId}\`]`);
+      expect(written).toContain("../../tickets/T-055-01.md");
+      // additive, not a replacement: the machine origin trailer is still present.
+      expect(written).toContain("not promoted");
+
+      // one-way authority STILL holds with an annotation in play — nothing reaches the board.
+      expect(await exists(join(root, "docs/active/demand.md"))).toBe(false);
+      expect(await exists(join(root, "docs/active/epic"))).toBe(false);
+      expect(await exists(join(root, "docs/active/stories"))).toBe(false);
+      expect(await exists(join(root, "docs/active/tickets"))).toBe(false);
+      expect(await exists(join(root, STAGING_DIR))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("clear → classify wiring — a grounded signal stages; a refusal stages nothing", () => {
@@ -168,13 +218,6 @@ describe("slugify + renderStagedSignal — pure helpers", () => {
 });
 
 describe("renderAnnotationProvenance — provenance trailer + back-link (pure)", () => {
-  // A complete Annotation — the non-dev feedback the expand clearing prices into FULL_SIGNAL.
-  const FULL_ANNOTATION: Annotation = {
-    text: "this card's blocked edge is hard to spot on the board",
-    nodeId: "T-055-01",
-    seat: "designer",
-  };
-
   test("the provenance line names the seat and the annotated node id (AC clause a)", () => {
     const out = renderAnnotationProvenance(FULL_SIGNAL, FULL_ANNOTATION);
     expect(out).toContain("Provenance:");

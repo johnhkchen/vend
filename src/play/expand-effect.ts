@@ -45,6 +45,13 @@ export interface ExpandFragmentInputs {
   readonly fragment: string;
   readonly charter: string;
   readonly project: string;
+  /** OPTIONAL provenance for the E-057 round-trip: when this cast originated as a non-dev's
+   *  annotation on a rendered work-graph node, the effect renders its provenance trailer +
+   *  back-link into the staged signal. Absent for a plain `vend expand` fragment — the staged
+   *  file is then byte-identical to before. `render` (BAML) ignores it; this is staging-time
+   *  provenance, never prompt input (the annotation reaches the effect via `ctx.inputs`, the
+   *  engine's established side-channel — the `Play.effect` signature stays `(signal, ctx)`). */
+  readonly annotation?: Annotation;
 }
 
 /** Cap the filename stem: a Signal's `what` can be a full sentence (a live cast slugged a ~250-char
@@ -77,11 +84,16 @@ export function slugify(what: string): string {
  *    in the demand.md shape" — every Signal field round-trips through expand-core's renderer),
  *  - a `## Pull this` block quoting the exact signal string a human hands to `vend chain` (`<what> —
  *    <why>`, the staging unit the clearing plays already take — docs/active/pm/README.md),
- *  - an origin trailer naming the play + its un-promoted status.
+ *  - an origin trailer naming the play + its un-promoted status,
+ *  - and, WHEN an {@link Annotation} is supplied (the E-057 round-trip), the provenance trailer +
+ *    back-link from {@link renderAnnotationProvenance} appended after the origin trailer — the
+ *    machine origin (the play) then the human origin (seat X on node Y). Still PURE: the
+ *    annotation is an argument, not an fs read, so determinism holds. With no annotation the
+ *    returned string is byte-identical to before (the plain `vend expand` path).
  */
-export function renderStagedSignal(signal: Signal): string {
+export function renderStagedSignal(signal: Signal, annotation?: Annotation): string {
   const pull = `${signal.what} — ${signal.why}`;
-  return [
+  const lines = [
     `# ${signal.what}`,
     "",
     "| Signal | Value | Budget (envelope) | Status |",
@@ -97,8 +109,12 @@ export function renderStagedSignal(signal: Signal): string {
     "```",
     "",
     "_Staged by Vend's `expand-fragment` play — not promoted; pull to clear._",
-    "",
-  ].join("\n");
+  ];
+  if (annotation) {
+    lines.push("", renderAnnotationProvenance(signal, annotation));
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 /**
@@ -168,6 +184,6 @@ export async function expandFragmentEffect(
   const dir = join(ctx.projectRoot, STAGING_DIR);
   const path = join(dir, `${slugify(signal.what)}.md`);
   await mkdir(dir, { recursive: true });
-  await writeFile(path, renderStagedSignal(signal), "utf8");
+  await writeFile(path, renderStagedSignal(signal, ctx.inputs.annotation), "utf8");
   return { ok: true, detail: `staged ${path}`, artifacts: [path], produced: path };
 }

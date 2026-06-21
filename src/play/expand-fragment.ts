@@ -30,7 +30,7 @@ import { castPlay } from "../engine/cast.ts";
 import type { Budget } from "../budget/budget.ts";
 import { clear } from "./expand-core.ts";
 import { buildProjectSnapshot, listIdsIn, CHARTER_PATH } from "./project-context.ts";
-import { expandFragmentEffect, type ExpandFragmentInputs } from "./expand-effect.ts";
+import { expandFragmentEffect, type Annotation, type ExpandFragmentInputs } from "./expand-effect.ts";
 
 /** The play name — the registry key and the value stamped on every run-log record. */
 export const PLAY = "expand-fragment";
@@ -121,6 +121,11 @@ export interface ExpandFragmentOptions {
   readonly runId?: string;
   /** Override the transcript dir (default `<root>/.vend/transcripts`). */
   readonly transcriptDir?: string;
+  /** OPTIONAL annotation provenance (the E-057 round-trip). When set, the staged signal carries
+   *  the provenance trailer + back-link to the annotated work item. The `vend annotate` seam
+   *  (T-057-03) sets this with `fragment` = the annotation's text; a plain `vend expand` leaves
+   *  it unset and the staged draft is unchanged. */
+  readonly annotation?: Annotation;
 }
 
 /**
@@ -139,7 +144,7 @@ export async function assembleExpandFragmentInputs(opts: ExpandFragmentOptions):
     listIdsIn(`${root}/docs/active/tickets`),
   ]);
   const project = buildProjectSnapshot({ root, srcFiles: [], stories, tickets });
-  return { fragment: opts.fragment, charter, project };
+  return { fragment: opts.fragment, charter, project, annotation: opts.annotation };
 }
 
 /**
