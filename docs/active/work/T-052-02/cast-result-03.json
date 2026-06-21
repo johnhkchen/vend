@@ -1,0 +1,154 @@
+{
+  "stamp": "03",
+  "sandbox": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03",
+  "funded": {
+    "tokens": 2000000,
+    "timeMs": 6600000
+  },
+  "tight": {
+    "tokens": 608000,
+    "timeMs": 4200000
+  },
+  "walletRemaining": {
+    "tokens": 1024456,
+    "timeMs": 6360376
+  },
+  "spent": {
+    "tokens": 975544,
+    "timeMs": 239624
+  },
+  "outcome": "budget-exhausted",
+  "halted": true,
+  "haltReason": "skipped — dependent on halted upstream 'propose-2' (halted: step outcome 'budget-exhausted' is not success)",
+  "nodes": [
+    {
+      "id": "survey",
+      "runId": "run-2026-06-21T16-53-38-949Z",
+      "outcome": "success",
+      "materialized": true,
+      "produced": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03/docs/active/pm/staged/survey-board.md",
+      "actuals": {
+        "usage": {
+          "input_tokens": 17996,
+          "cache_creation_input_tokens": 41138,
+          "cache_read_input_tokens": 130417,
+          "output_tokens": 8310,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 41138,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 5369,
+              "cache_read_input_tokens": 46331,
+              "cache_creation_input_tokens": 10433,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 10433
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 121051
+      }
+    },
+    {
+      "id": "propose-1",
+      "runId": "run-2026-06-21T16-55-40-003Z",
+      "outcome": "success",
+      "materialized": true,
+      "produced": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03/docs/active/epic/E-053.md",
+      "actuals": {
+        "usage": {
+          "input_tokens": 16269,
+          "cache_creation_input_tokens": 26174,
+          "cache_read_input_tokens": 36330,
+          "output_tokens": 2307,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 26174,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 1321,
+              "cache_read_input_tokens": 22168,
+              "cache_creation_input_tokens": 18168,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 18168
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 43553
+      }
+    },
+    {
+      "id": "propose-2",
+      "runId": "run-2026-06-21T16-55-40-003Z",
+      "outcome": "budget-exhausted",
+      "materialized": false,
+      "actuals": {
+        "usage": {
+          "input_tokens": 18254,
+          "cache_creation_input_tokens": 37118,
+          "cache_read_input_tokens": 634925,
+          "output_tokens": 6306,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 37118,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 2631,
+              "cache_read_input_tokens": 50324,
+              "cache_creation_input_tokens": 956,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 956
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 118573
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "capture-note",
+      "blockedBy": [
+        "propose-2"
+      ],
+      "reason": "skipped — dependent on halted upstream 'propose-2' (halted: step outcome 'budget-exhausted' is not success)"
+    }
+  ],
+  "produced": []
+}

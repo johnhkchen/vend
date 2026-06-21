@@ -1,0 +1,185 @@
+{
+  "stamp": "02",
+  "sandbox": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02",
+  "funded": {
+    "tokens": 1720000,
+    "timeMs": 6000000
+  },
+  "tight": {
+    "tokens": 608000,
+    "timeMs": 4200000
+  },
+  "walletRemaining": {
+    "tokens": 1287456,
+    "timeMs": 5773514
+  },
+  "spent": {
+    "tokens": 432544,
+    "timeMs": 226486
+  },
+  "outcome": "budget-exhausted",
+  "halted": false,
+  "nodes": [
+    {
+      "id": "survey",
+      "runId": "run-2026-06-21T16-48-49-447Z",
+      "outcome": "success",
+      "materialized": true,
+      "produced": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/pm/staged/survey-board.md",
+      "actuals": {
+        "usage": {
+          "input_tokens": 17294,
+          "cache_creation_input_tokens": 37999,
+          "cache_read_input_tokens": 83031,
+          "output_tokens": 8705,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 37999,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 1832,
+              "output_tokens": 5495,
+              "cache_read_input_tokens": 43093,
+              "cache_creation_input_tokens": 10532,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 10532
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 111443
+      }
+    },
+    {
+      "id": "propose-1",
+      "runId": "run-2026-06-21T16-50-40-893Z",
+      "outcome": "success",
+      "materialized": true,
+      "produced": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/epic/E-053.md",
+      "actuals": {
+        "usage": {
+          "input_tokens": 15477,
+          "cache_creation_input_tokens": 26542,
+          "cache_read_input_tokens": 36324,
+          "output_tokens": 3608,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 26542,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 1456,
+              "cache_read_input_tokens": 22162,
+              "cache_creation_input_tokens": 18542,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 18542
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 60223
+      }
+    },
+    {
+      "id": "propose-2",
+      "runId": "run-2026-06-21T16-50-40-893Z",
+      "outcome": "success",
+      "materialized": true,
+      "produced": "/Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/epic/E-054.md",
+      "actuals": {
+        "usage": {
+          "input_tokens": 15475,
+          "cache_creation_input_tokens": 8015,
+          "cache_read_input_tokens": 14162,
+          "output_tokens": 4979,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 8015,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 15475,
+              "output_tokens": 4979,
+              "cache_read_input_tokens": 14162,
+              "cache_creation_input_tokens": 8015,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 8015
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 72525
+      }
+    },
+    {
+      "id": "capture-note",
+      "runId": "run-2026-06-21T16-51-53-419Z",
+      "outcome": "budget-exhausted",
+      "materialized": false,
+      "actuals": {
+        "usage": {
+          "input_tokens": 18285,
+          "cache_creation_input_tokens": 28171,
+          "cache_read_input_tokens": 111795,
+          "output_tokens": 2682,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 28171,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 1481,
+              "cache_read_input_tokens": 38112,
+              "cache_creation_input_tokens": 5685,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 5685
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "wallMs": 42518
+      }
+    }
+  ],
+  "skipped": [],
+  "produced": []
+}

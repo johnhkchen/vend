@@ -1,0 +1,206 @@
+═ T-052-02 live cast ═
+  sandbox:  /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-01
+  funded:   1216000 tok / 8400000 ms (2× realPlayMacro)
+
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· user
+· user
+· rate_limit_event
+· assistant
+· assistant
+· assistant
+· user
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ staged /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-01/docs/active/pm/staged/survey-board.md
+· turns: 6
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· assistant
+· rate_limit_event
+· system (thinking_tokens)
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· assistant
+· user
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· user
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· system (notification)
+· result (success)
+· effect ✓ minted E-053 → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-01/docs/active/epic/E-053.md
+· turns: 3
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 323626/150000 tokens (over by 173626)
+· turns: 7
+
+═ cast result ═
+  node survey: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-01/docs/active/pm/staged/survey-board.md
+  node propose-1: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-01/docs/active/epic/E-053.md
+  node propose-2: budget-exhausted
+  node capture-note: SKIPPED — skipped — dependent on halted upstream 'propose-2' (halted: step outcome 'budget-exhausted' is not success)
+  sinks: {}
+  wallet: funded 1216000 tok / 8400000 ms · remaining 621365 tok / 8148171 ms · spent 594635 tok / 251829 ms
+  graph halted: skipped — dependent on halted upstream 'propose-2' (halted: step outcome 'budget-exhausted' is not success)

@@ -1,0 +1,175 @@
+═ T-052-02 live cast ═
+  sandbox:  /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02
+  funded:   1720000 tok / 6000000 ms (2× realPlayMacro)
+
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (th· assistant
+· rate_limit_event
+· result (success)
+· effect ✓ staged /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/pm/staged/survey-board.md
+· turns: 1
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· assistant
+· user
+· assistant
+· rate_limit_event
+· user
+· assistant
+· assistant
+· user
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· result (success)
+· andon: gate-failed — gate 'structural' stopped at E-053: id `E-053` already on the board — must be disjoint (E-004 discipline)
+· turns: 2
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· andon: gate-failed — gate 'structural' stopped at E-054: id `E-054` already on the board — must be disjoint (E-004 discipline)
+· turns: 10
+
+═ cast result ═
+  node survey: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/pm/staged/survey-board.md
+  node propose-1: gate-failed
+  node propose-2: gate-failed
+  node capture-note: SKIPPED — skipped — dependent on halted upstream 'propose-1' (halted: step outcome 'gate-failed' is not success), 'propose-2' (halted: step outcome 'gate-failed' is not success)
+  sinks: {}
+  wallet: funded 1720000 tok / 6000000 ms · remaining 1166787 tok / 5802073 ms · spent 553213 tok / 197927 ms
+  graph halted: skipped — dependent on halted upstream 'propose-1' (halted: step outcome 'gate-failed' is not success), 'propose-2' (halted: step outcome 'gate-failed' is not success)
+m (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 160933/120000 tokens (over by 40933)
+· turns: 4
+
+═ cast result ═
+  node survey: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/pm/staged/survey-board.md
+  node propose-1: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/epic/E-053.md
+  node propose-2: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-02/docs/active/epic/E-054.md
+  node capture-note: budget-exhausted
+  sinks: {}
+  wallet: funded 1720000 tok / 6000000 ms · remaining 1287456 tok / 5773514 ms · spent 432544 tok / 226486 ms

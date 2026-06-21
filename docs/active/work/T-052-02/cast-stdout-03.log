@@ -1,0 +1,174 @@
+═ T-052-02 live cast ═
+  sandbox:  /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03
+  funded:   2000000 tok / 6600000 ms (2× realPlayMacro)
+
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· effect ✓ staged /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03/docs/active/pm/staged/survey-board.md
+· turns: 4
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (hook_started)
+· system (hook_started)
+· system (hook_response)
+· system (hook_response)
+· system (init)
+· system (init)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· rate_limit_event
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· user
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· assistant
+· user
+· result (success)
+· effect ✓ minted E-053 → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03/docs/active/epic/E-053.md
+· turns: 2
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· user
+· assistant
+· user
+· assistant
+· user
+· assistant
+· user
+· assistant
+· assistant
+· user
+· assistant
+· user
+· assistant
+· user
+· assistant
+· user
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· system (thinking_tokens)
+· assistant
+· assistant
+· result (success)
+· andon: budget-exhausted — spent 696603/600000 tokens (over by 96603)
+· turns: 15
+
+═ cast result ═
+  node survey: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03/docs/active/pm/staged/survey-board.md
+  node propose-1: success → /Volumes/ext1/swe/repos/vend/.vend/live-proof/E052-03/docs/active/epic/E-053.md
+  node propose-2: budget-exhausted
+  node capture-note: SKIPPED — skipped — dependent on halted upstream 'propose-2' (halted: step outcome 'budget-exhausted' is not success)
+  sinks: {}
+  wallet: funded 2000000 tok / 6600000 ms · remaining 1024456 tok / 6360376 ms · spent 975544 tok / 239624 ms
+  graph halted: skipped — dependent on halted upstream 'propose-2' (halted: step outcome 'budget-exhausted' is not success)
