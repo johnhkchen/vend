@@ -546,3 +546,118 @@ describe("a thrown cast becomes an 'errored' node, dependents skip, siblings sur
     expect(facets(seq).cast).toEqual(["A", "B", "C"]); // A, the errored B, and the sibling C all cast
   });
 });
+
+// T-054-03 — the FORMAL dual-runner throw-equivalence proof, closing the last unbuilt graph
+// primitive on the E-046 substrate. T-054-02 wired both runners to CATCH a thrown cast into the
+// `errored` summary; this block proves the resulting GraphResult is IDENTICAL across the sequential
+// `runGraph` and the concurrent `runGraphConcurrent` for a throwing-node + independent-sibling spec.
+// Equivalence is exact (not merely structural) because `erroredSummary` is a PURE FUNCTION OF THE
+// NODE ID (no clock, no random), so the same throwing spec yields a byte-identical summary under
+// both runners. Pure-function tests: NO live model, NO spawn, stub throwing thunks only.
+describe("dual-runner throw-equivalence — same GraphResult under runGraph & runGraphConcurrent (T-054-03)", () => {
+  // The cross-executor projection (the established E-049 / T-054-02 idiom). It EXCLUDES
+  // `walletRemaining` (present only on the budgeted concurrent path), so equality is asserted on the
+  // facets the AC names — nodes (the cast keyset) / skipped / outcome / halted — plus `produced`.
+  const facets = (r: GraphResult) => ({
+    cast: [...r.nodes.keys()].sort(),
+    skipped: r.skipped.map((s) => ({ id: s.id, reason: s.reason, blockedBy: [...s.blockedBy] })),
+    produced: Object.fromEntries(r.produced),
+    outcome: r.outcome,
+    halted: r.halted,
+  });
+
+  // The throwing node + INDEPENDENT SIBLING shape the AC calls for (fresh nodes per call so the seq
+  // and con runs never share recorded-call state):
+  //        A (source, success "pa")
+  //       / \
+  //   B(throws)   C (independent sibling, success "pc")
+  //      |
+  //      D (depends on B — neverNode: must NOT be cast; proves the cascade-skip)
+  const mkSpec = () =>
+    spec(
+      [recordingNode("A", summary("success", "pa")).node, throwingNode("B"), recordingNode("C", summary("success", "pc")).node, neverNode("D")],
+      [edge("A", "B"), edge("A", "C"), edge("B", "D")],
+    );
+
+  test("the full GraphResult facets are byte-identical across both runners", async () => {
+    const seq = await runGraph(mkSpec());
+    const con = await runGraphConcurrent(mkSpec());
+
+    expect(facets(con)).toEqual(facets(seq)); // the equivalence claim, whole projection at once
+    expect(facets(seq).cast).toEqual(["A", "B", "C"]); // nodes facet: A, the errored B, and sibling C all cast
+  });
+
+  test("each AC-named facet agrees: nodes / skipped / outcome / halted", async () => {
+    const seq = await runGraph(mkSpec());
+    const con = await runGraphConcurrent(mkSpec());
+
+    for (const r of [seq, con]) {
+      // nodes — the throwing node is a caught `errored` entry; its dependent D was never cast.
+      expect(r.nodes.get("B")?.outcome).toBe("errored");
+      expect(r.nodes.has("D")).toBe(false);
+      expect(r.nodes.has("C")).toBe(true); // the independent sibling completed
+      // skipped — D landed in `skipped`, its reason naming the halted (errored) upstream B.
+      const skipD = r.skipped.find((s) => s.id === "D");
+      expect(skipD).toBeDefined();
+      expect(skipD?.blockedBy).toContain("B");
+      expect(skipD?.reason).toContain("halted upstream");
+      expect(skipD?.reason).toContain("errored");
+      // outcome — the errored summary is the first non-success in topo order.
+      expect(r.outcome).toBe("errored");
+      // halted — a dependent subgraph was skipped.
+      expect(r.halted).toBe(true);
+      // produced — only the surviving leaf C (D, the other sink, was skipped).
+      expect(Object.fromEntries(r.produced)).toEqual({ C: "pc" });
+    }
+  });
+
+  test("deterministic: repeated runs of each runner are byte-identical (erroredSummary purity, observed)", async () => {
+    expect(facets(await runGraph(mkSpec()))).toEqual(facets(await runGraph(mkSpec())));
+    expect(facets(await runGraphConcurrent(mkSpec()))).toEqual(facets(await runGraphConcurrent(mkSpec())));
+  });
+
+  // STRENGTHENING (beyond the AC): the equivalence still holds when the concurrent runner threads a
+  // shared wallet (E-048). A thrown cast's `errored` summary carries `actuals === undefined`, so the
+  // post-settle debit contributes {0,0} — the throw cannot over-charge the wallet, and the budgeted
+  // facets stay identical to the unbudgeted sequential run. Mirrors the E-049 budgeted parity test.
+  describe("under a budgeted concurrent wallet, the throw is still equivalent and charges nothing", () => {
+    // A COSTED success stub (carries `actuals` so debitWave folds a real delta); tokens via input_tokens.
+    const costed = (id: string, produced: string, price: Budget): DagNode => ({
+      id,
+      cast: async () => ({
+        runId: `run-${id}`,
+        outcome: "success",
+        materialized: true,
+        produced,
+        actuals: { usage: { input_tokens: price.tokens }, wallMs: price.timeMs },
+      }),
+    });
+    const prices: Record<string, Budget> = {
+      A: { tokens: 10_000, timeMs: 5_000 },
+      B: { tokens: 20_000, timeMs: 8_000 }, // B's PREDICTED price (authorization only — it throws, debiting {0,0})
+      C: { tokens: 15_000, timeMs: 6_000 },
+    };
+    // Same shape as mkSpec, but A and C are costed and B throws. neverNode("D") proves the cascade-skip.
+    const mkCostedSpec = () =>
+      spec(
+        [costed("A", "pa", prices.A as Budget), throwingNode("B"), costed("C", "pc", prices.C as Budget), neverNode("D")],
+        [edge("A", "B"), edge("A", "C"), edge("B", "D")],
+      );
+
+    test("facets equal the sequential run; the throwing B debits nothing", async () => {
+      const seq = await runGraph(mkCostedSpec());
+      const wallet = allocate({ tokens: 200_000, timeMs: 100_000 }); // far above the surviving path
+      const priceOf = (id: string): Budget => (prices[id] as Budget) ?? { tokens: 0, timeMs: 0 };
+      const con = await runGraphConcurrent(mkCostedSpec(), { wallet, priceOf });
+
+      expect(facets(con)).toEqual(facets(seq)); // throw equivalent even under the budgeted wave
+      expect(con.nodes.get("B")?.outcome).toBe("errored");
+      // Waves: {A} → {B throws, C} → {D skipped}. Debit is by ACTUALS: A then (B={0,0} ⊕ C), wall MAX
+      // per wave. So remaining = funded − A − C; B's predicted 20k/8k never charged.
+      expect(con.walletRemaining).toEqual({
+        tokens: 200_000 - prices.A!.tokens - prices.C!.tokens, // 175_000 — B never debited
+        timeMs: 100_000 - prices.A!.timeMs - prices.C!.timeMs, // 89_000 — wave-2 MAX(0, C) == C's time
+      });
+    });
+  });
+});
