@@ -1,0 +1,6 @@
+# Pins `doppler setup` so a fresh device is one gesture, no prompts:
+#   doppler setup
+#   doppler run -- bun run check
+setup:
+  project: vend
+  config: dev

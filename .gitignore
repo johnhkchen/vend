@@ -8,3 +8,9 @@ dist/
 # which is durable training data (see docs/knowledge/playbooks/steering-data-model.md).
 .vend/*
 !.vend/decisions.jsonl
+
+# Secrets / local env — managed via Doppler (see README). Never commit real values.
+.env
+.env.*
+!.env.example
+.doppler.env
