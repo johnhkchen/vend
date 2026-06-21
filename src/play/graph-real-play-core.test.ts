@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunOutcome } from "../log/run-log.ts";
 import type { RunSummary } from "../engine/cast.ts";
-import { runGraph } from "../engine/graph-core.ts";
-import type { DagSpec, NodeId, NodeUpstreams } from "../engine/dag-core.ts";
+import { runGraph, runGraphConcurrent } from "../engine/graph-core.ts";
+import type { DagNode, DagSpec, NodeId, NodeUpstreams } from "../engine/dag-core.ts";
+import { allocate } from "../budget/wallet.ts";
+import type { Budget } from "../budget/budget.ts";
 import {
   NOTE_NODE,
   PROPOSE_1_NODE,
@@ -15,6 +17,7 @@ import {
   buildConsolidationTopic,
   epicIdFromPath,
   pickSignal,
+  realPlayMacro,
   type SignalSelection,
 } from "./graph-real-play-core.ts";
 
@@ -147,5 +150,112 @@ describe("wiring proof (AC#2): fan-out delivers the board to BOTH proposes; the 
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+// T-052-01 (E-052) — the SHARED-WALLET sizing proof. `castRealPlayGraph` now allocates ONE wallet
+// (sized by `realPlayMacro`) and passes it as `castGraph`'s third arg, so both fan-out proposes draw
+// from one envelope and the 2-upstream JOIN runs (it stayed stub-only in E-047 because per-node
+// budgets leaked across the branches). We pin the PURE sizing here — `realPlayMacro` arithmetic plus a
+// run of the REAL diamond (`REAL_PLAY_EDGES`) through the pure budgeted dispatcher `runGraphConcurrent`
+// (the one the impure `castGraph` delegates to) under the real-play-sized wallet. NO `castPlay`, NO
+// native addon, NOTHING spawned — never importing ./graph-real-play.ts or ../engine/graph.ts.
+
+// The four real-play node budgets, mirrored from the plays (survey.ts / propose-epic.ts / note.ts) so
+// the sizing proof is self-contained without value-importing the addon-loading plays.
+const SURVEY_PRICE: Budget = { tokens: 300_000, timeMs: 1_800_000 };
+const PROPOSE_PRICE: Budget = { tokens: 150_000, timeMs: 1_800_000 };
+const NOTE_PRICE: Budget = { tokens: 8_000, timeMs: 600_000 };
+
+/** A COSTED stub node — a canned success carrying both a `produced` ref AND measured `actuals`
+ *  (`{ usage, wallMs }`) so the dispatcher's `debitWave` folds a real delta (graph-example.ts shape).
+ *  Tokens ride `input_tokens` so `countTokens` == that count. */
+function costedStub(id: NodeId, produced: string, price: Budget): DagNode {
+  return {
+    id,
+    cast: async () => ({
+      runId: `run-${id}`,
+      outcome: "success" as RunOutcome,
+      materialized: true,
+      produced,
+      actuals: { usage: { input_tokens: price.tokens }, wallMs: price.timeMs },
+    }),
+  };
+}
+
+/** The real-play diamond as COSTED stubs over the REAL edge set — priced at the four node budgets. */
+function costedDiamond(): { spec: DagSpec; priceOf: (id: NodeId) => Budget } {
+  const prices: Record<NodeId, Budget> = {
+    [SURVEY_NODE]: SURVEY_PRICE,
+    [PROPOSE_1_NODE]: PROPOSE_PRICE,
+    [PROPOSE_2_NODE]: PROPOSE_PRICE,
+    [NOTE_NODE]: NOTE_PRICE,
+  };
+  const spec: DagSpec = {
+    nodes: [
+      costedStub(SURVEY_NODE, "board.md", SURVEY_PRICE),
+      costedStub(PROPOSE_1_NODE, "E-A.md", PROPOSE_PRICE),
+      costedStub(PROPOSE_2_NODE, "E-B.md", PROPOSE_PRICE),
+      costedStub(NOTE_NODE, "note.md", NOTE_PRICE),
+    ],
+    edges: REAL_PLAY_EDGES,
+  };
+  const priceOf = (id: NodeId): Budget => (prices[id] as Budget) ?? { tokens: 0, timeMs: 0 };
+  return { spec, priceOf };
+}
+
+describe("realPlayMacro: ONE envelope sized to cover the whole diamond (E-052, AC)", () => {
+  test("arithmetic: tokens SUM both proposes; wall-clock counts ONE (the proposes overlap)", () => {
+    // tokens = 300k(survey) + 2×150k(proposes) + 8k(note) = 608k.
+    // timeMs  = 1.8M(survey) + 1.8M(ONE propose — the two overlap) + 0.6M(note) = 4.2M.
+    expect(realPlayMacro(SURVEY_PRICE, PROPOSE_PRICE, NOTE_PRICE)).toEqual({
+      tokens: 608_000,
+      timeMs: 4_200_000,
+    });
+  });
+
+  test("the macro-sized wallet covers ALL FOUR nodes — every wave authorizes, the JOIN runs", async () => {
+    const { spec, priceOf } = costedDiamond();
+    const wallet = allocate(realPlayMacro(SURVEY_PRICE, PROPOSE_PRICE, NOTE_PRICE));
+
+    const result = await runGraphConcurrent(spec, { wallet, priceOf });
+
+    // All four nodes cast — survey, BOTH proposes (the fan-out), and the JOIN (capture-note). Nothing
+    // budget-stopped: the single shared envelope funds the whole diamond.
+    expect([...result.nodes.keys()].sort()).toEqual([NOTE_NODE, PROPOSE_1_NODE, PROPOSE_2_NODE, SURVEY_NODE].sort());
+    expect(result.skipped).toEqual([]);
+    expect(result.halted).toBe(false);
+    expect(result.outcome).toBe("success");
+
+    // Spend bounded by the ONE envelope on BOTH denominations (P7 under concurrency) — never negative.
+    expect(result.walletRemaining?.tokens).toBeGreaterThanOrEqual(0);
+    expect(result.walletRemaining?.timeMs).toBeGreaterThanOrEqual(0);
+    // Tokens: spent 608k of 608k → 0 left. Wall-clock: spent survey(1.8M)+max(propose)=1.8M+note(0.6M)
+    // = 4.2M of 4.2M → 0 left. The tight envelope is fully and exactly drawn.
+    expect(result.walletRemaining).toEqual({ tokens: 0, timeMs: 0 });
+  });
+
+  test("NOT per-node: a one-propose-sized wallet budget-stops the second propose and skips the JOIN", async () => {
+    const { spec, priceOf } = costedDiamond();
+    // The naive under-count that forgets the fan-out DOUBLES the proposes: only ONE propose's tokens.
+    const perNodeMacro: Budget = {
+      tokens: SURVEY_PRICE.tokens + PROPOSE_PRICE.tokens + NOTE_PRICE.tokens, // 458k — one propose short
+      timeMs: 4_200_000,
+    };
+    const wallet = allocate(perNodeMacro);
+
+    const result = await runGraphConcurrent(spec, { wallet, priceOf });
+
+    // propose-2 is hard-stopped at the wave boundary (cumulative 300k > 158k remaining after survey),
+    // so the JOIN never runs — the cross-branch leak E-052 closes is exactly what this under-count
+    // reproduces, proving the macro MUST count both proposes.
+    expect(result.nodes.has(PROPOSE_2_NODE)).toBe(false);
+    expect(result.nodes.has(NOTE_NODE)).toBe(false);
+    const stopped = result.skipped.find((s) => s.id === PROPOSE_2_NODE);
+    expect(stopped).toBeDefined();
+    expect(stopped?.reason).toMatch(/budget-stopped/);
+    // A clean refusal (IA-9): the wave halted, but no cast failed.
+    expect(result.halted).toBe(true);
+    expect(result.outcome).toBe("success");
   });
 });

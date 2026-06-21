@@ -29,6 +29,7 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { Budget } from "../budget/budget.ts";
+import { allocate } from "../budget/wallet.ts";
 import { castGraph, type GraphResult, type PlayNode } from "../engine/graph.ts";
 import type { NodeUpstreams } from "../engine/dag-core.ts";
 import { surveyPlay, assembleSurveyInputs } from "./survey.ts";
@@ -42,6 +43,7 @@ import {
   SURVEY_NODE,
   buildConsolidationTopic,
   pickSignal,
+  realPlayMacro,
   subjectForJoin,
   subjectForProposeSignal,
 } from "./graph-real-play-core.ts";
@@ -61,6 +63,10 @@ export interface GraphRealPlayOptions {
   readonly surveyBudget?: Budget;
   readonly proposeBudget?: Budget;
   readonly noteBudget?: Budget;
+  /** Override the ONE shared macro-wallet envelope the whole diamond draws from (E-052). Omitted ⇒
+   *  `realPlayMacro(survey, propose, note)` — sized to cover survey + 2 proposes + note (NOT per-node),
+   *  so both fan-out proposes debit one envelope and the 2-upstream JOIN runs. */
+  readonly macroBudget?: Budget;
 }
 
 /**
@@ -162,10 +168,23 @@ export function buildRealPlayGraph(opts: GraphRealPlayOptions = {}): {
  * concurrent settle). IMPURE (assembles inputs, spawns); NOT unit-tested — its WIRING is the pure
  * graph-real-play-core.ts, proven in graph-real-play-core.test.ts; the concurrent cast is proven
  * LIVE (AC#3). The board mutation (minted epics + a note) is the ticket's authorized P7 spend.
+ *
+ * SHARED WALLET (E-052): allocates ONE shared {@link import("../budget/wallet.ts").Wallet} — sized by
+ * `realPlayMacro` to cover survey + 2 proposes + note (or `opts.macroBudget`) — and passes it as
+ * `castGraph`'s third arg, so BOTH fan-out proposes debit the SAME envelope and the 2-upstream JOIN
+ * runs (in E-047 the per-node budgets leaked across the branches: propose-1 hit budget-exhausted, the
+ * graph halted, and capture-note was skipped — the join stayed stub-proven only). The envelope is the
+ * hard P7 wall under concurrency (`authorizeWave`/`debitWave`); the human running `lisa loop`
+ * authorizes the spend.
  */
 export async function castRealPlayGraph(opts: GraphRealPlayOptions = {}): Promise<GraphResult> {
   const { nodes, edges } = buildRealPlayGraph(opts);
-  return castGraph(nodes, edges);
+  const macro = opts.macroBudget ?? realPlayMacro(
+    opts.surveyBudget ?? surveyPlay.budget,
+    opts.proposeBudget ?? proposeEpicPlay.budget,
+    opts.noteBudget ?? captureNotePlay.budget,
+  );
+  return castGraph(nodes, edges, allocate(macro));
 }
 
 // The live entry (the ticket's "small entry"): `bun run src/play/graph-real-play.ts`. Casts against

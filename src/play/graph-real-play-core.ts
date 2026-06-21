@@ -17,6 +17,7 @@
 // `parseBoardSignals` (work-core.ts), itself pure: the single source of board→signals truth, reused
 // so the fan-out never re-greps the board. The `DagEdge` import is TYPE-ONLY (erased).
 
+import type { Budget } from "../budget/budget.ts";
 import type { DagEdge } from "../engine/dag-core.ts";
 import { parseBoardSignals } from "./work-core.ts";
 
@@ -121,4 +122,27 @@ export function subjectForProposeSignal(signal: string): string {
 export function subjectForJoin(epicPaths: readonly string[]): string {
   const ids = epicPaths.map(epicIdFromPath);
   return ids.length > 0 ? `consolidate ${ids.join(" + ")}` : "consolidate (degraded — no epics)";
+}
+
+// ── The shared-wallet envelope (E-052) ────────────────────────────────────────
+
+/**
+ * Size the ONE shared macro-wallet envelope the real-play diamond draws from (E-052). PURE/TOTAL.
+ *
+ * Sized PER DENOMINATION by the wave schedule (survey → propose ∥ propose → capture-note) — the IA-8
+ * concurrency divergence that `authorizeWave`/`debitWave` (spend-core.ts / wallet.ts) enforce:
+ *   - **tokens SUM** — both fan-out proposes burn REAL tokens, so the envelope counts `2 × propose`;
+ *   - **wall-clock is the MAX-per-wave SUM** — the two proposes OVERLAP, so their wave costs ~ONE
+ *     propose's time, not two. Funding more would be dishonest about what the wave actually draws.
+ *
+ * Funding exactly this guarantees every wave authorizes — so the 2-upstream JOIN RUNS — while a
+ * per-node-sized envelope (one propose's worth of tokens) would budget-STOP the second propose at the
+ * wave boundary and skip the join: the cross-branch leak E-052 closes. The caller `allocate`s a
+ * `Wallet` from this and passes it as `castGraph`'s third arg.
+ */
+export function realPlayMacro(survey: Budget, propose: Budget, note: Budget): Budget {
+  return {
+    tokens: survey.tokens + 2 * propose.tokens + note.tokens, // SUM — both proposes burn real tokens
+    timeMs: survey.timeMs + propose.timeMs + note.timeMs, // proposes OVERLAP → one propose's wall-clock
+  };
 }
