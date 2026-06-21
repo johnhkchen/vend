@@ -95,6 +95,11 @@ describe("fundedStepDefault — measurement-funded default rung (T-050-02)", () 
   // decompose-epic's static play default (decompose-epic.ts:197) — the E-049 "120k prior".
   const DECOMPOSE_PRIOR: Budget = { timeMs: 7_200_000, tokens: 120_000 };
 
+  // A funding band wide enough to never bind, so these cases keep asserting the HEADROOM contract in
+  // isolation — the E-053 rational band (which would otherwise floor these sub-350k values) is a
+  // separate contract, owned by recalibrate's own band tests + the T-053-02 end-to-end confirmation.
+  const WIDE_BAND = { funding: { floorTokens: 1, ceilingTokens: Number.MAX_SAFE_INTEGER } } as const;
+
   test("E-049 shape: a 120k prior + a censored 265k decompose ⇒ funded over the wall, NOT re-censored (AC#4)", () => {
     const records = [
       recordOf({ tokens: 60_000 }),
@@ -126,7 +131,7 @@ describe("fundedStepDefault — measurement-funded default rung (T-050-02)", () 
   });
 
   test("cold-start, no history ⇒ prior × headroom (room for a first run to record, AC#3b)", () => {
-    const funded = fundedStepDefault([], "decompose-epic", DECOMPOSE_PRIOR);
+    const funded = fundedStepDefault([], "decompose-epic", DECOMPOSE_PRIOR, CHAIN_DEFAULT_TIER, WIDE_BAND);
     expect(funded.tokens).toBe(120_000 * MEASUREMENT_HEADROOM);
     expect(funded.timeMs).toBe(7_200_000 * MEASUREMENT_HEADROOM);
   });
@@ -135,7 +140,7 @@ describe("fundedStepDefault — measurement-funded default rung (T-050-02)", () 
     const records = Array.from({ length: 5 }, (_, i) => recordOf({ tokens: 1000 * (i + 1), durationMs: 1000 * (i + 1) }));
     const priced = recalibrate("decompose-epic", records, "standard", DECOMPOSE_PRIOR);
     expect(priced.source).toBe("measured");
-    const funded = fundedStepDefault(records, "decompose-epic", DECOMPOSE_PRIOR);
+    const funded = fundedStepDefault(records, "decompose-epic", DECOMPOSE_PRIOR, CHAIN_DEFAULT_TIER, WIDE_BAND);
     expect(funded).toEqual(priced.envelope); // verbatim — a well-calibrated default is unchanged
   });
 

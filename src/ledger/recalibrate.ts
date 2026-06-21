@@ -213,6 +213,19 @@ export const MEASUREMENT_HEADROOM = 2;
  *  next heavy run finish. Cold-start (`source: "prior"`) is always under-calibrated regardless. */
 export const CENSORED_WIDEN_RATE = 1 / 3;
 
+/** Rational-band FLOOR on the funding guard's TOKEN dimension (E-053). Below this we don't care —
+ *  every cast is funded at least this many tokens, so a too-tight p90 (a well-calibrated play funds
+ *  at its bare p90 with no headroom — correct per E-050, but ~10% of runs exceed it) never starves a
+ *  real cast on a tail draw (the `vend chain` propose that budget-exhausted at 176k against a 170k
+ *  envelope). Finite positive int (P7). Overridable per call via {@link FundingOptions.floorTokens}. */
+export const FUNDING_FLOOR_TOKENS = 350_000;
+
+/** Rational-band CEILING on the funding guard's TOKEN dimension (E-053). The hard P7 wall: no cast is
+ *  ever funded beyond this — runaway self-funding (E-051's decompose ran to ~733k under
+ *  `maxCensoredActual × headroom`, unbounded by anything but the observed tail) is rejected here.
+ *  Finite positive int, `> FUNDING_FLOOR_TOKENS` (P7). Overridable via {@link FundingOptions.ceilingTokens}. */
+export const FUNDING_CEILING_TOKENS = 700_000;
+
 /** Knobs for {@link fundingEnvelope}; all default to the module constants. */
 export interface FundingOptions {
   /** Recency window for reading censored actuals; default {@link DEFAULT_WINDOW}. MUST match the
@@ -222,6 +235,10 @@ export interface FundingOptions {
   readonly widenRate?: number;
   /** Headroom factor above the observed lower bound; default {@link MEASUREMENT_HEADROOM}. */
   readonly headroom?: number;
+  /** Band floor for the TOKEN dimension; default {@link FUNDING_FLOOR_TOKENS}. */
+  readonly floorTokens?: number;
+  /** Band ceiling for the TOKEN dimension; default {@link FUNDING_CEILING_TOKENS}. */
+  readonly ceilingTokens?: number;
 }
 
 /** The envelope a cast is FUNDED (run) under, plus whether headroom actually lifted it above the
@@ -238,6 +255,14 @@ export interface FundingResult {
 function fundDimension(priced: number, censoredActuals: readonly number[], headroom: number): number {
   const floor = censoredActuals.length > 0 ? Math.max(...censoredActuals) * headroom : priced * headroom;
   return positiveInt(Math.max(priced, floor));
+}
+
+/** Clamp a TOKEN funding value to the rational band `[floor, ceiling]` (E-053) — the OUTERMOST bound,
+ *  applied AFTER the headroom `max(...)`. The floor lifts a too-tight p90 so a tail draw never starves a
+ *  real cast; the ceiling caps runaway self-funding (the hard P7 wall). TOKENS ONLY — wall-clock keeps
+ *  its E-038 headroom, never banded. Reuses {@link positiveInt} for the budget-dimension contract. */
+function bandTokens(tokens: number, floor: number, ceiling: number): number {
+  return positiveInt(Math.min(ceiling, Math.max(floor, tokens)));
 }
 
 /**
@@ -260,6 +285,8 @@ export function fundingEnvelope(
   const window = opts.window ?? DEFAULT_WINDOW;
   const widenRate = opts.widenRate ?? CENSORED_WIDEN_RATE;
   const headroom = opts.headroom ?? MEASUREMENT_HEADROOM;
+  const floor = opts.floorTokens ?? FUNDING_FLOOR_TOKENS;
+  const ceiling = opts.ceilingTokens ?? FUNDING_CEILING_TOKENS;
   const priced = result.envelope;
 
   // Scalar gate: `source` and the censored counts are run-outcome properties, not per-dimension,
@@ -270,9 +297,11 @@ export function fundingEnvelope(
   const underCalibrated = result.source === "prior" || censoredRate >= widenRate;
 
   // Trusted-measured + clean: the bound is earned from real successes — fund at the price, no
-  // headroom (back-compat — a well-calibrated play is unchanged). Copy so callers can't alias.
+  // headroom (back-compat — a well-calibrated play is unchanged). The TOKEN dimension is still banded
+  // to `[floor, ceiling]` — a too-tight measured p90 (the ~170k propose) floors so a tail draw never
+  // starves a real cast; an over-ceiling honest p90 (none today) caps. Time passes through verbatim.
   if (!underCalibrated) {
-    return { envelope: { ...priced }, widened: false };
+    return { envelope: { timeMs: priced.timeMs, tokens: bandTokens(priced.tokens, floor, ceiling) }, widened: false };
   }
 
   // Re-window the censored runs to read their logged actual magnitudes — the lower bounds
@@ -286,11 +315,15 @@ export function fundingEnvelope(
 
   const tokens = fundDimension(priced.tokens, censoredTokens, headroom);
   const timeMs = fundDimension(priced.timeMs, censoredTimes, headroom);
-  const envelope: Budget = { timeMs, tokens };
 
   // Honest flag: each funded dimension is `max(priced, …) ≥ priced`, so `widened` is true iff some
-  // dimension came out STRICTLY above its price — i.e. headroom was actually applied.
-  const widened = envelope.tokens > priced.tokens || envelope.timeMs > priced.timeMs;
+  // dimension came out STRICTLY above its price — i.e. headroom was actually applied. Computed on the
+  // UN-banded tokens: the band is a bound, not the headroom signal (E-053 — `widened` keeps its
+  // E-050 meaning), so flooring/capping never flips it.
+  const widened = tokens > priced.tokens || timeMs > priced.timeMs;
+  // The TOKEN dimension is banded to `[floor, ceiling]` as the outermost bound (after the headroom
+  // max above); time keeps its E-038 headroom, unbanded.
+  const envelope: Budget = { timeMs, tokens: bandTokens(tokens, floor, ceiling) };
   return { envelope, widened };
 }
 

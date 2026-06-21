@@ -9,6 +9,8 @@ import {
   DEFAULT_SHRINKAGE,
   formatCorrectionLabel,
   formatEnvelopeLabel,
+  FUNDING_CEILING_TOKENS,
+  FUNDING_FLOOR_TOKENS,
   fundingEnvelope,
   IDENTITY_FACTOR,
   learnBiasFactor,
@@ -409,6 +411,10 @@ describe("formatCorrectionLabel — honest correction (AC #4)", () => {
 // so the price→funding seam is exercised exactly as production wires it. Pure — fabricated
 // RunRecord fixtures via the existing `recordOf` writer, no fs/clock/spawn.
 
+// A band wide enough to never bind, so these T-050-01 cases keep asserting the HEADROOM math in
+// isolation — the rational band (E-053) is a separate contract, exercised in its own describe below.
+const WIDE_BAND = { floorTokens: 1, ceilingTokens: Number.MAX_SAFE_INTEGER } as const;
+
 describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
   test("E-049 shape: 120k prior + a censored run logging ~265k ⇒ funding ≥ 265k × headroom (AC #1/#3a)", () => {
     const prior: Budget = { timeMs: 120_000, tokens: 120_000 };
@@ -430,7 +436,7 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
   test("pure cold-start, no censored history ⇒ price × headroom both dims (AC #3b)", () => {
     const result = recalibrate("p", [], "leaf", PRIOR); // no data ⇒ source "prior", envelope == PRIOR
     expect(result.source).toBe("prior");
-    const { envelope, widened } = fundingEnvelope("p", [], result);
+    const { envelope, widened } = fundingEnvelope("p", [], result, WIDE_BAND);
     expect(envelope.tokens).toBe(PRIOR.tokens * MEASUREMENT_HEADROOM);
     expect(envelope.timeMs).toBe(PRIOR.timeMs * MEASUREMENT_HEADROOM);
     expect(widened).toBe(true);
@@ -440,7 +446,7 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
     const records = Array.from({ length: 5 }, (_, i) => recordOf({ tokens: 1000 * (i + 1), durationMs: 1000 * (i + 1) }));
     const result = recalibrate("p", records, "standard", PRIOR); // measured, 0 censored
     expect(result.source).toBe("measured");
-    const { envelope, widened } = fundingEnvelope("p", records, result);
+    const { envelope, widened } = fundingEnvelope("p", records, result, WIDE_BAND);
     expect(envelope).toEqual(result.envelope); // verbatim
     expect(widened).toBe(false);
   });
@@ -458,7 +464,7 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
     expect(result.source).toBe("measured"); // the PRICE is still the honest measured p90
     expect(result.confidence.censored).toBe(3);
 
-    const { envelope, widened } = fundingEnvelope("p", records, result);
+    const { envelope, widened } = fundingEnvelope("p", records, result, WIDE_BAND);
     expect(widened).toBe(true);
     expect(envelope.tokens).toBeGreaterThan(result.envelope.tokens); // funded above the price
     expect(envelope.tokens).toBe(500_000 * MEASUREMENT_HEADROOM);
@@ -472,7 +478,7 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
       recordOf({ tokens: 50_000, durationMs: 60_000, outcome: "budget-exhausted" }),
     ];
     const result = recalibrate("p", records, "standard", prior);
-    const { envelope, widened } = fundingEnvelope("p", records, result);
+    const { envelope, widened } = fundingEnvelope("p", records, result, WIDE_BAND);
     expect(widened).toBe(true);
     // tokens: max(100, 50_000 × 2) = 100_000 — widened
     expect(envelope.tokens).toBe(50_000 * MEASUREMENT_HEADROOM);
@@ -518,5 +524,112 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
     expect(MEASUREMENT_HEADROOM).toBeGreaterThanOrEqual(2);
     expect(Number.isFinite(MEASUREMENT_HEADROOM)).toBe(true);
     expect(CENSORED_WIDEN_RATE).toBeCloseTo(1 / 3, 10);
+  });
+});
+
+// ── T-053-01: rational funding band (clamp the TOKEN guard to [floor, ceiling]) ──────────────
+// The E-053 band is the OUTERMOST bound on fundingEnvelope's TOKEN output, after the E-050 headroom
+// max(). The floor kills the guillotine-on-a-tail (a well-calibrated p90 ~170k that budget-exhausts on
+// a 3.6% overrun); the ceiling caps runaway self-funding (E-051's decompose to ~733k). Tokens only —
+// wall-clock keeps its E-038 headroom. Price / percentile / label are untouched (guard ≠ price, IA-8).
+// Real recalibrate(...) output feeds fundingEnvelope, exactly as production wires it; pure fixtures.
+
+describe("fundingEnvelope — rational band (T-053-01)", () => {
+  test("below-floor, measured-clean ⇒ funded at the 350k floor, not widened (the propose dogfood)", () => {
+    // A well-calibrated play: 5 small successes, 0 censored ⇒ source "measured", p90 ≪ 350k. This is
+    // the `vend chain` propose that funds at its bare p90 (~170k) and budget-exhausts on a tail draw.
+    const records = Array.from({ length: 5 }, (_, i) => recordOf({ tokens: 1000 * (i + 1) }));
+    const result = recalibrate("p", records, "standard", PRIOR);
+    expect(result.source).toBe("measured");
+    expect(result.envelope.tokens).toBeLessThan(FUNDING_FLOOR_TOKENS); // bare p90 is too tight
+
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(envelope.tokens).toBe(FUNDING_FLOOR_TOKENS); // floored so a tail draw never starves it
+    expect(widened).toBe(false); // the floor is a band bound, NOT the headroom signal
+    expect(envelope.timeMs).toBe(result.envelope.timeMs); // wall-clock untouched
+  });
+
+  test("above-ceiling, self-fund ⇒ capped at the 700k ceiling (the E-051 decompose runaway)", () => {
+    // Cold-start prior + a censored run logging ~400k ⇒ funded at 400k × headroom(2) = 800k > ceiling.
+    const records = [
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 1000 }), // 2 successes < cold-start threshold ⇒ source "prior"
+      recordOf({ tokens: 400_000, outcome: "budget-exhausted" }), // logged lower bound, right-censored
+    ];
+    const result = recalibrate("p", records, "standard", PRIOR);
+    expect(result.source).toBe("prior");
+
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // 800k runaway capped at the hard P7 wall
+    expect(widened).toBe(true); // headroom DID lift it above price — the band only caps the magnitude
+  });
+
+  test("in-band ⇒ funded value unchanged (e.g. measured p90 ≈ 450k passes through)", () => {
+    const records = Array.from({ length: 5 }, () => recordOf({ tokens: 450_000 }));
+    const result = recalibrate("p", records, "standard", PRIOR);
+    expect(result.source).toBe("measured");
+    expect(result.envelope.tokens).toBe(450_000);
+
+    const { envelope, widened } = fundingEnvelope("p", records, result);
+    expect(envelope.tokens).toBe(450_000); // strictly inside [350k, 700k] ⇒ neither bound binds
+    expect(widened).toBe(false);
+  });
+
+  test("the price / quote for the same input is untouched (guard ≠ price, IA-8)", () => {
+    const records = [
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 400_000, outcome: "budget-exhausted" }),
+    ];
+    const result = recalibrate("p", records, "standard", PRIOR);
+    const envelopeSnapshot = { ...result.envelope };
+    const labelBefore = formatEnvelopeLabel(result);
+
+    const { envelope } = fundingEnvelope("p", records, result);
+    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // the guard is banded …
+    expect(result.envelope).toEqual(envelopeSnapshot); // … but the priced envelope is untouched
+    expect(formatEnvelopeLabel(result)).toBe(labelBefore); // … and so is the honest label
+  });
+
+  test("wall-clock is NOT banded — tokens cap while time keeps its E-038 headroom", () => {
+    const prior: Budget = { timeMs: 1_000_000, tokens: 100 }; // huge time prior, tiny token prior
+    const records = [
+      recordOf({ tokens: 100 }),
+      recordOf({ tokens: 100 }), // cold-start ⇒ source "prior"
+      recordOf({ tokens: 400_000, durationMs: 60_000, outcome: "budget-exhausted" }),
+    ];
+    const result = recalibrate("p", records, "standard", prior);
+    const { envelope } = fundingEnvelope("p", records, result);
+    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // 400k × 2 = 800k, capped to 700k
+    expect(envelope.timeMs).toBe(1_000_000); // time: max(1_000_000, 120_000) = 1_000_000, never banded
+  });
+
+  test("floor/ceiling are overridable via opts, like the other knobs", () => {
+    const band = { floorTokens: 10_000, ceilingTokens: 20_000 } as const;
+
+    // Below the synthetic floor ⇒ floored to 10k.
+    const lowRecords = Array.from({ length: 5 }, () => recordOf({ tokens: 1000 }));
+    const low = recalibrate("p", lowRecords, "standard", PRIOR);
+    expect(fundingEnvelope("p", lowRecords, low, band).envelope.tokens).toBe(10_000);
+
+    // Above the synthetic ceiling ⇒ capped to 20k (cold-start + 400k censored ⇒ 800k → 20k).
+    const highRecords = [
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 1000 }),
+      recordOf({ tokens: 400_000, outcome: "budget-exhausted" }),
+    ];
+    const high = recalibrate("p", highRecords, "standard", PRIOR);
+    expect(fundingEnvelope("p", highRecords, high, band).envelope.tokens).toBe(20_000);
+  });
+
+  test("band constants are finite positive ints with floor < ceiling (P7)", () => {
+    for (const c of [FUNDING_FLOOR_TOKENS, FUNDING_CEILING_TOKENS]) {
+      expect(Number.isInteger(c)).toBe(true);
+      expect(Number.isFinite(c)).toBe(true);
+      expect(c).toBeGreaterThan(0);
+    }
+    expect(FUNDING_FLOOR_TOKENS).toBeLessThan(FUNDING_CEILING_TOKENS);
+    expect(FUNDING_FLOOR_TOKENS).toBe(350_000);
+    expect(FUNDING_CEILING_TOKENS).toBe(700_000);
   });
 });
