@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`annotation-to-demand-round-trip`** (Frontier 4 / P1·P4·P5) — a non-dev annotates a node on the rendered board → returns as a PROPOSED, priced demand signal a steward pulls (reuses `expand-fragment`'s clearing + `pm/staged/` one-way-authority; new = annotation shape + provenance/back-link + a `vend annotate` seam). E-057, **minted + decomposed live by `vend chain`** — reuse-honoring, named the live-fetch + status-dashboard as out-of-scope follow-ons. | **High** (Maya's telephone-killer; closes the non-dev round-trip end-to-end) | **active → E-057** — S-057-01: T-057-01 pure Annotation + provenance/back-link render → T-057-02 thread it through expand's staging (stage to `pm/staged/`, never the board) · S-057-02: T-057-03 `vend annotate <node> "<text>" [--seat]` CLI seam (MCP-independent). FREE-to-build (stub the cast, like expand's tests). Awaiting `lisa loop`. |
+*Nothing in flight — the board is all-clear. The next pull is the operator's (pull-discipline).*
 
 ---
 
@@ -198,12 +196,11 @@ live-join re-cast remain.) **High.**
   Linear MCP (not connected).** E-021 built the MCP-independent presentation layer per
   `pm/linear-surface-prep.md`, which defers live issue-creation to "the MCP stage." The SVG renderer above
   covers the visual-surface need without it; revisit Linear when an MCP is connected.
-- **Annotation → demand round-trip** → **PULLING (staged).** A teammate leaves feedback on the rendered
-  view → comes back as a PROPOSED, priced demand signal (reuses `expand-fragment`'s clearing + its
-  `pm/staged/` "stage-not-promote" one-way-authority contract, E-016) stamped with provenance + a back-link
-  to the annotated node; a `vend annotate <node> "<text>"` seam, MCP-independent (text input; live Linear/
-  SVG comment fetch deferred). **Maya's "telephone-killer" — steer without a developer translating; the
-  originating designer request, and what a non-dev DOES with the now-glanceable board.** **High.**
+- ~~Annotation → demand round-trip~~ → **done → E-057 (cleared).** `vend annotate <node> "<text>" [--seat]`
+  casts an annotation-bearing expand → stages a provenance + back-link priced signal to `pm/staged/`, never
+  the board (one-way authority, E-016). **With E-055/E-056/E-057 the non-dev round-trip is WHOLE** — render
+  → glanceable + blocked edges → annotate → priced demand. (Follow-ons: live Linear/SVG comment FETCH;
+  proposed→pulled status dashboard.)
 
 **SVG surface design-inputs (boarded from `pm/persona-research.md` — WIP, not committed). The glanceability +
 edges fix is in flight (above); these are the rest the personas sharpened:**
