@@ -407,6 +407,45 @@ describe("parseArgs — shelf (T-030-02 supply view)", () => {
   });
 });
 
+describe("parseArgs — svg (T-055-03 file-output seam)", () => {
+  test("bare `svg` parses with the default designer seat", () => {
+    expect(parseArgs(["svg"])).toEqual({ cmd: "svg", seat: "designer" });
+  });
+  test("--seat selects the projecting preset", () => {
+    expect(parseArgs(["svg", "--seat", "dev"])).toEqual({ cmd: "svg", seat: "dev" });
+    expect(parseArgs(["svg", "--seat", "designer"])).toEqual({ cmd: "svg", seat: "designer" });
+  });
+  test("--out overrides the output path", () => {
+    expect(parseArgs(["svg", "--out", "out/board.svg"])).toEqual({
+      cmd: "svg",
+      seat: "designer",
+      out: "out/board.svg",
+    });
+  });
+  test("--seat and --out compose", () => {
+    expect(parseArgs(["svg", "--seat", "dev", "--out", "x.svg"])).toEqual({
+      cmd: "svg",
+      seat: "dev",
+      out: "x.svg",
+    });
+  });
+  test("an unknown seat is a usage error naming the allowed seats", () => {
+    const r = parseArgs(["svg", "--seat", "founder"]);
+    expect(r.cmd).toBe("usage");
+    if (r.cmd === "usage") expect(r.error).toContain("designer | dev");
+  });
+  test("--out with no value is usage", () => {
+    expect(parseArgs(["svg", "--out"]).cmd).toBe("usage");
+    expect(parseArgs(["svg", "--out", "--seat"]).cmd).toBe("usage");
+  });
+  test("an unexpected positional is usage", () => {
+    expect(parseArgs(["svg", "frobnicate"])).toEqual({
+      cmd: "usage",
+      error: "unexpected svg argument: frobnicate",
+    });
+  });
+});
+
 describe("parseArgs — init (T-040-03 scaffold command)", () => {
   test("bare `init` parses to the no-arg init command", () => {
     expect(parseArgs(["init"])).toEqual({ cmd: "init" });

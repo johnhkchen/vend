@@ -11,6 +11,7 @@
 
 import type { Budget } from "./budget/budget.ts";
 import type { ValueTier } from "./shelf/menu.ts";
+import type { Seat } from "./present/presets.ts";
 
 /** Usage banner, printed on any parse error. */
 export const USAGE =
@@ -20,6 +21,7 @@ export const USAGE =
   "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend steer [--budget <ms>,<tokens>]\n" +
   "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
+  "       vend svg [--seat <designer|dev>] [--out <path>]\n" +
   "       vend shelf\n" +
   "       vend init\n" +
   "       vend doctor\n" +
@@ -30,6 +32,11 @@ export const USAGE =
  *  so `parseEnvelopeArgs` can membership-check a `--tier` word without importing the
  *  shelf at parse time. cli already owns local routing constants (cf. `SELECTION_SHAPE`). */
 const VALUE_TIERS = ["keystone", "high", "standard", "leaf"] as const;
+
+/** The seats the SVG seam can project for (mirrors {@link Seat} in present/presets.ts), as a value
+ *  tuple so `parseSvgArgs` can membership-check a `--seat` word without importing the present layer
+ *  at parse time — the local-routing-constant idiom (cf. `VALUE_TIERS`). */
+const SVG_SEATS = ["designer", "dev"] as const;
 
 /** A successfully parsed command, or a usage request carrying the reason. */
 export type ParsedCommand =
@@ -65,6 +72,7 @@ export type ParsedCommand =
        *  bare `work` keeps the same object shape. Forwarded to every chain cast in the sweep. */
       readonly intervened?: boolean;
     }
+  | { readonly cmd: "svg"; readonly seat: Seat; readonly out?: string }
   | { readonly cmd: "shelf" }
   | { readonly cmd: "init" }
   | { readonly cmd: "doctor" }
@@ -136,6 +144,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "survey") return parseSurveyArgs(argv);
   if (argv[0] === "steer") return parseSteerArgs(argv);
   if (argv[0] === "work") return parseWorkArgs(argv);
+  if (argv[0] === "svg") return parseSvgArgs(argv);
   if (argv[0] === "shelf") return parseShelfArgs(argv);
   if (argv[0] === "init") return parseInitArgs(argv);
   if (argv[0] === "doctor") return parseDoctorArgs(argv);
@@ -154,6 +163,35 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
 function parseShelfArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length > 1) return { cmd: "usage", error: `unexpected shelf argument: ${argv[1]}` };
   return { cmd: "shelf" };
+}
+
+/**
+ * Parse the `svg [--seat <designer|dev>] [--out <path>]` path — the file-output seam gesture
+ * (T-055-03): render the live board to one static `.svg`. PURE. Flags-only (the `work` shape minus
+ * `--budget`): `--seat` picks the projecting preset (default `designer`, the non-dev seat), validated
+ * against the two seats; `--out` OPTIONALLY overrides the full output path (default ⇒ the seam's
+ * `.vend/work-graph.svg`). Read-only over the board — nothing is cast — so there is no `--budget`. Any
+ * positional token is an error (the subject is the whole board, implicit).
+ */
+function parseSvgArgs(argv: readonly string[]): ParsedCommand {
+  let seat: Seat = "designer";
+  let out: string | undefined;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--seat") {
+      const word = argv[++i];
+      const match = SVG_SEATS.find((s) => s === word);
+      if (!match) return { cmd: "usage", error: `--seat must be one of ${SVG_SEATS.join(" | ")}, got ${JSON.stringify(word)}` };
+      seat = match;
+    } else if (a === "--out") {
+      const word = argv[++i];
+      if (!word || word.startsWith("--")) return { cmd: "usage", error: "missing --out <path>" };
+      out = word;
+    } else {
+      return { cmd: "usage", error: `unexpected svg argument: ${a}` };
+    }
+  }
+  return { cmd: "svg", seat, ...(out ? { out } : {}) };
 }
 
 /**
@@ -702,6 +740,26 @@ if (import.meta.main) {
     }
     const wallet = { funded, remaining: result.session.remaining };
     process.stdout.write(`${renderReceipt(result.session, wallet, { color: true })}\n`);
+    process.exit(0);
+  }
+
+  if (parsed.cmd === "svg") {
+    // The file-output seam gesture (T-055-03): render the live board to one static `.svg` and write
+    // it under `.vend` (default) — the unblocked, MCP-independent visual half of the non-dev
+    // round-trip. `writeBoardSvg` loads → projects (under the seat's preset) → renders → writes, and
+    // returns the path + IR counts (one swimlane/group, box/card, edge/link). Read-only over the
+    // board (one-way authority: writes `.vend`, never docs/active); a `--out` path overrides the
+    // destination, split into dir/filename here. Lazy import keeps the seam (and its transitive deps)
+    // off the pure-parse path, exactly as the other arms keep their deps lazy.
+    const { writeBoardSvg } = await import("./present/svg-file.ts");
+    const { dirname, basename } = await import("node:path");
+    const result = await writeBoardSvg({
+      seat: parsed.seat,
+      ...(parsed.out ? { outDir: dirname(parsed.out), fileName: basename(parsed.out) } : {}),
+    });
+    process.stdout.write(
+      `wrote ${result.path} — ${result.groupCount} groups, ${result.cardCount} cards, ${result.linkCount} links\n`,
+    );
     process.exit(0);
   }
 
