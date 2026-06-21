@@ -46,6 +46,29 @@ import { authorizeWave } from "./spend-core.ts";
 import { debitWave, type Wallet } from "../budget/wallet.ts";
 import { countTokens, type Budget } from "../budget/budget.ts";
 
+/** The terminal outcome a thrown node cast is marked with (E-054). A throw is NOT a crash:
+ *  the runner wraps it into a non-proceeding summary carrying this outcome, so it routes
+ *  through the SAME `decideThread` halt path every other non-success outcome uses — no new
+ *  branch. Named once here so the literal `"errored"` and {@link RUN_OUTCOMES} cannot drift. */
+export const NODE_ERRORED: RunOutcome = "errored";
+
+/**
+ * Map a thrown node cast into a deterministic, NON-PROCEEDING {@link RunSummary} — the single
+ * routing primitive both runners reuse (T-054-02) so a throw becomes a marked node, never an
+ * uncaught rejection that crashes the wave and discards independent siblings' work. PURE &
+ * DETERMINISTIC: `runId` is a pure function of `id` (no clock, no random), so the same throwing
+ * spec yields a byte-identical summary under `runGraph` and `runGraphConcurrent` — the
+ * precondition the dual-runner equivalence (T-054-03) leans on.
+ *
+ * The summary is truthful about a throw: `materialized: false` (nothing landed), `produced`
+ * absent (nothing to thread ⇒ {@link decideThread} refuses it ⇒ its dependents skip via the
+ * EXISTING halt-dependent-subgraph machinery), and `actuals` absent (nothing measured ⇒
+ * {@link actualsDelta} contributes {0,0} ⇒ no phantom wallet charge under a budgeted wave).
+ */
+export function erroredSummary(id: NodeId): RunSummary {
+  return { runId: `errored:${id}`, outcome: NODE_ERRORED, materialized: false };
+}
+
 /**
  * A node NOT cast because its dependent subgraph was halted (the graph analog of `runChain`'s
  * "skipped downstream step"). Records the in-edge upstream(s) that did not proceed and a human

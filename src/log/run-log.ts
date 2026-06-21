@@ -42,10 +42,12 @@ export const DEFAULT_PROJECT = "(default)";
  * gate verdict; `id-collision` ← `materialize`'s cross-board guard refusing a plan
  * whose ids already live on the board (T-004-02); `missing-capability` ← a declared
  * play's required MCP server absent from the project registry, refused BEFORE dispense
- * (E-032, T-032-02 — an IA-9 amber refusal, nothing cast/materialized); `success` ←
- * none tripped. The runner classifies; the log records.
+ * (E-032, T-032-02 — an IA-9 amber refusal, nothing cast/materialized); `errored` ← a
+ * node's cast THREW (E-054 — the graph runner wraps the throw into a marked,
+ * non-proceeding node summary rather than crashing the wave; a throw is not a crash);
+ * `success` ← none tripped. The runner classifies; the log records.
  */
-export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "id-collision", "missing-capability"] as const;
+export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "id-collision", "missing-capability", "errored"] as const;
 
 /** The schema version stamped on every record. An append-only ledger is forever;
  *  this one integer is the cheapest insurance against an unversioned migration. */

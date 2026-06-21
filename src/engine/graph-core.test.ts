@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { RunOutcome } from "../log/run-log.ts";
+import { RUN_OUTCOMES, type RunOutcome } from "../log/run-log.ts";
 import type { RunSummary } from "./cast.ts";
-import { runGraph, runGraphConcurrent, type GraphResult } from "./graph-core.ts";
+import { erroredSummary, NODE_ERRORED, runGraph, runGraphConcurrent, type GraphResult } from "./graph-core.ts";
+import { decideThread } from "./chain-core.ts";
 import { validateDag, type DagEdge, type DagNode, type DagSpec, type NodeUpstreams } from "./dag-core.ts";
 import { allocate } from "../budget/wallet.ts";
 import type { Budget } from "../budget/budget.ts";
@@ -47,6 +48,38 @@ const neverNode = (id: string): DagNode => ({
 
 const edge = (from: string, to: string): DagEdge => ({ from, to });
 const spec = (nodes: readonly DagNode[], edges: readonly DagEdge[]): DagSpec => ({ nodes, edges });
+
+// T-054-01: the pure throw→errored routing primitive both runners will reuse (T-054-02). These are
+// pure-function assertions — NO runner is invoked, NO live model, NO spawn — proving the errored
+// summary is a marked, non-proceeding node and that the EXISTING decideThread gate refuses it.
+describe("erroredSummary — the pure throw→errored primitive (T-054-01)", () => {
+  test("yields outcome 'errored' with produced undefined (nothing landed, nothing to thread)", () => {
+    const s = erroredSummary("X");
+    expect(s.outcome).toBe("errored");
+    expect(s.produced).toBeUndefined(); // a throw surfaced nothing threadable
+    expect(s.materialized).toBe(false); // a throw landed no effect
+    expect(s.actuals).toBeUndefined(); // a throw measured nothing ⇒ no phantom wallet charge
+    expect(s.runId).toBe("errored:X"); // deterministic, non-empty, a pure fn of the node id
+  });
+
+  test("decideThread refuses it (proceed:false) — routes through the EXISTING halt path unchanged", () => {
+    const decision = decideThread(erroredSummary("X"));
+    expect(decision.proceed).toBe(false);
+    // The reason takes the generic non-success branch (no new branch added to decideThread).
+    expect(decision.reason).toContain("errored");
+    expect(decision.reason).toContain("not success");
+  });
+
+  test("is deterministic — same id ⇒ byte-identical summary (the precondition T-054-03 leans on)", () => {
+    expect(erroredSummary("X")).toEqual(erroredSummary("X"));
+    expect(erroredSummary("A").runId).not.toBe(erroredSummary("B").runId); // distinct ids ⇒ distinct
+  });
+
+  test("NODE_ERRORED is a member of RUN_OUTCOMES (the constant and the tuple cannot drift)", () => {
+    expect(NODE_ERRORED).toBe("errored");
+    expect((RUN_OUTCOMES as readonly RunOutcome[]).includes(NODE_ERRORED)).toBe(true);
+  });
+});
 
 describe("runGraph — threads upstream `produced` into each node (JOIN + FAN-OUT)", () => {
   test("linear A→B→C: each node receives its single upstream's produced; sink is C", async () => {
