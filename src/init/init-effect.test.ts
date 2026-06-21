@@ -217,3 +217,99 @@ describe("applyInitScaffold — focused fixture manifest (the create/skip partit
     }
   });
 });
+
+// T-058-01: the template overlay seam through `runInit(root, template)`. Same guarded-live temp-dir
+// discipline. The AC, clause by clause: a known template applies base+overlay idempotently and
+// no-clobber; an unknown template is a clean refusal that writes NOTHING; honest-empty + the lisa
+// gate hold with a template in play; bare `runInit` is unchanged (the E-040 path).
+describe("runInit — template overlay (T-058-01)", () => {
+  test("a known template applies the base tree PLUS the overlay's SEED.md, board honest-empty", async () => {
+    const root = await seedBareLisa();
+    try {
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+
+      // the base tree is present...
+      for (const entry of SCAFFOLD_MANIFEST) {
+        expect(await exists(join(root, entry.path))).toBe(true);
+      }
+      // ...and the overlay's file landed and is reported created.
+      expect(await exists(join(root, "SEED.md"))).toBe(true);
+      expect(outcome.result.created).toContain("SEED.md");
+      expect((await readFile(join(root, "SEED.md"), "utf8")).length).toBeGreaterThan(0);
+
+      // honest-empty held: the board the overlay layered onto carries zero demand rows.
+      expect(countDemandRows(await readFile(join(root, "docs/active/demand.md"), "utf8"))).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a second template run is idempotent — zero created, the overlay file among the skips", async () => {
+    const root = await seedBareLisa();
+    try {
+      await runInit(root, "hackathon");
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      expect(outcome.result.created).toEqual([]);
+      expect(outcome.result.skipped).toContain("SEED.md");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a user-edited overlay file is left byte-identical (no clobber)", async () => {
+    const root = await seedBareLisa();
+    const edited = "MY OWN ONE-LINE IDEA\n";
+    try {
+      await runInit(root, "hackathon");
+      await writeFile(join(root, "SEED.md"), edited, "utf8");
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome.kind).toBe("scaffolded");
+      // the edit survives — the overlay never overwrites an existing file.
+      expect(await readFile(join(root, "SEED.md"), "utf8")).toBe(edited);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an unknown template is a clean refusal naming the available set — and writes NOTHING", async () => {
+    const root = await seedBareLisa();
+    try {
+      const outcome = await runInit(root, "bogus");
+      expect(outcome).toEqual({ kind: "unknown-template", name: "bogus", available: ["hackathon"] });
+      // the refusal is inert: neither the base tree nor any overlay file materialized.
+      for (const entry of SCAFFOLD_MANIFEST) {
+        expect(await exists(join(root, entry.path))).toBe(false);
+      }
+      expect(await exists(join(root, "SEED.md"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the lisa gate precedes template resolution — a non-lisa root refuses as not-lisa", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-init-tmpl-nolisa-"));
+    try {
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome).toEqual({ kind: "not-lisa", root });
+      expect(await exists(join(root, "SEED.md"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bare runInit (no template) is unchanged — base tree only, no SEED.md", async () => {
+    const root = await seedBareLisa();
+    try {
+      const outcome = await runInit(root);
+      expect(outcome.kind).toBe("scaffolded");
+      expect(await exists(join(root, "SEED.md"))).toBe(false);
+      expect(await exists(join(root, "docs/active/demand.md"))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

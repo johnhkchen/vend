@@ -509,6 +509,20 @@ describe("parseArgs — init (T-040-03 scaffold command)", () => {
   test("USAGE lists the init line", () => {
     expect(USAGE).toContain("vend init");
   });
+  // T-058-01: the optional `--template <name>` overlay flag (validated at dispatch, not here).
+  test("`init --template hackathon` parses the template name", () => {
+    expect(parseArgs(["init", "--template", "hackathon"])).toEqual({ cmd: "init", template: "hackathon" });
+  });
+  test("a missing --template value is a clean usage error", () => {
+    expect(parseArgs(["init", "--template"])).toEqual({ cmd: "usage", error: "missing --template <name>" });
+    expect(parseArgs(["init", "--template", "--force"])).toEqual({
+      cmd: "usage",
+      error: "missing --template <name>",
+    });
+  });
+  test("USAGE advertises --template", () => {
+    expect(USAGE).toContain("vend init [--template <name>]");
+  });
 });
 
 describe("parseArgs — doctor (T-042-03 preflight command)", () => {

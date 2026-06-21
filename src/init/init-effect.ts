@@ -28,7 +28,15 @@
 
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { isLisaProject, planInit, SCAFFOLD_MANIFEST, type ScaffoldEntry } from "./init-core.ts";
+import {
+  availableTemplates,
+  isLisaProject,
+  mergeManifests,
+  planInit,
+  resolveTemplate,
+  SCAFFOLD_MANIFEST,
+  type ScaffoldEntry,
+} from "./init-core.ts";
 
 /** The outcome of an apply: the manifest-relative POSIX paths created, and those skipped
  *  (already present, left byte-identical). The CLI (T-040-03) reports these as "created N,
@@ -105,21 +113,34 @@ export async function applyInitScaffold(
   return { created, skipped };
 }
 
-/** The outcome of the refuse-or-apply composition (T-040-03): a typed andon when the root is not
- *  a lisa project (a clean refusal — DATA, nothing written), or the scaffold's apply result. The
- *  CLI maps the `not-lisa` kind to the fix-it hint + a non-zero exit; `scaffolded` to the tally +
- *  exit 0. The "a clean refusal returns data, a real fault throws" rule (cf. `pathExists`). */
+/** The outcome of the refuse-or-apply composition (T-040-03; template overlay T-058-01): a typed
+ *  andon when the root is not a lisa project OR when a named template is unknown (clean refusals —
+ *  DATA, nothing written), or the scaffold's apply result. The CLI maps `not-lisa`/`unknown-template`
+ *  to a fix-it hint + a non-zero exit; `scaffolded` to the tally + exit 0. The "a clean refusal
+ *  returns data, a real fault throws" rule (cf. `pathExists`). `unknown-template` carries the
+ *  available names so the refusal can name the valid set. */
 export type InitOutcome =
   | { readonly kind: "not-lisa"; readonly root: string }
+  | { readonly kind: "unknown-template"; readonly name: string; readonly available: readonly string[] }
   | { readonly kind: "scaffolded"; readonly result: InitApplyResult };
 
 /**
- * Drive `vend init` against `projectRoot`: REFUSE if it is not a lisa project, else APPLY the
- * scaffold. This is the seam the init-effect.ts header flagged for T-040-03 — the `isLisaProject`
- * gate composed with `applyInitScaffold`. The CLI dispatch arm owns the user-facing hint string
- * and the exit code; this seam owns only the typed branch, so the refusal path is unit-testable
- * (the `pressShelf`/`castWork`/`runPlay` returned-kind discipline) rather than buried in the
- * untested `import.meta.main` shell.
+ * Drive `vend init [--template <name>]` against `projectRoot`: REFUSE if it is not a lisa project,
+ * REFUSE if a named `template` is unknown, else APPLY the scaffold (base, plus the named template's
+ * overlay when given). This is the seam the init-effect.ts header flagged for T-040-03, extended for
+ * the E-058 overlay (T-058-01) — the `isLisaProject` gate + the registry lookup composed with
+ * `applyInitScaffold`. The CLI dispatch arm owns the user-facing hint strings and exit codes; this
+ * seam owns only the typed branch, so both refusal paths are unit-testable (the
+ * `pressShelf`/`castWork`/`runPlay` returned-kind discipline) rather than buried in the untested
+ * `import.meta.main` shell.
+ *
+ * The template OVERLAY rides the SAME writer: `applyInitScaffold` is called with the EFFECTIVE
+ * manifest `mergeManifests(SCAFFOLD_MANIFEST, overlay)` — so the overlay's files are written through
+ * the identical write-if-absent / no-clobber / `wx` path (the plan it reaches is exactly
+ * `planTemplate(existing, base, overlay)`). Honest-empty + one-way-to-lisa hold because the overlay
+ * names only vend-owned paths and adds no demand row. An `unknown-template` refusal is checked BEFORE
+ * any apply, so it writes NOTHING (parity with `not-lisa`). Bare `vend init` (no template) is the
+ * unchanged E-040 path.
  *
  * Detection reads ONLY the top-level entries (`readdir`) — both {@link LISA_MARKERS} are
  * project-ROOT files, so a recursive walk would be wasted work and could false-positive on a
@@ -127,9 +148,15 @@ export type InitOutcome =
  * caller passing a missing root, which for the cwd cannot happen) propagates — never masked as
  * `not-lisa`. IMPURE.
  */
-export async function runInit(projectRoot: string): Promise<InitOutcome> {
+export async function runInit(projectRoot: string, template?: string): Promise<InitOutcome> {
   const entries = await readdir(projectRoot);
   if (!isLisaProject(entries)) return { kind: "not-lisa", root: projectRoot };
+  if (template !== undefined) {
+    const overlay = resolveTemplate(template);
+    if (!overlay) return { kind: "unknown-template", name: template, available: availableTemplates() };
+    const result = await applyInitScaffold(projectRoot, mergeManifests(SCAFFOLD_MANIFEST, overlay));
+    return { kind: "scaffolded", result };
+  }
   const result = await applyInitScaffold(projectRoot);
   return { kind: "scaffolded", result };
 }

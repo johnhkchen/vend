@@ -122,6 +122,17 @@ const VEND_GITIGNORE = `*
 !decisions.jsonl
 `;
 
+/** The hackathon template's SEED — the ONE thing the user edits (brief piece B). A STUB this
+ *  ticket: T-058-01 is the seam + a trivial registry; the rich example seed / tuned charter /
+ *  shelf-note are T-058-02/03. Structure + knowledge, ZERO demand (honest-empty IA-3/IA-4) — never
+ *  a `vend chain "…"` pull line, so the board the overlay layers onto still starts honestly empty. */
+const HACKATHON_SEED_STUB = `# Seed — your one-line idea
+
+_Replace this line with the one thing you're building (e.g. "A web app that helps solo
+hackathon-goers find a team by skill + idea overlap"). The seed is the only input you author;
+\`vend steer\` reads it to propose a ranked board and the real forks._
+`;
+
 /** The canonical scaffold: the dirs + seed files a vend scaffold layers onto a bare lisa
  *  project. Order is parent-before-child (creation-safe for a naive sequential write
  *  effect). Dirs that receive a seed file need no separate listing beyond their own entry.
@@ -150,6 +161,30 @@ export const SCAFFOLD_MANIFEST: readonly ScaffoldEntry[] = [
   { kind: "dir", path: ".vend" },
   { kind: "file", path: ".vend/.gitignore", contents: VEND_GITIGNORE },
 ];
+
+// ── Template registry (E-058) — named overlays layered over the base scaffold ────────────
+
+/** A named template's OVERLAY manifest — the vend-owned files `vend init --template <name>` layers
+ *  over {@link SCAFFOLD_MANIFEST}. The `hackathon` overlay is TRIVIAL here (a single SEED stub): this
+ *  ticket (T-058-01) is the seam + a registry so the name RESOLVES; the rich content (the tuned
+ *  charter override, shelf-note, EXPECTED-OUTCOME, the real example seed) is T-058-02/03. Adding a
+ *  template is one entry. The single source of valid template names — the membership the CLI's clean
+ *  refusal lists. Overlays name ONLY vend-owned paths (one-way-to-lisa) and add NO demand (honest-empty). */
+export const TEMPLATE_REGISTRY: Readonly<Record<string, readonly ScaffoldEntry[]>> = {
+  hackathon: [{ kind: "file", path: "SEED.md", contents: HACKATHON_SEED_STUB }],
+};
+
+/** The available template names, sorted — the deterministic list a clean `unknown-template` refusal
+ *  names (the `LISA_MARKERS` membership discipline; sorted so the message is stable). PURE. */
+export function availableTemplates(): readonly string[] {
+  return Object.keys(TEMPLATE_REGISTRY).sort();
+}
+
+/** Resolve a template name → its overlay manifest, or `undefined` for an unknown name (the effect
+ *  maps that to a typed `unknown-template` andon + the {@link availableTemplates} hint). PURE. */
+export function resolveTemplate(name: string): readonly ScaffoldEntry[] | undefined {
+  return TEMPLATE_REGISTRY[name];
+}
 
 // ── Pure functions ─────────────────────────────────────────────────────────────────────
 
@@ -198,6 +233,49 @@ export function planInit(
     }
   }
   return { actions, creates, skips };
+}
+
+/** Merge an OVERLAY manifest over a BASE — the pure heart of `vend init --template` (E-058). An
+ *  overlay entry OVERRIDES a base entry at the same (normalized) path: the base keeps its POSITION
+ *  (so parent-before-child ordering stays creation-safe) but takes the overlay's kind + contents;
+ *  overlay-only entries are appended in overlay order. PURE, deterministic. The merge is what lets a
+ *  template's tuned file win over the base stub BEFORE the disk is consulted — no-clobber is then
+ *  enforced against the real filesystem by {@link planInit} over this effective manifest, unchanged.
+ *  (A naive apply-base-then-apply-overlay would instead let the base stub win and skip the override.) */
+export function mergeManifests(
+  base: readonly ScaffoldEntry[],
+  overlay: readonly ScaffoldEntry[],
+): ScaffoldEntry[] {
+  const overlayByPath = new Map<string, ScaffoldEntry>();
+  for (const e of overlay) overlayByPath.set(normalizePath(e.path), e);
+  const seen = new Set<string>();
+  const merged: ScaffoldEntry[] = [];
+  for (const e of base) {
+    const p = normalizePath(e.path);
+    merged.push(overlayByPath.get(p) ?? e); // overlay overrides in the base slot
+    seen.add(p);
+  }
+  for (const e of overlay) {
+    const p = normalizePath(e.path);
+    if (!seen.has(p)) {
+      merged.push(e); // overlay-only — appended in overlay order
+      seen.add(p);
+    }
+  }
+  return merged;
+}
+
+/** The template converge planner (E-058): merge base + overlay, then converge against `existing` —
+ *  so the overlay's content lands (override) while no-clobber + idempotency hold (it is
+ *  {@link planInit} over the effective {@link mergeManifests} result). PURE, total, deterministic.
+ *  `vend init --template` reaches the IDENTICAL plan via `applyInitScaffold(root,
+ *  mergeManifests(base, overlay))` — one writer; this is the named pure unit the AC pins. */
+export function planTemplate(
+  existing: Iterable<string>,
+  base: readonly ScaffoldEntry[],
+  overlay: readonly ScaffoldEntry[],
+): InitPlan {
+  return planInit(existing, mergeManifests(base, overlay));
 }
 
 /** Count the demand rows in board/archive text — the "honestly empty" measure (D5). Counts

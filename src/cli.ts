@@ -24,7 +24,7 @@ export const USAGE =
   "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
   "       vend svg [--seat <designer|dev>] [--out <path>]\n" +
   "       vend shelf\n" +
-  "       vend init\n" +
+  "       vend init [--template <name>]\n" +
   "       vend doctor\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
@@ -88,7 +88,13 @@ export type ParsedCommand =
     }
   | { readonly cmd: "svg"; readonly seat: Seat; readonly out?: string }
   | { readonly cmd: "shelf" }
-  | { readonly cmd: "init" }
+  | {
+      readonly cmd: "init";
+      /** Overlay a named template over the base scaffold (E-058, T-058-01); absent ⇒ bare base
+       *  scaffold, byte-identical to E-040. The name is validated at DISPATCH against the registry
+       *  (an unknown name → a clean refusal), never here — keeping the parser registry-free. */
+      readonly template?: string;
+    }
   | { readonly cmd: "doctor" }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
@@ -210,15 +216,28 @@ function parseSvgArgs(argv: readonly string[]): ParsedCommand {
 }
 
 /**
- * Parse the `init` scaffold-the-cwd path (T-040-03) — lay the vend board/PM/archive/knowledge tree
- * over a bare lisa project, no-clobber. PURE. Like `shelf`, init takes NO arguments AT ALL: there
- * is no subject to type (the cwd is the implicit, only target) and nothing is cast, so there is no
- * `--budget` to fund. Any token after `init` is therefore an error. The lisa-project refusal and
- * the actual scaffolding are the dispatch arm's composition over `runInit` (init-effect.ts).
+ * Parse the `init [--template <name>]` scaffold-the-cwd path (T-040-03; overlay T-058-01) — lay the
+ * vend board/PM/archive/knowledge tree over a bare lisa project, no-clobber, optionally overlaying a
+ * named template. PURE. The cwd is the implicit subject (no positional to type) and nothing is cast
+ * (no `--budget`), so the ONE recognized token is the optional `--template <name>` flag (the
+ * `parseSvgArgs` `--out` idiom: a missing or `--`-prefixed value is a clean usage error). The name is
+ * NOT validated here — an unknown template is the dispatch arm's clean refusal against the registry
+ * (keeping the parser registry-free, like a play name). Any other token is `unexpected init argument`.
+ * Bare `vend init` parses to `{ cmd: "init" }` with NO `template` key — byte-identical to E-040.
  */
 function parseInitArgs(argv: readonly string[]): ParsedCommand {
-  if (argv.length > 1) return { cmd: "usage", error: `unexpected init argument: ${argv[1]}` };
-  return { cmd: "init" };
+  let template: string | undefined;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--template") {
+      const word = argv[++i];
+      if (!word || word.startsWith("--")) return { cmd: "usage", error: "missing --template <name>" };
+      template = word;
+    } else {
+      return { cmd: "usage", error: `unexpected init argument: ${a}` };
+    }
+  }
+  return template ? { cmd: "init", template } : { cmd: "init" };
 }
 
 /**
@@ -850,15 +869,24 @@ if (import.meta.main) {
     // skipped) is idempotent success, not an error. Lazy import keeps the effect off the pure-parse
     // path, exactly as the other arms keep their deps lazy.
     const { runInit } = await import("./init/init-effect.ts");
-    const outcome = await runInit(process.cwd());
+    const outcome = await runInit(process.cwd(), parsed.template);
     if (outcome.kind === "not-lisa") {
       process.stderr.write(
         `not a lisa project (no CLAUDE.md or .lisa.toml in ${outcome.root}) — run \`lisa init\` first\n`,
       );
       process.exit(1);
     }
+    if (outcome.kind === "unknown-template") {
+      // The E-058 overlay refusal (T-058-01): a clean, SUCCESSFUL refusal naming the valid set — DATA
+      // + fix-it hint + non-zero exit, the `not-lisa` shape. Nothing was written (checked pre-apply).
+      process.stderr.write(
+        `unknown template "${outcome.name}" — available: ${outcome.available.join(", ")}\n`,
+      );
+      process.exit(1);
+    }
     const { created, skipped } = outcome.result;
-    process.stdout.write(`vend init: scaffolded — ${created.length} created, ${skipped.length} skipped\n`);
+    const label = parsed.template ? `scaffolded --template ${parsed.template}` : "scaffolded";
+    process.stdout.write(`vend init: ${label} — ${created.length} created, ${skipped.length} skipped\n`);
     process.exit(0);
   }
 

@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
+  availableTemplates,
   countDemandRows,
   isLisaProject,
   LISA_MARKERS,
+  mergeManifests,
   planInit,
+  planTemplate,
+  resolveTemplate,
   SCAFFOLD_MANIFEST,
+  TEMPLATE_REGISTRY,
   type ScaffoldEntry,
 } from "./init-core.ts";
 
@@ -149,6 +154,96 @@ describe("manifest sanity", () => {
         if (parentIsManifestDir) expect(seen.has(parent)).toBe(true);
       }
       seen.add(e.path);
+    }
+  });
+});
+
+// ── T-058-01: the template overlay seam (pure half) ───────────────────────────────────────
+
+// A focused base + overlay fixture: the overlay (1) OVERRIDES a same-path base file (`a.md`) and
+// (2) adds an overlay-only file (`seed.md`). Exercises both merge behaviors in isolation.
+const BASE_FIX: readonly ScaffoldEntry[] = [
+  { kind: "dir", path: "x" },
+  { kind: "file", path: "x/a.md", contents: "BASE A\n" },
+  { kind: "file", path: "x/b.md", contents: "BASE B\n" },
+];
+const OVERLAY_FIX: readonly ScaffoldEntry[] = [
+  { kind: "file", path: "x/a.md", contents: "OVERLAY A\n" }, // overrides base x/a.md
+  { kind: "file", path: "seed.md", contents: "SEED\n" }, // overlay-only
+];
+
+describe("mergeManifests — overlay overrides same path, appends overlay-only (T-058-01)", () => {
+  test("an overlay entry wins on a shared path, keeping the base slot's position", () => {
+    const merged = mergeManifests(BASE_FIX, OVERLAY_FIX);
+    const a = merged.find((e) => e.path === "x/a.md");
+    expect(a).toEqual({ kind: "file", path: "x/a.md", contents: "OVERLAY A\n" });
+    // position preserved: x/a.md is still the 2nd entry (index 1), where the base had it.
+    expect(merged[1]?.path).toBe("x/a.md");
+    // base-only entries are untouched.
+    const b = merged.find((e) => e.path === "x/b.md");
+    expect(b && b.kind === "file" ? b.contents : null).toBe("BASE B\n");
+  });
+
+  test("overlay-only entries are appended in overlay order, after the base", () => {
+    const merged = mergeManifests(BASE_FIX, OVERLAY_FIX);
+    // exactly one new path beyond the base; same-path override does NOT grow the list.
+    expect(merged.length).toBe(BASE_FIX.length + 1);
+    expect(merged.at(-1)).toEqual({ kind: "file", path: "seed.md", contents: "SEED\n" });
+  });
+
+  test("an empty overlay is the base unchanged", () => {
+    expect(mergeManifests(BASE_FIX, [])).toEqual([...BASE_FIX]);
+  });
+});
+
+describe("planTemplate — converge over the merged manifest (T-058-01)", () => {
+  test("a bare listing → every effective path creates, the override carrying overlay content", () => {
+    const plan = planTemplate([], BASE_FIX, OVERLAY_FIX);
+    expect(plan.creates.length).toBe(BASE_FIX.length + 1); // base + the one overlay-only
+    const a = plan.creates.find((e) => e.path === "x/a.md");
+    expect(a && a.kind === "file" ? a.contents : null).toBe("OVERLAY A\n"); // override won
+    expect(plan.creates.some((e) => e.path === "seed.md")).toBe(true);
+  });
+
+  test("a fully-applied listing → zero creates (idempotent overlay re-run)", () => {
+    const allPaths = mergeManifests(BASE_FIX, OVERLAY_FIX).map((e) => e.path);
+    const plan = planTemplate(allPaths, BASE_FIX, OVERLAY_FIX);
+    expect(plan.creates).toEqual([]);
+    expect(plan.skips.length).toBe(allPaths.length);
+  });
+
+  test("equivalence: planTemplate === planInit over the merged manifest (the effect's path)", () => {
+    const existing = ["x", "x/a.md"];
+    expect(planTemplate(existing, BASE_FIX, OVERLAY_FIX)).toEqual(
+      planInit(existing, mergeManifests(BASE_FIX, OVERLAY_FIX)),
+    );
+  });
+});
+
+describe("TEMPLATE_REGISTRY — a trivial, honest-empty registry (T-058-01)", () => {
+  test("`hackathon` resolves; an unknown name does not; the available list is sorted", () => {
+    expect(resolveTemplate("hackathon")).toBeDefined();
+    expect(resolveTemplate("nope")).toBeUndefined();
+    expect(availableTemplates()).toEqual(["hackathon"]);
+  });
+
+  test("every overlay adds ONLY structure/knowledge — zero demand rows (honest-empty IA-3/IA-4)", () => {
+    for (const overlay of Object.values(TEMPLATE_REGISTRY)) {
+      for (const entry of overlay) {
+        // overlays never touch the demand board/archive, and carry no demand-row shape.
+        expect(entry.path).not.toBe("docs/active/demand.md");
+        expect(entry.path).not.toBe("docs/archive/demand-cleared.md");
+        if (entry.kind === "file") expect(countDemandRows(entry.contents)).toBe(0);
+      }
+    }
+  });
+
+  test("overlays name only vend-owned paths — never a lisa-owned root marker (one-way-to-lisa)", () => {
+    for (const overlay of Object.values(TEMPLATE_REGISTRY)) {
+      for (const entry of overlay) {
+        expect(LISA_MARKERS.includes(entry.path as (typeof LISA_MARKERS)[number])).toBe(false);
+        expect(entry.path).not.toBe(".gitignore");
+      }
     }
   });
 });
