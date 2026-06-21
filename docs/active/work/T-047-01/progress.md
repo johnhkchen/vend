@@ -47,10 +47,25 @@ Verification:
   async board read inside `adapt`. The subject is still non-empty + meaningful; the picked signal is
   what actually drives the cast (via `adapt`). Minor, documented in the shell.
 
-## Step 4 — Live metered cast + capture — IN PROGRESS
+## Step 4 — Live metered cast + capture — DONE (partial / honest degraded run)
 
-Authorized by the user ("Run it live now"). Executing `bun run src/play/graph-real-play.ts` against
-the repo root; stdout captured to `cast-stdout.log`. On completion: extract the concurrency evidence
-(the two propose records' overlapping `startedAt`/`endedAt` from `.vend/runs.jsonl`), the join note
-content + minted epic ids + note path, and run `lisa validate`. Written up verbatim in
-`graph-cast-log.md`. A degraded run (a propose andon) is recorded with its cause, not hidden.
+Authorized by the user ("Run it live now"). Ran `bun run src/play/graph-real-play.ts` against the
+repo root (~4m36s, exit 1 — the graph halted). Full verbatim record in `graph-cast-log.md`. Outcome:
+
+- **survey** → success, staged the board.
+- **propose-1 / propose-2** ran **CONCURRENTLY** — identical `startedAt` `03:55:54.569`, fully
+  overlapping intervals (the headline; runs.jsonl evidence in the cast log).
+- **propose-2** → success, minted **E-048** (`cross-branch-budget-wallet`).
+- **propose-1** → **budget-exhausted** (180315/150000 tokens) — did not proceed.
+- **capture-note** (JOIN) → **SKIPPED** (halt-the-dependent-subgraph: one upstream halted) — the
+  documented semantics firing live.
+- `lisa validate` → clean (114 tickets, DAG valid, no orphan).
+
+**Honest verdict:** concurrency ✓ live; real `produced` threading ✓ live; halt semantics ✓ live;
+"JOIN receives BOTH epics" ✓ deterministically (unit test) but NOT live (degraded — one branch
+over-budget). The degrade is a **budget-calibration** cause, not a wiring fault. Recorded, not
+hidden — the AC#3 "honest degraded-run record with the cause" outcome.
+
+Deviation: the live run also surfaced a **runId collision** for concurrent nodes (both proposes
+derived the same `runId` from the identical `startedAt`) — flagged in `review.md` as a follow-up
+(transcripts collide; run-log records stay distinct, ACs unaffected).
