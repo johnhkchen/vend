@@ -128,8 +128,10 @@ named by the charter principle it advances and the gap it closes:
   (E-036, `OpenModelStub` + render follows `VEND_EXECUTOR`). What's unbuilt is an open
   model *autonomously* reading the repo, running tools, iterating turns, materializing
   a ticket — a local agent loop behind the `Executor`, or an open-source agent
-  framework. The real lift that proves P6 end-to-end. **High** (likely wants Frontier 3
-  underneath it). ~several blocks.
+  framework. The real lift that proves P6 end-to-end. ~several blocks.
+  **DEPRIORITIZED (2026-06-21):** no need for cheaper non-Anthropic agents yet — this is
+  a cost/model-plurality play, not a current product need. The seams stay config-capable
+  (E-035/E-036); revisit when an open-model cost or sovereignty need is real.
 
 ### Frontier 3 — Graph-structured orchestration (the v1 vision)
 
@@ -186,11 +188,20 @@ live-join re-cast remain.) **High.**
 
 ### Frontier 4 — The non-dev round-trip (P5)
 
-- **Linear renderer** — project the work-graph into Linear for non-dev teammates
-  (downstream of E-021's MCP-independent slice). **High** (opens the visual-thinking
-  segment; respects N2/N4 — read-only, one-way authority). ~2 blocks.
-- **Annotation → demand round-trip** — a teammate's annotation flows back into the
-  board as a priced signal (reuses `expand-fragment`). Closes the loop. **High.**
+- **SVG renderer → PULLING (the MCP-independent visual surface — an alternative to Linear).** Render the
+  work-graph as a **large static SVG**: a second consumer of E-021's `Projection` IR (`src/present/`,
+  beside `paper.ts`'s markdown/Mermaid), so a non-dev teammate sees the whole board at a glance — no Linear
+  MCP, no external integration, just a file. Pure projection → SVG markup, deterministic (assert
+  structure), one-way-authority guarded (Vend's graph never touched). The visual half of the non-dev
+  round-trip, unblocked. **High.**
+- **Linear renderer (live)** — project the work-graph into actual Linear issues. **DEFERRED — blocked on a
+  Linear MCP (not connected).** E-021 built the MCP-independent presentation layer per
+  `pm/linear-surface-prep.md`, which defers live issue-creation to "the MCP stage." The SVG renderer above
+  covers the visual-surface need without it; revisit Linear when an MCP is connected.
+- **Annotation → demand round-trip** — a teammate's annotation flows back as a priced demand signal via
+  `expand-fragment` (E-016), provenance + back-link, one-way-authority guarded. MCP-independent (the
+  annotation is text input; live fetch deferred). The complement to the SVG surface — what teammates do
+  *with* the rendered board. **High.** *(Next after the SVG renderer.)*
 
 ### Frontier 5 — The "walk-away" UX (P4) — IA open design threads
 
