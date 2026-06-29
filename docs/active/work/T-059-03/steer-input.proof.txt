@@ -1,0 +1,83 @@
+# Free input proof — assembled steer input on a corrected sandbox (NO model cast)
+# T-059-03 Implement, Step 4. Captured 2026-06-29T18:12:57Z · host darwin · zero spend.
+# Sandbox: a fresh copy of examples/templates/hackathon-seed/ + lisa init + vend init --template hackathon.
+
+## Preflight (free), exit codes:
+  lisa init                       -> exit 0
+  vend init: vend init: scaffolded --template hackathon — 11 created, 7 skipped
+  vend doctor: doctor: ok — 4 check(s) passed
+  vend svg: wrote .vend/work-graph.svg — 0 groups, 0 cards, 0 links
+
+## assembleSteerInputs(sandbox) — the {project, charter} the model WOULD read:
+
+==================== STEER INPUT: project ====================
+# Project snapshot — <SANDBOX>
+
+## Stated intent (SEED.md)
+
+# Your seed — the one thing you author
+
+This is the **only** input you write by hand. Everything downstream — the work-graph board,
+the forks, the cleared slices — comes from *casting* a play over this seed, not from typing
+more files. Author one line of intent, then drive.
+
+---
+
+## The idea
+
+> **A team-finder page that matches hackathon-goers by skill + idea overlap.**
+
+A small frontend feature for this Astro app: hackathon-goers list their skills and the idea
+they're excited about; the page surfaces the people whose skills *and* interests overlap with
+yours, so a solo attendee can find a team in minutes instead of wandering the room.
+
+---
+
+> ✏️ **Replace this with your idea.** One line is enough — describe the smallest thing you'd
+> love to demo by the end of the session. Keep it thin; the clearing play does the rest.
+
+---
+
+## The pair
+
+This drive is for two people:
+
+- **Driver — a dev.** Runs the gestures (`vend steer`, `vend work`), funds the budget,
+  authorizes the spend.
+- **Partner — a designer.** Reads the board, frames the forks, watches the slice take shape
+  on the SVG board beside the running app — without reading the code.
+
+---
+
+_This file is **intent**, not demand. The board starts **empty**; the first move is to cast
+`vend steer` over this seed (see `shelf-note.md`). What you'll see when you do is sketched in
+`README.md`._
+
+## Source modules (src/**)
+- (none)
+
+## Existing stories
+- (none)
+
+## Existing tickets
+- (none)
+
+==================== STEER INPUT: charter (first 18 lines) ====================
+# Charter — your hackathon project
+
+The value function this project is judged on. It's small on purpose. `vend steer` and
+`vend work` read this file as **steering context** — it tells the agents *what is worth
+building in this session, and why* — so the work they clear is **valuable**, not merely
+valid. Tune it to your hack; keep it to one page.
+
+> This is the hackathon-tuned cousin of vend's own charter (`docs/knowledge/charter.md`).
+> Same clearing move, different stakes.
+
+---
+
+## The clearing move
+
+You authored one line of intent in `SEED.md`. The clearing move turns that line into the
+**right slice** — right-sized, in the right order, worth doing *now* — instead of a pile of
+half-finished ideas. The gates are the guarantee: nothing gets built that hasn't cleared.
+At a hackathon the stakes are simple: **you want something you can show.**
