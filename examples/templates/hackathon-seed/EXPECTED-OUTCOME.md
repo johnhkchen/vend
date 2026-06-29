@@ -1,31 +1,40 @@
 # Expected outcome — the gold master (captured from a real live drive)
 
-> ✅ **CAPTURED, NOT A TARGET.** These are the real numbers from the first live metered drive of this
-> seed (T-058-05, **2026-06-21**). Host: macOS (darwin). Executor: `claude` (model
-> `claude-opus-4-8`). Throwaway sandbox (the committed template was not mutated). Total real spend:
-> **$0.91** across 4 metered casts. The drive is **honest-on-outcome**: it records what the *shipped*
-> seed + `vend init --template hackathon` actually produce today — including where they fall short.
+> ✅ **CAPTURED, NOT A TARGET.** These are the real numbers from a live metered drive of this seed
+> (T-060-03-01, **2026-06-29**). Host: macOS (darwin). Executor: `claude` (model `claude-opus-4-8`).
+> Throwaway sandbox (the committed template was not mutated). Total real spend: **$1.08** across 3
+> metered casts. The drive is **honest-on-outcome**: it records what the *shipped* seed + `vend init
+> --template hackathon` actually produce today — including the one place the cleared slice still falls
+> short (the populated SVG render).
 
 This file is the **re-runnable consistency bar**: drive the seed again and the outcome should be
 *comparable* to what's captured here. The exact commands are in the re-run block at the bottom.
 
+> 📈 **This replaces the E-058 negative gold master.** The earlier capture (T-058-05, 2026-06-21)
+> recorded an **honest-empty steer** (the A3 finding) — the shipped flow rendered no board. The three
+> follow-ups it raised have since landed (E-059, T-060-01, T-060-02), and this drive is the closing
+> re-drive that proves the round-trip: **the board renders AND a slice clears.**
+
 ---
 
-## Headline verdict (the A3 finding)
+## Headline verdict (the round-trip is whole)
 
 The **shipped** flow — copy the seed → `lisa init` → `vend init --template hackathon` → `vend steer`
-— produces an **honest-empty steer** (no board, no forks), **not** a coherent board. The A3 risk
-**materialized**: `vend steer` is wired to read its intent from `docs/knowledge/charter.md` + the
-board snapshot, and the seed's `SEED.md` is **never in steer's input path** — so steer correctly
-finds "no demand gradient" and abstains. The seed's own docs promise "_`vend steer` reads [the seed]
-to propose a ranked board_," but the implementation (`assembleSteerInputs` in `src/play/steer.ts`)
-does not read `SEED.md`.
+→ `vend work` — now drives **end-to-end on a fresh seed with no MCP present**. `vend steer` reads the
+seed's intent and stages a **coherent ranked board + genuine forks**; `vend work` (funded by the
+calibrated cold-start default, no `--budget` needed) clears **≥1 real slice**: propose-epic mints the
+epic and decompose-epic **degrades-and-clears** it into stories + tickets.
 
-The good news: the **machinery is sound**. A diagnostic re-steer with the seed's intent placed where
-steer reads it produced a genuinely coherent board + real forks (below), and `vend work` then minted
-a real grounded epic. The E-044 self-referential-demotion fix **held** — steer abstained honestly
-rather than ranking the template's own scaffolding as junk. The gap is **input wiring**, not the
-articulation engine.
+The **A3 finding is closed.** `vend init --template hackathon` now overlays the tuned charter at
+`docs/knowledge/charter.md` (where steer reads) and `assembleSteerInputs` reads `SEED.md` tolerantly
+into the project snapshot (E-059) — so steer finds a real demand gradient instead of abstaining. The
+E-044 self-referential-demotion fix still **held** (the board ranks the seed's idea, not the
+template's scaffolding).
+
+One honest caveat, recorded below: decompose ran with **reduced grounding** — the optional
+`codebase-memory-mcp` is absent on a fresh seed, so the cast **degraded (proceeded) rather than
+andoned** (T-060-01) and the run record carries a `reducedGrounding` marker. The slice cleared; the
+**populated** `vend svg` render does not yet draw it (a decompose story-numbering issue — see below).
 
 ---
 
@@ -33,69 +42,89 @@ articulation engine.
 
 | What | Target | Actual (live) |
 | --- | --- | --- |
-| Board items off the seed (shipped flow) | a coherent ranked set | **0 — honest-empty steer** (A3 finding) |
-| Board items off the seed (intent wired — diagnostic) | a coherent ranked set | **4** (Keystone→High→Standard→Leaf), all grounded in `SEED.md` |
-| Forks framed (diagnostic) | a handful of genuine ones | **2 genuine forks**, each 2–3 options + a recommendation |
-| Slices cleared | ≥ 1 | **1 epic minted (E-001), decompose refused** (MCP gap — see below) |
-| Budget spent (ms, tokens) | within the funded envelope | steer **12.4k tok / ~31 s**; propose-epic **~110k tok / 42 s**; total **$0.91** |
-| Forward-E1 record accrued | yes | **yes** — propose-epic + decompose-epic records carry live `intervened: false` |
+| Board items off the seed (**shipped** flow) | a coherent ranked set | **4** (Keystone→High→Standard→Leaf), all grounded in `SEED.md` — **no diagnostic hack needed** (A3 closed) |
+| Forks framed | a handful of genuine ones | **2 genuine forks**, each 2–3 options + a recommendation |
+| Slices cleared | ≥ 1 | **1 full slice** — E-001 minted, decomposed into **2 stories + 4 tickets** (decompose degraded-and-cleared) |
+| Budget (the clear) | within the funded envelope; no instant exhaustion | omit-`--budget` ⇒ **calibrated cold-start default**; **no instant budget-exhausted** — cleared 1, then the cold-start wallet exhausted (203.8k actual vs the 50k cold-start quote) |
+| Budget spent (ms, tokens, $) | within envelope | steer **$0.50 / 5 turns**; propose-epic **$0.33 / 5 turns**; decompose-epic **$0.24 / 5 turns**; total **$1.08** |
+| Forward-E1 records accrued | yes | **yes — 2**: propose-epic + decompose-epic both carry live **`intervened: false`** (decompose also `reducedGrounding: true`) |
+| Populated `vend svg` render | a board off the slice | ⚠️ **andons** — `GraphIntegrityError` on the decomposed story numbering (see "residual imperfections") |
 
-### The coherent board (diagnostic re-steer)
+### The coherent board (shipped steer)
 
 A ranked, leverage-ordered board, every signal grounded in a `SEED.md` quote about the team-finder:
 
-1. **Keystone** — Build the team-finder page: rank+render the people who overlap most with a
-   reference attendee from a few inline sample profiles. (the whole demo; nothing to show without it)
-2. **High** — Add an attendee self-entry form that recomputes matches live. (closes the seed's "find
-   a team in minutes" promise; blocked on the keystone)
-3. **Standard** — Author a richer ~8–12 attendee dataset so the ranking is legible in the demo.
+1. **Keystone** — Build the team-finder page: load attendee profiles (skills + idea), rank+render the
+   people whose skills and idea overlap most with a reference attendee, replacing the placeholder
+   counter island. (the whole demo; nothing showable exists today)
+2. **High** — Add an attendee self-entry form that recomputes and re-ranks matches live. (closes the
+   seed's "find a team in minutes" promise; blocked on the keystone)
+3. **Standard** — Author a legible inline ~8–12 attendee dataset so the ranking reads clearly.
 4. **Leaf** — Persist an entered profile to localStorage / a shareable URL.
 
 ### The genuine forks (verbatim sample)
 
 > **Fork — What does a 'match' mean — shared overlap on both skills and idea, or complementary skills
-> around a shared idea?** Options: (1) shared overlap; (2) complementary skills + shared idea (a dev
-> finds a designer); (3) hybrid: require a shared idea, then rank by complementarity. *Vend
-> recommends:* shared overlap for the first slice — it matches the seed's literal wording and ships
-> fastest.
+> around a shared idea?** Options: (1) shared overlap (literal SEED wording); (2) complementary skills
+> + shared idea (a dev surfaces designers who want the same idea); (3) hybrid: gate on a shared idea,
+> then rank by complementarity. *Vend recommends:* shared overlap for the first slice — it matches the
+> seed's literal phrasing and ships a showable demo fastest.
 
 (The second fork: _demo centerpiece — a static ranked list first, or the interactive self-entry
 experience first?_ — recommends static-first for a guaranteed showable slice.)
 
-### The cleared cast (`vend work`)
+### The cleared slice (`vend work`)
 
-With an adequate budget, `vend work` priced the board, pulled the keystone, and cast the
-propose→decompose chain. **propose-epic cleared** — all three gates (value / bounds / structural)
-passed and it minted **`E-001 team-finder-match-page`** (advances charter H1/H2), with a forward-E1
-record. **decompose-epic then refused** with a clean amber andon: **`missing-capability — required
-MCP absent from project registry: codebase-memory-mcp`** — the freshly-`lisa init`'d sandbox has no
-`.mcp.json` wiring that MCP, which the clearing chain requires. A *successful* refusal (exit 0),
-not a crash; the epic was proposed but not decomposed into stories/tickets.
+Omitting `--budget`, `vend work` funded the first clear at the **calibrated cold-start quote**
+(`◇ 50k ⏱ 2h`, tagged "estimate (cold start — no history yet)"), pulled the keystone, and cast the
+propose→decompose chain. **propose-epic cleared** — minting **`E-001 team-finder-overlap-ranking`**
+(advances charter H2/H1), with a forward-E1 record (`intervened: false`). **decompose-epic then
+cleared with reduced grounding**: the fresh seed has no `.mcp.json` wiring `codebase-memory-mcp`, so
+the cast printed `· reduced grounding — optional codebase-memory MCP absent; proceeding (degraded,
+recorded)`, dropped the optional MCP, and proceeded — minting **2 stories (S-001, S-002) + 4
+tickets** and passing `lisa validate ✓`. Its run record carries both `intervened: false` (forward-E1)
+**and** `reducedGrounding: true`.
+
+This is a **successful degrade** (the negative gold master's decompose *andon* is gone), and the
+cold-start wallet behaved as designed: the slice cleared under the per-cast funding floor even though
+the chain's 203.8k actual overshot the 50k cold-start quote — **no instant budget-exhausted**; the
+wallet only stopped *after* the clear, when it could not afford the next of the 3 remaining pulls.
 
 ### The SVG board (the designer's view)
 
-`vend svg` renders correctly end-to-end: on the empty board it writes a valid honest-empty SVG; it
-loads the live graph (it sees E-001). It shows **0 cards** here because the work-graph view renders
-decomposed *slices* (stories/tickets) and the decompose step was refused — so there is nothing
-populated to draw. The visual path is confirmed; it had no decomposed work to show.
+`vend svg` renders the **honest-empty** board correctly (pre-drive, 0 cards). The **populated** render
+currently **andons** with `GraphIntegrityError: story 'S-002' has no epic 'E-002'`. vend's graph
+model links stories to epics purely by id convention (`src/graph/model.ts:148` — `S-NNN[-MM]` belongs
+to `E-NNN`; there is no `epic:` field). decompose minted the two stories as flat-sequential `S-001`
+(→ E-001 ✓) and `S-002` (→ E-002, which does not exist) instead of nesting both under E-001. The
+slice is on disk and the decompose cast succeeded; the populated picture just can't draw until the
+story numbering matches vend's id-convention. See the follow-up below.
 
 ---
 
-## What this means for the seed/seam — three follow-ups
+## What this means for the seed/seam — the three E-058 findings, now closed
 
-1. **Wire the seed's intent into steer's input path (the A3 fix).** `vend init --template hackathon`
-   must place the tuned charter + the seed idea at `docs/knowledge/charter.md` (the path steer
-   reads), or `steer`/`survey` must read `SEED.md`. Today the overlay registry writes only a stub
-   `SEED.md` (`src/init/init-core.ts`), and the rich tuned `charter.md` lands at the project root
-   where steer never reads it. **Without this fix the shipped two-gesture drive yields an empty
-   steer.**
-2. **Fund time generously (the budget-shape finding).** The cold-start propose→decompose chain
-   prices at **~120 min on the time axis**; the denomination-separate wallet (IA-8) refuses to fund a
-   pull whose price exceeds *either* axis. A tight `--budget … ,<small-ms>` funds **nothing**. The
-   seed's drive script should use the 2 h default (or document the cold-start price).
-3. **Wire `codebase-memory-mcp` into the seed (the capability finding).** The clearing chain requires
-   it; a fresh seed/lisa-init project lacks it, so a pull proposes an epic but cannot decompose. The
-   template needs a `.mcp.json` (or the chain must degrade for non-vend projects).
+1. **Input wiring (the A3 fix) — CLOSED by E-059.** `vend init --template hackathon` overlays the
+   tuned charter at `docs/knowledge/charter.md` and `assembleSteerInputs` reads `SEED.md` into the
+   project snapshot, so the **shipped** steer renders a coherent board (no diagnostic hack).
+2. **Budget shape — CLOSED by T-060-02.** Omitting `--budget` funds the **calibrated cold-start
+   envelope** (the p90 per-clear price, measured from the run-log tails), so the cold-start chain is
+   funded and **no instant budget-exhausted** — the slice clears, then the wallet settles.
+3. **MCP capability — CLOSED by T-060-01.** The clearing chain no longer *requires*
+   `codebase-memory-mcp`: decompose declares it **optional**, so an absent MCP **degrades** (reduced
+   grounding, recorded on the run record) instead of andoning. A fresh seed clears a slice.
+
+### Residual imperfections (honest — the bar is "clears", not "perfect")
+
+- **Populated `vend svg` andons on the decomposed story numbering.** decompose minted `S-001`/`S-002`
+  (flat) rather than nesting both under E-001 (e.g. `S-001`/`S-001-01`), so vend's graph id-convention
+  can't resolve S-002's parent. Newly surfaced (decompose only now *runs* on the seed). Carried as a
+  follow-up; it does not block the slice clear or the forward-E1 accrual. *(Plausibly not reduced-
+  grounding-specific — a fresh-board id-minting issue — but unconfirmed without a grounded comparison.)*
+- **Cold-start wallet overshoots, by design.** On a fresh ledger the omit-`--budget` default is the
+  summed standard prior (`◇ 50k`); a real chain burns ~204k. The slice still clears (per-cast funding
+  floor, E-053); the wallet reconciles to accurate once the ledger has a few successes per leg. The
+  displayed **quote stays the p90 price** (IA-8) — the funding headroom is never folded in.
 
 ---
 
@@ -110,12 +139,11 @@ VEND=$PWD/src/cli.ts
 ( cd "$SANDBOX" && bun run "$VEND" init --template hackathon )   # 11 created / 7 skipped
 ( cd "$SANDBOX" && bun run "$VEND" doctor )                      # green: 4/4
 ( cd "$SANDBOX" && bun run "$VEND" svg )                         # honest-empty SVG
-( cd "$SANDBOX" && bun run "$VEND" steer --budget 600000,150000 ) # → honest-empty steer (A3)
-# Diagnostic — prove the machinery once the intent is where steer reads it:
-( cd "$SANDBOX" && cat charter.md SEED.md > docs/knowledge/charter.md \
-                && bun run "$VEND" steer --budget 600000,150000 )  # → coherent board + forks
-( cd "$SANDBOX" && bun run "$VEND" work --budget 7300000,500000 --no-intervened --stale-ok )
-#   → propose-epic clears (E-001), decompose andon: missing codebase-memory-mcp
+( cd "$SANDBOX" && bun run "$VEND" steer --budget 600000,400000 ) # SHIPPED → coherent board + forks
+( cd "$SANDBOX" && bun run "$VEND" work --no-intervened )        # omit --budget → calibrated cold-start
+#   → propose-epic clears (E-001); decompose-epic clears WITH reduced grounding (MCP absent);
+#     1 slice cleared (2 stories + 4 tickets); forward-E1 records carry intervened:false.
+( cd "$SANDBOX" && bun run "$VEND" svg )                         # populated render currently andons (see above)
 ```
 
 ---
@@ -123,8 +151,7 @@ VEND=$PWD/src/cli.ts
 ## Why this exists
 
 A hackathon demo is a one-shot; the point of vend is that the *clearing* is repeatable. This gold
-master is how that consistency is checked — and the first honest measurement says the seed isn't yet
-fully drivable end-to-end on the shipped path. The articulation engine is proven (a coherent board,
-real forks, a grounded epic). Three small wiring fixes (above) close the gap between what the seed
-*promises* and what it *delivers*. Re-run after those land and this table should fill green across the
-shipped flow.
+master is how that consistency is checked — and it now reads **green across the shipped flow**: a
+coherent board off the seed, real forks, and a cleared slice with an honest reduced-grounding marker.
+The one open edge (the populated SVG render) is recorded, not hidden — re-run after the decompose
+story-numbering follow-up lands and that last row fills green too.
