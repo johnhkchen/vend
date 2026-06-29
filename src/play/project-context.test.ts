@@ -40,6 +40,38 @@ describe("buildProjectSnapshot — thin, deterministic go-and-see", () => {
     // every section should carry the placeholder
     expect(out.match(/- \(none\)/g)?.length).toBe(3);
   });
+
+  // E-059 (T-059-01): the seed's stated intent rides inside the snapshot. The section is the
+  // DELIBERATE exception to "names, not contents" — present only when intent is non-blank, so an
+  // absent/blank intent leaves the snapshot byte-identical (the honest-empty safety).
+  test("emits a '## Stated intent (SEED.md)' section (verbatim) before Source modules when intent present", () => {
+    const out = buildProjectSnapshot({
+      root: "/repo",
+      srcFiles: ["src/a.ts"],
+      stories: [],
+      tickets: [],
+      intent: "A web app that helps solo hackathon-goers find a team by skill + idea overlap",
+    });
+    expect(out).toContain("## Stated intent (SEED.md)");
+    expect(out).toContain("A web app that helps solo hackathon-goers find a team by skill + idea overlap");
+    // the intent leads — it is what the steer prompt grounds demand against, ahead of the listing.
+    expect(out.indexOf("## Stated intent (SEED.md)")).toBeLessThan(out.indexOf("## Source modules"));
+  });
+
+  test("intent absent ⇒ NO section, byte-identical to the no-intent snapshot (honest-empty preserved)", () => {
+    const parts = { root: "/repo", srcFiles: ["src/a.ts"], stories: ["S-001"], tickets: ["T-001-01"] };
+    const out = buildProjectSnapshot(parts);
+    expect(out).not.toContain("Stated intent");
+    // adding the optional field as `undefined` changes NOTHING — the absent case is byte-identical.
+    expect(buildProjectSnapshot({ ...parts, intent: undefined })).toBe(out);
+  });
+
+  test("blank / whitespace-only intent is treated as absent (no fabricated empty section)", () => {
+    const out = buildProjectSnapshot({ root: "/repo", srcFiles: [], stories: [], tickets: [], intent: "  \n " });
+    expect(out).not.toContain("Stated intent");
+    // identical to the no-intent snapshot — a present-but-empty SEED is the same as no SEED.
+    expect(out).toBe(buildProjectSnapshot({ root: "/repo", srcFiles: [], stories: [], tickets: [] }));
+  });
 });
 
 // T-043-01: the titled board read — the impure sibling of `listIdsIn` the propose-epic effect's

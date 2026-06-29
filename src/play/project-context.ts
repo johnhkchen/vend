@@ -17,6 +17,10 @@ import { join } from "node:path";
 /** Default charter location (the real value function the bounds gate greps). */
 export const CHARTER_PATH = "docs/knowledge/charter.md";
 
+/** Default seed location — the root one-line intent doc `vend steer`/`survey` read into the
+ *  snapshot (E-059). Root-relative; the impure verbs `join(root, …)` it (the `CHARTER_PATH` peer). */
+export const SEED_PATH = "SEED.md";
+
 /** Where to read the inputs from. `projectRoot` defaults to cwd. */
 export interface ContextSources {
   readonly epicPath: string;
@@ -37,6 +41,10 @@ export interface SnapshotParts {
   readonly srcFiles: readonly string[];
   readonly stories: readonly string[];
   readonly tickets: readonly string[];
+  /** The seed's stated intent (root `SEED.md`), verbatim — the DELIBERATE exception to the
+   *  snapshot's "names, not contents" rule (SEED *is* the intent doc, E-059). Optional: absent or
+   *  blank/whitespace-only ⇒ no section ⇒ snapshot byte-identical to today (honest-empty preserved). */
+  readonly intent?: string;
 }
 
 /**
@@ -44,14 +52,18 @@ export interface SnapshotParts {
  * lists so the output is deterministic (a stable prompt input = reproducible runs);
  * relative paths only (no absolute-path leakage into the model context). Kept
  * deliberately light — a listing, not the file contents (overproduced context is
- * waste, charter criterion 1).
+ * waste, charter criterion 1). The ONE exception is the `intent` section: SEED *is* the
+ * intent doc, so its content is emitted verbatim (E-059) — present only when `intent` is
+ * non-blank, so an absent/blank intent leaves the snapshot byte-identical (honest-empty).
  */
 export function buildProjectSnapshot(parts: SnapshotParts): string {
   const sorted = (xs: readonly string[]): string[] => [...xs].sort();
   const list = (xs: readonly string[]): string => (xs.length ? sorted(xs).map((x) => `- ${x}`).join("\n") : "- (none)");
+  const intent = parts.intent?.trim();
   return [
     `# Project snapshot — ${parts.root}`,
     "",
+    ...(intent ? ["## Stated intent (SEED.md)", "", intent, ""] : []),
     "## Source modules (src/**)",
     list(parts.srcFiles),
     "",

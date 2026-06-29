@@ -29,7 +29,7 @@ import { registry, type Card, type Play } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
 import type { Budget } from "../budget/budget.ts";
 import { clear } from "./survey-core.ts";
-import { buildProjectSnapshot, listIdsIn, CHARTER_PATH } from "./project-context.ts";
+import { buildProjectSnapshot, listIdsIn, CHARTER_PATH, SEED_PATH } from "./project-context.ts";
 import { surveyBoardEffect, type SurveyInputs } from "./survey-effect.ts";
 
 /** The play name — the registry key and the value stamped on every run-log record. */
@@ -114,17 +114,20 @@ export interface SurveyOptions {
  * gradient against) and a thin go-and-see project snapshot (the whole board state the survey reads).
  * The IMPURE verb, mirroring `assembleExpandFragmentInputs` MINUS the `fragment` (survey has no
  * subject). Reuses the EXPORTED `buildProjectSnapshot`/`listIdsIn`; a survey reads the BOARD state, not
- * the src tree, so `srcFiles` is empty (a light snapshot, like expand's). NOT unit-tested (its logic is
- * the pure formatter + thin fs reads).
+ * the src tree, so `srcFiles` is empty (a light snapshot, like expand's). ALSO reads the root `SEED.md`
+ * intent TOLERANTLY (absent ⇒ undefined ⇒ no intent section ⇒ snapshot byte-identical — the `listIdsIn`
+ * tolerance precedent); survey has the identical gap as steer, so it wires the same E-059 intent thread.
+ * NOT unit-tested (its logic is the pure formatter + thin fs reads).
  */
 export async function assembleSurveyInputs(opts: SurveyOptions): Promise<SurveyInputs> {
   const root = opts.projectRoot ?? process.cwd();
-  const [charter, stories, tickets] = await Promise.all([
+  const [charter, intent, stories, tickets] = await Promise.all([
     readFile(join(root, CHARTER_PATH), "utf8"),
+    readFile(join(root, SEED_PATH), "utf8").catch(() => undefined),
     listIdsIn(`${root}/docs/active/stories`),
     listIdsIn(`${root}/docs/active/tickets`),
   ]);
-  const project = buildProjectSnapshot({ root, srcFiles: [], stories, tickets });
+  const project = buildProjectSnapshot({ root, srcFiles: [], stories, tickets, intent });
   return { project, charter };
 }
 

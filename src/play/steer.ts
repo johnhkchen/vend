@@ -28,7 +28,7 @@ import { registry, type Card, type Play } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
 import type { Budget } from "../budget/budget.ts";
 import { clear } from "./steer-core.ts";
-import { buildProjectSnapshot, listIdsIn, CHARTER_PATH } from "./project-context.ts";
+import { buildProjectSnapshot, listIdsIn, CHARTER_PATH, SEED_PATH } from "./project-context.ts";
 import { steerEffect, type SteerInputs } from "./steer-effect.ts";
 
 /** The play name — the registry key and the value stamped on every run-log record. */
@@ -104,16 +104,20 @@ export interface SteerOptions {
  * The IMPURE verb, identical to `assembleSurveyInputs` (Steer takes the same two inputs as Survey). Reuses
  * the EXPORTED `buildProjectSnapshot`/`listIdsIn`; a steer reads the BOARD state, not the src tree, so
  * `srcFiles` is empty (the heaviness of steer's read is the model's agentic file-reading during the live
- * cast, not the snapshot). NOT unit-tested (its logic is the pure formatter + thin fs reads).
+ * cast, not the snapshot). ALSO reads the root `SEED.md` intent TOLERANTLY (absent ⇒ undefined ⇒ no intent
+ * section ⇒ snapshot byte-identical — the `listIdsIn` tolerance precedent), the E-059 make-or-break wire:
+ * the seed's one line becomes a readable demand gradient inside the existing `{{ project }}` block. NOT
+ * unit-tested (its logic is the pure formatter + thin fs reads).
  */
 export async function assembleSteerInputs(opts: SteerOptions): Promise<SteerInputs> {
   const root = opts.projectRoot ?? process.cwd();
-  const [charter, stories, tickets] = await Promise.all([
+  const [charter, intent, stories, tickets] = await Promise.all([
     readFile(join(root, CHARTER_PATH), "utf8"),
+    readFile(join(root, SEED_PATH), "utf8").catch(() => undefined),
     listIdsIn(`${root}/docs/active/stories`),
     listIdsIn(`${root}/docs/active/tickets`),
   ]);
-  const project = buildProjectSnapshot({ root, srcFiles: [], stories, tickets });
+  const project = buildProjectSnapshot({ root, srcFiles: [], stories, tickets, intent });
   return { project, charter };
 }
 
