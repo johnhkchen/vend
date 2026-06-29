@@ -1,6 +1,6 @@
-# Retrospective — the E-055→E-060 arc + founding the kitchen phase (E-061)
+# Retrospective — the E-055→E-060 arc + founding the kitchen phase (2026-06-29 desk cycle)
 
-> The **E-061 deliverable**: a grounded retrospective on the recent build arc, capturing fixes + forward
+> The **retrospective desk-cycle deliverable** (not a minted epic): a grounded retrospective on the recent build arc, capturing fixes + forward
 > gaps as ranked demand (staged in `proposed-batch.md`). **Read-never-invent** — every finding cites
 > evidence (`.vend/runs.jsonl`, the `work/*/review.md` open-concerns, git, this session's friction).
 > Desk-only; promotion stays a human pull. Run 2026-06-29.
@@ -41,11 +41,11 @@ can't accumulate across devices/sessions. *Strategic — undercuts the Set-A mea
 **[F4] Fresh-device operability — secrets/keyring/topic/ledger are all per-device.** This session: a dead
 Doppler token silently killed notifications + failed casts; the ntfy topic is gitignored; another instance
 hit a keyring failure; the run-log is thin. Partly fixed (the `just setup` ntfy-topic recreation + the file
-fallback). *The pattern founds E-063's install story.*
+fallback). *The pattern founds E-061's install story.*
 
 ## Forward gaps (founding the kitchen phase)
 
-**[F5] No end-user install path** → **E-063** (brew + make-a-workspace). lisa's mirror is verified (compiled
+**[F5] No end-user install path** → **E-061** (brew + make-a-workspace). lisa's mirror is verified (compiled
 binary, tap, per-platform formula). Hard prerequisite for the kitchen MVP and every future user.
 
 **[F6] vend can't yet drive an EmDash / Astro-6 project** → **E-062** (the kitchen seed; the A3-for-EmDash
@@ -64,5 +64,5 @@ gesture. Surface it; don't build it now.
 ## Output
 
 Ranked into `proposed-batch.md` (this cycle). Strategic-first; the tactical fix (F2) auto-drains; promotion
-stays a human pull. The next pulls found the kitchen phase: **E-063 (install) ∥ E-062 (seed)**, with a cheap
+stays a human pull. The next pulls found the kitchen phase: **E-061 (install) ∥ E-062 (seed)**, with a cheap
 **live-verification drive (F1)** as the honest first move.

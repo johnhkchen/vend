@@ -2,7 +2,7 @@
 
 > **Desk planning doc** (the PM writes only to `pm/`). The strategic spine for vend's first
 > **sustained, real-stakes** dogfood: vend+lisa drive a couple's home-kitchen app, on the **cook/dev's
-> own repo**, EmDash-backed. Epics (E-061/062/063) are **pulled from here** via the board; this doc is
+> own repo**, EmDash-backed. Epics (E-061 install ∥ E-062 seed; the retrospective that surfaced them is a desk cycle, not an epic) are **pulled from here** via the board; this doc is
 > upstream of the pull. Grounded in: the live `johnhkchen/homebrew-lisa` formula, EmDash docs,
 > `demand.md` Frontier 7, and E-058/059/060.
 
@@ -75,23 +75,24 @@ app (optionally a remote box). This is the P4/P5 walk-away model, on the cook/de
 ## The epic arc (pulled from this plan)
 
 ```
-E-061  Retrospective + capture fixes
+[desk] Retrospective + capture fixes  (the 2026-06-29 desk cycle — surfaces demand, not a minted epic)
         backward: E-058/059/060 findings · forward gaps grounded by THIS initiative ▼
-            ├─ no end-user install path                → E-063
+            ├─ no end-user install path                → E-061
             ├─ vend can't yet drive an EmDash/Astro-6 project (the seed/template) → E-062
             └─ headless-operability when the human is remote from the dir
                  (notifications-as-status; budget/andon legible in review)
-E-062  Kitchen QuickStart seed + strategy (EmDash) ─┐  the X-2 production-bar example, real
-E-063  vend Homebrew distribution + "make a workspace" ─┤  the end-user install path
+E-061  vend Homebrew distribution + "make a workspace" ─┐  the end-user install path
+E-062  Kitchen QuickStart seed + strategy (EmDash) ──────┤  the X-2 production-bar example, real
                                                        ▼
         MVP — cook/dev installs vend, makes a workspace from the seed, drives → menu renders
 ```
 
-E-061 surfaces the demand; **E-062 (seed) ∥ E-063 (install)** are parallel prerequisites of the MVP (the
-seed can be authored while the install epic is built; the drive needs both). **Numbering is provisional**
-— pull-order ≠ ID-order (`demand.md`).
+The 2026-06-29 retrospective desk cycle surfaced the demand; **E-061 (install) ∥ E-062 (seed)** are
+parallel prerequisites of the MVP (the seed can be authored while the install epic is built; the drive
+needs both). **Numbering follows the board** — install minted as the next free ID; the retrospective is a
+desk cycle, not an epic, so it carries no number.
 
-## E-063 distribution spec — mirror lisa exactly (verified)
+## E-061 distribution spec — mirror lisa exactly (verified)
 
 **lisa's actual mechanism** (`johnhkchen/homebrew-lisa/Formula/lisa.rb`, lisa 0.3.0):
 - **Compiled per-platform binary** (`bun build --compile` → Mach-O, 2.5 MB), **4 targets**:
@@ -101,7 +102,7 @@ seed can be authored while the install epic is built; the drive needs both). **N
   extracts, `bin.install`. MIT, **no deps**, installs README/LICENSE/CHANGELOG. **No livecheck** (manual
   version bumps).
 
-**vend mirror (E-063 scope):**
+**vend mirror (E-061 scope):**
 - Compile vend to per-platform self-contained binaries (`bun build --compile`); tar.xz; name
   `vend-cli-<arch>-<os>.tar.xz`.
 - **Release CI** on the vend repo (build 4 assets + sha256) — **currently absent** (no `.github/workflows`).
@@ -130,6 +131,5 @@ seed can be authored while the install epic is built; the drive needs both). **N
 
 ## Status / next
 
-Upstream of the pull. When ready: raise the process-gate with a **retrospective** focus and pull **E-061**
-first; **E-062 ∥ E-063** follow. Nothing is minted to the board from here — promotion stays a deliberate
-human pull (`vend chain`).
+The retrospective desk cycle is done (`retrospective-2026-06-29.md`); pull **E-061 (install) ∥ E-062
+(seed)**. Nothing is minted to the board from here — promotion stays a deliberate human pull (`vend chain`).

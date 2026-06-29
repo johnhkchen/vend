@@ -1,10 +1,10 @@
-# Brief — Retrospective + capture fixes (the E-061 build spec)
+# Brief — Retrospective + capture fixes (the retrospective desk-cycle spec)
 
-> **Build-ready PM brief** for E-061, the deliberate retrospective that opens the kitchen-dogfood phase.
+> **Build-ready PM brief** for the deliberate retrospective that opens the kitchen-dogfood phase.
 > Looks **back** on the E-055→E-060 arc (visual surface → channel proof → fresh-seed clear) and **forward**
-> to what the kitchen dogfood (E-062/E-063, `pm/plan-kitchen-dogfood.md`) demands — capturing grounded
+> to what the kitchen dogfood (E-061 install ∥ E-062 seed, `pm/plan-kitchen-dogfood.md`) demands — capturing grounded
 > fixes + gaps as ranked demand signals. Desk-only; the captured batch stages to `proposed-batch.md`,
-> promotion stays a human pull. On pull this becomes **E-061**.
+> promotion stays a human pull. Run as a desk cycle (not minted as an epic).
 
 ## One-line intent
 
@@ -15,10 +15,10 @@ pullable batch that founds the kitchen-dogfood phase.
 ## Why now
 
 The arc E-055→E-060 shipped fast (the SVG surface, the non-dev channel proof, the fresh-seed clear), and
-the kitchen-dogfood planning (E-062/E-063) just surfaced concrete prerequisites. The loop **auto-drains
+the kitchen-dogfood planning (E-061 install ∥ E-062 seed) just surfaced concrete prerequisites. The loop **auto-drains
 tactical correctness fixes**, but the **bigger patterns and forward gaps** want a deliberate capture — and
-several are already *evidenced*, not speculative. E-061 grounds the install / EmDash-drive / headless gaps
-that E-062/E-063 depend on.
+several are already *evidenced*, not speculative. The retrospective grounds the install / EmDash-drive / headless gaps
+that E-061/E-062 depend on.
 
 ## What gets produced
 
@@ -40,7 +40,7 @@ history, accrued go-and-see friction. Already-evidenced items to fold in (not ex
 
 ### B. Forward capture — gaps the kitchen dogfood surfaces (grounded by the plan)
 
-- **No end-user install path** → founds **E-063** (brew + make-a-workspace).
+- **No end-user install path** → founds **E-061** (brew + make-a-workspace).
 - **vend can't yet drive an EmDash / Astro-6 project** → founds **E-062** (the seed; the A3-for-EmDash risk).
 - **Headless operability when the human is remote from the dir** — notifications-as-status, the SVG board
   as the glanceable read, budget/andon legible in a diff/PR review.
@@ -69,7 +69,7 @@ doc + the captured signals.)
 1. A grounded retrospective on E-055→E-060 is produced — citing real evidence (`.vend/runs.jsonl`, `work/`
    review artifacts, git history, go-and-see friction), not assumptions.
 2. Backward fixes captured as ranked signals — **including the loop commit-consistency finding**.
-3. Forward gaps for the kitchen dogfood captured + explicitly linked to **E-062 / E-063**.
+3. Forward gaps for the kitchen dogfood captured + explicitly linked to **E-062 / E-061**.
 4. The batch is staged to `proposed-batch.md` (desk); strategic-only (tactical auto-drained); honest-empty
    if flat; promotion stays a human pull.
 5. The `vend retrospect` play is recorded as a candidate (not built).

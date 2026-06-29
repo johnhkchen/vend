@@ -1,6 +1,6 @@
 # PM — Proposed batch (Retrospective cycle, synthesized 2026-06-29)
 
-> Output of the **E-061 retrospective** (`pm/retrospective-2026-06-29.md`). **Supersedes the visual-channel
+> Output of the **2026-06-29 retrospective desk cycle** (`pm/retrospective-2026-06-29.md`). **Supersedes the visual-channel
 > batch** (its pull, E-060, cleared + swept). Grounded in `.vend/runs.jsonl`, the recent `work/*/review.md`
 > open-concerns, git, and this session's friction. Signals un-elaborated (PE-6), ranked by leverage.
 > Promotion is a deliberate human pull.
@@ -15,7 +15,7 @@ next pull:
    evidence here and are human-deferred — so "it works live" is still pending. The cheapest, most honest
    next move is a **verification drive**, not more build.
 2. **The kitchen dogfood is the next phase, and its prerequisites are now grounded demand.** No end-user
-   install path (→ E-063) and no EmDash-drive capability (→ E-062) — the long-lived real-project dogfood
+   install path (→ E-061) and no EmDash-drive capability (→ E-062) — the long-lived real-project dogfood
    (`pm/plan-kitchen-dogfood.md`) is what the next pulls serve.
 3. **Long-lived + multi-device exposes the trust ledger (F3).** `.vend/runs.jsonl` is gitignored/per-device
    — the Set-A cadence can't accumulate across a transfer or a remote box.
@@ -33,19 +33,19 @@ while **closing the honesty gap (live-verify, Set A)**. Tactical fixes (F2 loop-
 - **Budget:** one small human-authorized metered drive (~$0.3–0.9, the T-058-05 shape).
 - **Note:** the kitchen MVP's first drive also supplies this — the hackathon seed is the cheaper close.
 
-### 2. E-063 — vend Homebrew distribution + "make a workspace" (F5) — **Keystone** ← recommended build pull
+### 2. E-061 — vend Homebrew distribution + "make a workspace" (F5) — **Keystone** ✓ PULLED 2026-06-29 → board **E-061**
 **Signal:** vend brew-installable mirroring lisa (compiled binary, tap, per-platform formula; package.json
 cleanup) + the workspace seam (`vend init --template`). The **end-user install path** — a hard prerequisite
 for the kitchen MVP and every future user.
 - **Advances:** P5; the OMTM's install leg. De-risked (lisa mirror verified, `bun --compile` spike green).
-- **Budget:** ~1–2 blocks. Spec: `pm/plan-kitchen-dogfood.md` (E-063). **Open input:** the cook/dev's
+- **Budget:** ~1–2 blocks. Spec: `pm/plan-kitchen-dogfood.md` (E-061). **Open input:** the cook/dev's
   OS/arch (first binary target).
 
 ### 3. E-062 — kitchen QuickStart seed on EmDash (F6) — **Keystone/High**
 **Signal:** the EmDash+Astro vend-wired seed; the first drive **clears the menu-render slice** (decision b)
 so the cook/dev's couple's menu renders. Precede with a **cheap A3-for-EmDash spike** (does steer rank a
 coherent board for an EmDash project?).
-- **Advances:** P2/P5; the kitchen MVP. Brief: `pm/brief-kitchen-emdash.md`. **Dep:** E-063 (install) +
+- **Advances:** P2/P5; the kitchen MVP. Brief: `pm/brief-kitchen-emdash.md`. **Dep:** E-061 (install) +
   E-060 (fresh-seed drivability, done).
 - **Budget:** ~1 block + the live drive. Risk: A3-for-EmDash (new stack) — spike first.
 
@@ -73,17 +73,16 @@ legible in diff/PR + SVG-as-remote-read remain); `EXPECTED-OUTCOME` → `src/pro
 
 ## Recommended next pull
 
-**#1 first (cheap honesty close), then #2 (E-063).** Run the live-verification drive to convert the Set-B
-round-trip from coded to live-proven (and accrue the first cleared forward-E1 here) — a small,
-human-authorized cast that closes the overstated sweep. Then pull **E-063 (Homebrew)**, the de-risked
-end-user install path every kitchen-dogfood drive depends on; **E-062 (the seed)** follows after a cheap
-A3-for-EmDash spike. Signal strings for the build pulls:
+**#2 (E-061 Homebrew) is now PULLED** — minted to the board on 2026-06-29 (`vend chain`, propose→decompose,
+all gates green; 5 stories / 8 tickets), ready for lisa's loop. Remaining: **#1** the cheap honesty-close
+verification drive (run when ready to spend the metered budget), then **#3 E-062 (the seed)** after a cheap
+A3-for-EmDash spike. The E-061 signal string below is retained for the trail. Signal strings for the build pulls:
 
 ```
-vend chain "vend Homebrew distribution + make-a-workspace — make vend brew-installable mirroring lisa exactly (compiled per-platform binary via bun build --compile, a tap formula, package.json cleanup: drop private, real semver, add bin) and extend the vend init --template seam so a brew-installed vend lays down a workspace. The end-user install path — a hard prerequisite for the kitchen dogfood and every future user. Mirror johnhkchen/homebrew-lisa; ship the cook/dev's platform (arm64-mac) first. Spec: pm/plan-kitchen-dogfood.md (E-063)."
+vend chain "vend Homebrew distribution + make-a-workspace — make vend brew-installable mirroring lisa exactly (compiled per-platform binary via bun build --compile, a tap formula, package.json cleanup: drop private, real semver, add bin) and extend the vend init --template seam so a brew-installed vend lays down a workspace. The end-user install path — a hard prerequisite for the kitchen dogfood and every future user. Mirror johnhkchen/homebrew-lisa; ship the cook/dev's platform (arm64-mac) first. Spec: pm/plan-kitchen-dogfood.md (E-061)."
 ```
 ```
-vend chain "Kitchen QuickStart seed on EmDash — a clone-and-drive EmDash+Astro vend-wired seed with a Dish content type and an intentionally-stubbed storefront menu, where vend's first drive CLEARS the menu-render slice (decision b) so the cook/dev's couple's menu renders. Precede with a cheap A3-for-EmDash spike. Depends on E-063 (install) + E-060 (fresh-seed drivability). Brief: pm/brief-kitchen-emdash.md (E-062)."
+vend chain "Kitchen QuickStart seed on EmDash — a clone-and-drive EmDash+Astro vend-wired seed with a Dish content type and an intentionally-stubbed storefront menu, where vend's first drive CLEARS the menu-render slice (decision b) so the cook/dev's couple's menu renders. Precede with a cheap A3-for-EmDash spike. Depends on E-061 (install) + E-060 (fresh-seed drivability). Brief: pm/brief-kitchen-emdash.md (E-062)."
 ```
 
 _Staged, not promoted (PE-1 / IA-5). A human pulls; the clearing play mints the real epics. The PM writes

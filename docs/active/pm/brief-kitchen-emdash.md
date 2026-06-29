@@ -60,7 +60,7 @@ media library). The cook fills real dishes via the admin; **vend builds the rend
 ## The drive (the cook/dev's path)
 
 ```
-brew install johnhkchen/lisa/lisa johnhkchen/vend/vend     # vend installable — depends on E-063
+brew install johnhkchen/lisa/lisa johnhkchen/vend/vend     # vend installable — depends on E-061
 git clone <kitchen-seed> my-kitchen && cd my-kitchen        # or `vend init --template kitchen my-kitchen`
 claude login                                                # their own Claude Code login (no Doppler)
 vend init && vend doctor                                    # vend layer + green preflight
@@ -85,7 +85,7 @@ vend work                                                   # → CLEARS the ren
 
 ## Dependencies & risks
 
-- **Dep — E-063** (brew-installable vend + `make a workspace`). The cook/dev installs via brew; without it
+- **Dep — E-061** (brew-installable vend + `make a workspace`). The cook/dev installs via brew; without it
   there's no clean install path. Parallel prerequisite.
 - **Dep — E-060** (fresh-seed graceful-degrade + cold-start budget). The cook/dev's repo has **no
   `codebase-memory-mcp`** and a cold-start budget — exactly E-060's two fixes. **E-060 is a prerequisite
@@ -111,5 +111,5 @@ vend work                                                   # → CLEARS the ren
    slice on top? (The make-or-break A3-for-EmDash moment.)
 2. Does **EmDash v0.1** scaffold + run on the seed — admin, the `Dish` content type, the media library —
    from a fresh clone? Reproduce on a sandbox.
-3. Does a **brew-installed** vend (E-063) drive the seed cleanly on the cook/dev's repo with *their* Claude
+3. Does a **brew-installed** vend (E-061) drive the seed cleanly on the cook/dev's repo with *their* Claude
    login and **no Doppler**?

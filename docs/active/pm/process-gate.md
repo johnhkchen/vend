@@ -26,7 +26,7 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
-_**Retrospective cycle (E-061) — PROCESSED 2026-06-29 (gate consumed, one-shot).**_
+_**Retrospective desk cycle (2026-06-29) — PROCESSED (gate consumed, one-shot).**_
 
 Ran the deliberate retrospective on the E-055→E-060 arc + the kitchen-phase founding
 (`retrospective-2026-06-29.md`), synthesized into `proposed-batch.md` (supersedes the visual-channel batch,
@@ -35,7 +35,7 @@ but NOT live-verified on this device — the closing E-059/E-060 live drives hav
 (`.vend/runs.jsonl` holds 3 records) and are human-deferred per the T-059-03 review; the sweep
 crystallization should be softened + one verification drive run. Also captured: loop commit-consistency (F2,
 resolved at sweep), the gitignored trust ledger doesn't transfer (F3), the fresh-device operability pattern
-(F4). Forward gaps found the kitchen phase: **E-063 (install) ∥ E-062 (seed)**, with a cheap
+(F4). Forward gaps found the kitchen phase: **E-061 (install) ∥ E-062 (seed)**, with a cheap
 live-verification drive as the honest first move. Promotion stays a human pull.
 
 ---
