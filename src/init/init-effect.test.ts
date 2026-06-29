@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { countDemandRows, SCAFFOLD_MANIFEST, type ScaffoldEntry } from "./init-core.ts";
+import { countDemandRows, resolveTemplate, SCAFFOLD_MANIFEST, type ScaffoldEntry } from "./init-core.ts";
 import { applyInitScaffold, runInit } from "./init-effect.ts";
 
 // T-040-02: the guarded-live proof for the scaffold WRITE EFFECT — an ordinary `bun test`
@@ -311,5 +311,89 @@ describe("runInit — template overlay (T-058-01)", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+// T-059-02: the tuned-charter override through `runInit(root, "hackathon")`. Same guarded-live temp-dir
+// discipline. The charter rides the SAME write-if-absent / no-clobber path SEED.md does, so these pins
+// confirm the EFFECT (the pure override is pinned in init-core.test.ts): the template writes the tuned
+// charter where steer reads it; bare init still writes the generic stub there; idempotent + no-clobber
+// hold; and the inlined `HACKATHON_CHARTER` stays byte-equal to its authored source (the drift guard).
+describe("runInit — tuned charter overlay (T-059-02)", () => {
+  const CHARTER = "docs/knowledge/charter.md";
+  /** The overlay's tuned charter contents — the bytes the template must land at CHARTER. */
+  const tunedCharter = resolveTemplate("hackathon")?.find(
+    (e): e is Extract<ScaffoldEntry, { kind: "file" }> => e.kind === "file" && e.path === CHARTER,
+  )?.contents;
+  /** The base scaffold's generic stub — what bare `vend init` must still write there (E-040 parity). */
+  const stubCharter = SCAFFOLD_MANIFEST.find(
+    (e): e is Extract<ScaffoldEntry, { kind: "file" }> => e.kind === "file" && e.path === CHARTER,
+  )?.contents;
+
+  test("the overlay + base both expose a charter entry (guards the consts these tests assert on)", () => {
+    expect(tunedCharter).toBeDefined();
+    expect(stubCharter).toBeDefined();
+  });
+
+  test("`--template hackathon` writes the TUNED charter to docs/knowledge/charter.md (not the stub)", async () => {
+    const root = await seedBareLisa();
+    try {
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      const written = await readFile(join(root, CHARTER), "utf8");
+      expect(written).toBe(tunedCharter!);
+      expect(written).not.toBe(stubCharter!);
+      expect(outcome.result.created).toContain(CHARTER);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bare runInit still writes the GENERIC stub there (bare `vend init` byte-identical to E-040)", async () => {
+    const root = await seedBareLisa();
+    try {
+      await runInit(root);
+      expect(await readFile(join(root, CHARTER), "utf8")).toBe(stubCharter!);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a second template run is idempotent — the charter among the skips, content unchanged", async () => {
+    const root = await seedBareLisa();
+    try {
+      await runInit(root, "hackathon");
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      expect(outcome.result.created).toEqual([]);
+      expect(outcome.result.skipped).toContain(CHARTER);
+      expect(await readFile(join(root, CHARTER), "utf8")).toBe(tunedCharter!);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a user-edited charter is left byte-identical (no clobber — never overwrites a tuned charter)", async () => {
+    const root = await seedBareLisa();
+    const edited = "# MY OWN VALUE FUNCTION\n\nGrade against this, not the template.\n";
+    try {
+      await mkdir(join(root, "docs/knowledge"), { recursive: true });
+      await writeFile(join(root, CHARTER), edited, "utf8");
+      const outcome = await runInit(root, "hackathon");
+      expect(outcome.kind).toBe("scaffolded");
+      // the edit survives — the overlay never overwrites an existing charter.
+      expect(await readFile(join(root, CHARTER), "utf8")).toBe(edited);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("drift guard — the inlined HACKATHON_CHARTER is byte-equal to its authored source", async () => {
+    // The overlay constant is a hand-shipped mirror of the example seed's charter; this keeps them in
+    // sync. If the example file is edited (or removed), this fails loudly — the correct signal.
+    const seedCharter = await readFile("examples/templates/hackathon-seed/charter.md", "utf8");
+    expect(tunedCharter!).toBe(seedCharter);
   });
 });

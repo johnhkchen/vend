@@ -247,3 +247,59 @@ describe("TEMPLATE_REGISTRY — a trivial, honest-empty registry (T-058-01)", ()
     }
   });
 });
+
+// ── T-059-02: the hackathon overlay's TUNED CHARTER override (pure, data-layer) ───────────────
+
+// The coupled-charter close: the hackathon overlay now carries a `docs/knowledge/charter.md` entry
+// (the demonstrable-slice value function) that OVERRIDES the base `CHARTER_STUB` via `mergeManifests`
+// — so a fresh seed is graded against the hackathon charter, where `vend steer` reads it. These pins
+// stay fs-free (the byte-equality-to-the-seed-file drift guard lives in the fs-capable effect test).
+
+/** The base scaffold's charter slot — bare `vend init` ships THIS (must stay the generic stub). */
+const baseCharter = SCAFFOLD_MANIFEST.find(
+  (e): e is Extract<ScaffoldEntry, { kind: "file" }> =>
+    e.kind === "file" && e.path === "docs/knowledge/charter.md",
+);
+/** The hackathon overlay's charter override entry. */
+const overlayCharter = resolveTemplate("hackathon")?.find(
+  (e): e is Extract<ScaffoldEntry, { kind: "file" }> =>
+    e.kind === "file" && e.path === "docs/knowledge/charter.md",
+);
+
+describe("hackathon overlay — the tuned charter override (T-059-02)", () => {
+  test("the overlay carries a docs/knowledge/charter.md entry that is NOT the base stub", () => {
+    expect(overlayCharter).toBeDefined();
+    expect(baseCharter).toBeDefined();
+    // the override is real content, distinct from the generic base stub.
+    expect(overlayCharter!.contents).not.toBe(baseCharter!.contents);
+    // and it IS the demonstrable-slice value function (assert on the right content, not just "non-stub").
+    expect(overlayCharter!.contents).toContain("demonstrable runnable slice");
+    expect(overlayCharter!.contents).toContain("Demo-advancing");
+  });
+
+  test("mergeManifests lets the tuned charter win over CHARTER_STUB in the base's slot", () => {
+    const merged = mergeManifests(SCAFFOLD_MANIFEST, resolveTemplate("hackathon")!);
+    const mergedCharter = merged.find((e) => e.path === "docs/knowledge/charter.md");
+    expect(mergedCharter && mergedCharter.kind === "file" ? mergedCharter.contents : null).toBe(
+      overlayCharter!.contents,
+    );
+    // the charter OVERRIDES in place (does not append); only SEED.md is overlay-only ⇒ +1 entry.
+    expect(merged.length).toBe(SCAFFOLD_MANIFEST.length + 1);
+  });
+
+  test("planTemplate creates the charter slot with the tuned contents", () => {
+    const plan = planTemplate([], SCAFFOLD_MANIFEST, resolveTemplate("hackathon")!);
+    const created = plan.creates.find((e) => e.path === "docs/knowledge/charter.md");
+    expect(created && created.kind === "file" ? created.contents : null).toBe(overlayCharter!.contents);
+  });
+
+  test("the tuned charter is honest-empty — zero demand rows", () => {
+    expect(countDemandRows(overlayCharter!.contents)).toBe(0);
+  });
+
+  test("the BASE manifest still ships the generic stub (bare `vend init` unchanged)", () => {
+    // the override lives ONLY in the overlay; the base slot is untouched, so bare init is E-040-identical.
+    expect(baseCharter!.contents).toContain("author your project's");
+    expect(baseCharter!.contents).not.toContain("demonstrable runnable slice");
+  });
+});
