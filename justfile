@@ -18,22 +18,36 @@ default:
 
 # Idempotent — safe to re-run. Interactive logins (doppler, claude) are checked
 # and guided, never forced; the manual fallback lives in this recipe / README.md.
-# One-gesture fresh-device setup: deps, Doppler config, git hooks, verify the gate.
+# One-gesture fresh-device setup: deps, Doppler config, git hooks, notify topic, verify the gate.
 setup:
     #!/usr/bin/env sh
     set -e
     for t in bun doppler; do
       command -v "$t" >/dev/null 2>&1 || { echo "✗ missing required tool: $t — install it, then re-run \`just setup\`"; exit 1; }
     done
-    echo "▸ 1/5  Doppler auth"
+    echo "▸ 1/6  Doppler auth"
     doppler me >/dev/null 2>&1 || { echo "  ✗ not logged in — run:  doppler login   then re-run \`just setup\`"; exit 1; }
-    echo "▸ 2/5  bun install"
+    echo "▸ 2/6  bun install"
     bun install
-    echo "▸ 3/5  Doppler config (project: vend, config: dev)"
+    echo "▸ 3/6  Doppler config (project: vend, config: dev)"
     doppler setup --no-interactive
-    echo "▸ 4/5  git hooks (test-green pre-commit)"
+    echo "▸ 4/6  git hooks (test-green pre-commit)"
     bun run hooks:install
-    echo "▸ 5/5  verify the gate under Doppler"
+    echo "▸ 5/6  lisa notify topic (.lisa/hooks/ntfy-topic — keyring/Doppler-independent pushes)"
+    if [ -f .lisa/hooks/ntfy-topic ]; then
+      echo "  ✓ already present — leaving as-is"
+    elif [ -d .lisa/hooks ]; then
+      topic=$(doppler secrets get LISA_NTFY_TOPIC --plain 2>/dev/null | head -n1 | tr -d '[:space:]' || true)
+      if [ -n "$topic" ]; then
+        (umask 177; printf '%s\n' "$topic" > .lisa/hooks/ntfy-topic)
+        echo "  ✓ wrote .lisa/hooks/ntfy-topic from Doppler (gitignored, 0600)"
+      else
+        echo "  ℹ no LISA_NTFY_TOPIC in Doppler — skipping (lisa notifications stay a no-op)"
+      fi
+    else
+      echo "  ℹ no .lisa/hooks dir (run \`lisa init\`) — skipping notify topic"
+    fi
+    echo "▸ 6/6  verify the gate under Doppler"
     doppler run -- bun run check
     if command -v claude >/dev/null 2>&1; then
       echo "ℹ claude CLI present — for live drives ensure you've run:  claude login"
