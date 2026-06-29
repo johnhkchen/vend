@@ -64,17 +64,29 @@ export function resolveMaxTurns(override: number | undefined, dflt: number | und
  *   `tools` absent, `tools: {}`, `tools: {skills}`, or `tools: {deny}`) ⇒ inherit the global MCP
  *   set, emit no scoping flags (byte-identical back-compat), and emit `--disallowedTools` ONLY when
  *   `deny` is non-empty. A deny-only declaration lands here — it denies without locking down.
- * - `{ ok: true, mcp, allowedTools, deny, strict: true }` — the play declared `mcp` or `allow` and
- *   every required MCP id is present ⇒ emit `--mcp-config` (the `mcp` ids), `--allowedTools`,
- *   `--strict-mcp-config`, and (when non-empty) `--disallowedTools`. Declaring an allowlist/MCP is
- *   what opts into strict least-privilege.
+ * - `{ ok: true, mcp, allowedTools, deny, strict: true, reducedGrounding }` — the play declared
+ *   `mcp`/`optionalMcp`/`allow` and every REQUIRED MCP id is present ⇒ emit `--mcp-config` (the
+ *   scoped `mcp` ids), `--allowedTools`, `--strict-mcp-config`, and (when non-empty)
+ *   `--disallowedTools`. Declaring an allowlist/MCP is what opts into strict least-privilege.
+ *   `mcp` carries the required ids PLUS any OPTIONAL ids that were present; `reducedGrounding` is
+ *   `true` when ≥1 declared `optionalMcp` id was ABSENT and so dropped from the scoped set (E-060
+ *   #3, T-060-01-01) — the honest signal that the cast runs with reduced grounding. It rides the
+ *   resolution so the run record (T-060-01-02) can mark a degraded clear; `false` on every fully
+ *   grounded strict result (including plays declaring no optional MCP).
  * - `{ ok: false, missing }` — the play declared `mcp` but one or more REQUIRED ids are absent from
  *   `available` ⇒ the missing-MCP andon (T-032-02 refuses to dispense rather than silently inherit
  *   the wrong tool set). `deny` is irrelevant on an andon (nothing is dispensed).
  */
 export type ResolvedTools =
   | { readonly ok: true; readonly passthrough: true; readonly deny: readonly string[] }
-  | { readonly ok: true; readonly mcp: readonly string[]; readonly allowedTools: readonly string[]; readonly deny: readonly string[]; readonly strict: true }
+  | {
+      readonly ok: true;
+      readonly mcp: readonly string[];
+      readonly allowedTools: readonly string[];
+      readonly deny: readonly string[];
+      readonly strict: true;
+      readonly reducedGrounding: boolean;
+    }
   | { readonly ok: false; readonly missing: readonly string[] };
 
 /**
@@ -83,28 +95,46 @@ export type ResolvedTools =
  * T-032-02); this is a decision, not I/O, exactly as {@link resolveMaxTurns} takes its numbers
  * rather than reaching for config. Outcomes (see {@link ResolvedTools}):
  * - UNDECLARED play (`declared` undefined) → passthrough, `deny: []`.
- * - DECLARED but SCOPES nothing (no `mcp`/`allow` — e.g. `{}`, `{skills}`, or `{deny}`) →
- *   passthrough carrying `deny`. Declaring a denylist alone does NOT opt into strict: `deny` is a
- *   subtractive filter, independent of the allowlist, so a deny-only play keeps its global MCP set.
- * - DECLARED `mcp`/`allow` with required `mcp` all present → the strict flags result, carrying `deny`.
- * - DECLARED `mcp` missing one or more required ids → the andon (`missing` lists the absent ids in
- *   declared order).
+ * - DECLARED but SCOPES nothing (no `mcp`/`optionalMcp`/`allow` — e.g. `{}`, `{skills}`, or
+ *   `{deny}`) → passthrough carrying `deny`. Declaring a denylist alone does NOT opt into strict:
+ *   `deny` is a subtractive filter, independent of the allowlist, so a deny-only play keeps its
+ *   global MCP set.
+ * - DECLARED `mcp`/`optionalMcp`/`allow` with required `mcp` all present → the strict flags result,
+ *   carrying `deny`. The scoped `mcp` = required ids + any `optionalMcp` ids that were PRESENT;
+ *   `reducedGrounding` is `true` iff ≥1 `optionalMcp` id was ABSENT (dropped, not andoned —
+ *   E-060 #3, T-060-01-01).
+ * - DECLARED `mcp` (REQUIRED) missing one or more ids → the andon (`missing` lists the absent ids in
+ *   declared order). An absent `optionalMcp` id NEVER andons — it degrades. The andon is reserved
+ *   for genuinely required capabilities (IA-17).
  * `skills` is CARRIED on the contract but NOT consulted here (scope cut). Returns fresh arrays so
  * the result never aliases the play's frozen literals.
  */
 export function resolveTools(declared: PlayTools | undefined, available: readonly string[]): ResolvedTools {
   if (declared === undefined) return { ok: true, passthrough: true, deny: [] };
   const deny = [...(declared.deny ?? [])];
-  const required = declared.mcp ?? [];
   const have = new Set(available);
+  const required = declared.mcp ?? [];
   const missing = required.filter((id) => !have.has(id));
   if (missing.length > 0) return { ok: false, missing };
-  // Strict least-privilege is opted into by declaring an allowlist/MCP — NOT by declaring a denylist
-  // alone (deny is subtractive and orthogonal). A declaration that scopes nothing (no `mcp`/`allow`)
-  // stays passthrough and only carries its `deny` forward.
-  const scopes = declared.mcp !== undefined || declared.allow !== undefined;
+  // Optional grounding MCP (E-060 #3): a present optional id is scoped exactly like a required one;
+  // an absent one is DROPPED from the scoped set and flips `reducedGrounding` — a degrade, not an
+  // andon. So a fresh seed without codebase-memory-mcp clears with reduced grounding.
+  const optional = declared.optionalMcp ?? [];
+  const presentOptional = optional.filter((id) => have.has(id));
+  const reducedGrounding = presentOptional.length < optional.length;
+  // Strict least-privilege is opted into by declaring an allowlist/MCP (required OR optional) — NOT
+  // by declaring a denylist alone (deny is subtractive and orthogonal). A declaration that scopes
+  // nothing stays passthrough and only carries its `deny` forward.
+  const scopes = declared.mcp !== undefined || declared.optionalMcp !== undefined || declared.allow !== undefined;
   if (!scopes) return { ok: true, passthrough: true, deny };
-  return { ok: true, mcp: [...required], allowedTools: [...(declared.allow ?? [])], deny, strict: true };
+  return {
+    ok: true,
+    mcp: [...required, ...presentOptional],
+    allowedTools: [...(declared.allow ?? [])],
+    deny,
+    strict: true,
+    reducedGrounding,
+  };
 }
 
 /** The seam flags a resolved cast threads into `dispense`/`buildArgs` (E-032, T-032-02; E-051

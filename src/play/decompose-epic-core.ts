@@ -54,9 +54,13 @@ export const DECOMPOSE_MAX_TURNS = 15;
  * Lives in the addon-free core (the `DECOMPOSE_MAX_TURNS` precedent) so the live-proof argv test
  * reads it WITHOUT loading the BAML addon.
  *
- *  - `mcp: ["codebase-memory-mcp"]` — the codebase-memory server the E-031 tickets wired by hand
- *    into context; the play now DECLARES it, so the cast scopes exactly it in (and andons if the
- *    project registry lacks it). With strict scoping this admits ONLY this server.
+ *  - `optionalMcp: ["codebase-memory-mcp"]` — the codebase-memory grounding server the E-031 tickets
+ *    wired by hand into context. RECLASSIFIED from required to OPTIONAL (E-060 #3, T-060-01-01):
+ *    present ⇒ the cast scopes exactly it in (byte-identical to the prior required behavior); ABSENT
+ *    ⇒ the cast DEGRADES — it proceeds with the read-only built-ins below and flips the resolution's
+ *    `reducedGrounding` flag rather than firing the missing-capability andon. The make-or-break
+ *    steer→board path never needs the MCP, and requiring it raised fresh-seed onboarding friction
+ *    against P2/P5, so a fresh seed without the server now clears with reduced grounding.
  *  - `allow: ["Read", "Grep", "Glob"]` — read-only built-ins. The decompose agent reasons by
  *    READING the board/epic/charter and searching the codebase ("go and see"); the play's WRITES
  *    are its own `effect` (materialize), not the agent's. Least privilege: read to reason, the
@@ -66,7 +70,7 @@ export const DECOMPOSE_MAX_TURNS = 15;
  *    a mid-decompose question. The subtractive denylist rides alongside the strict allowlist above.
  */
 export const DECOMPOSE_TOOLS: PlayTools = {
-  mcp: ["codebase-memory-mcp"],
+  optionalMcp: ["codebase-memory-mcp"],
   allow: ["Read", "Grep", "Glob"],
   deny: AUTONOMOUS_DENY,
 };

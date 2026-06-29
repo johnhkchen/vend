@@ -199,9 +199,11 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   // behind decompose's ~85–95k token tail (E-014 E2). Generous over the 1–7-turn clean band;
   // the per-cast override (CastOptions.maxTurns) still wins. Justified at DECOMPOSE_MAX_TURNS.
   maxTurns: DECOMPOSE_MAX_TURNS,
-  // Per-play tool provisioning (E-032, T-032-02): scope this cast to ONLY the codebase-memory
-  // MCP + read-only built-ins (strict least privilege). Resolved at cast by `resolveTools`;
-  // a project registry missing codebase-memory-mcp andons before dispense. See DECOMPOSE_TOOLS.
+  // Per-play tool provisioning (E-032, T-032-02): scope this cast to the codebase-memory MCP
+  // (OPTIONAL grounding, E-060 #3) + read-only built-ins (strict least privilege). Resolved at
+  // cast by `resolveTools`; a project registry missing codebase-memory-mcp does NOT andon — the
+  // cast degrades, proceeding with the read-only built-ins and a reduced-grounding flag (so a
+  // fresh seed still clears). See DECOMPOSE_TOOLS.
   tools: DECOMPOSE_TOOLS,
   card: { color: ["blue", "white"], type: "permanent", rarity: "mythic" } satisfies Card,
 };

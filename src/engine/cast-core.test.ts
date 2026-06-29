@@ -168,12 +168,70 @@ describe("resolveTools — pure per-play MCP/tool resolution (T-032-01; E-051 de
       allowedTools: ["Read"],
       deny: [],
       strict: true,
+      reducedGrounding: false,
     });
   });
 
   test("declared + a required mcp absent ⇒ andon listing the missing ids in declared order", () => {
     expect(resolveTools({ mcp: ["a", "z"] }, ["a"])).toEqual({ ok: false, missing: ["z"] });
     expect(resolveTools({ mcp: ["z", "a", "y"] }, ["a"])).toEqual({ ok: false, missing: ["z", "y"] });
+  });
+
+  // ── Optional MCP grounding (E-060 #3, T-060-01-01) ───────────────────────────────────────
+  test("optional mcp PRESENT ⇒ scoped in like a required one, reducedGrounding false", () => {
+    expect(resolveTools({ optionalMcp: ["a"], allow: ["Read"] }, ["a", "b"])).toEqual({
+      ok: true,
+      mcp: ["a"],
+      allowedTools: ["Read"],
+      deny: [],
+      strict: true,
+      reducedGrounding: false,
+    });
+  });
+
+  test("optional mcp ABSENT ⇒ dropped (NOT andon), strict with reducedGrounding true", () => {
+    expect(resolveTools({ optionalMcp: ["a"], allow: ["Read"] }, [])).toEqual({
+      ok: true,
+      mcp: [],
+      allowedTools: ["Read"],
+      deny: [],
+      strict: true,
+      reducedGrounding: true,
+    });
+  });
+
+  test("mix: required present + optional absent ⇒ strict, mcp=[required], reducedGrounding true", () => {
+    expect(resolveTools({ mcp: ["a"], optionalMcp: ["z"], allow: ["Read"] }, ["a"])).toEqual({
+      ok: true,
+      mcp: ["a"],
+      allowedTools: ["Read"],
+      deny: [],
+      strict: true,
+      reducedGrounding: true,
+    });
+  });
+
+  test("REQUIRED still andons even alongside an optional id (reclassification did not erase the STOP)", () => {
+    expect(resolveTools({ mcp: ["z"], optionalMcp: ["a"] }, ["a"])).toEqual({ ok: false, missing: ["z"] });
+  });
+
+  test("optional-only declaration opts into strict (present ⇒ scoped; absent ⇒ degrade)", () => {
+    expect(resolveTools({ optionalMcp: ["a"] }, ["a"])).toEqual({
+      ok: true,
+      mcp: ["a"],
+      allowedTools: [],
+      deny: [],
+      strict: true,
+      reducedGrounding: false,
+    });
+    expect(resolveTools({ optionalMcp: ["a"] }, [])).toEqual({
+      ok: true,
+      mcp: [],
+      allowedTools: [],
+      deny: [],
+      strict: true,
+      reducedGrounding: true,
+    });
   });
 
   test("scopes-nothing declaration ({}) ⇒ passthrough (no mcp/allow ⇒ no strict lockdown), deny []", () => {
@@ -189,6 +247,7 @@ describe("resolveTools — pure per-play MCP/tool resolution (T-032-01; E-051 de
       allowedTools: ["Read", "Grep"],
       deny: [],
       strict: true,
+      reducedGrounding: false,
     });
   });
 
@@ -214,6 +273,7 @@ describe("resolveTools — pure per-play MCP/tool resolution (T-032-01; E-051 de
       allowedTools: ["Read"],
       deny: ["AskUserQuestion"],
       strict: true,
+      reducedGrounding: false,
     });
   });
 
@@ -256,6 +316,14 @@ describe("toolFlags — resolved tools → seam argv flags (T-032-02)", () => {
 
   test("scopes-nothing declaration ({}) ⇒ {} (passthrough, no deny ⇒ no flags)", () => {
     expect(toolFlags(resolveTools({}, ["a"]), PATH)).toEqual({});
+  });
+
+  test("degraded (optional mcp absent) ⇒ strict + allow, NO mcpConfig (E-060 #3)", () => {
+    // reducedGrounding rides the resolution but does not change the argv projection: with the
+    // optional server dropped, the scoped mcp set is empty so no --mcp-config is emitted.
+    const r = toolFlags(resolveTools({ optionalMcp: ["a"], allow: ["Read"] }, []), PATH);
+    expect(r).toEqual({ allowedTools: ["Read"], strictMcp: true });
+    expect(r.mcpConfig).toBeUndefined();
   });
 
   test("multiple declared servers ⇒ one mcp__<id> wildcard each, in declared order", () => {
@@ -314,11 +382,26 @@ describe("decompose-epic tool-scoping LIVE PROOF — built argv, no cast (T-032-
     expect(argv).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
   });
 
-  test("ABSENT MCP (registry lacks codebase-memory) ⇒ the missing-capability andon, no flags", () => {
-    const resolved = resolveTools(DECOMPOSE_TOOLS, []); // empty/unbound project registry
-    expect(resolved).toEqual({ ok: false, missing: ["codebase-memory-mcp"] });
-    // and the defensive projection emits nothing (castPlay andons before dispense)
-    expect(buildArgs(toolFlags(resolved, PATH))).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
+  test("ABSENT optional MCP (registry lacks codebase-memory) ⇒ DEGRADE w/ reduced grounding, NOT andon (E-060 #3)", () => {
+    const resolved = resolveTools(DECOMPOSE_TOOLS, []); // fresh seed — no .mcp.json / no codebase-memory
+    // The reclassification: codebase-memory-mcp is OPTIONAL, so its absence degrades rather than andoning.
+    expect(resolved).toEqual({
+      ok: true,
+      mcp: [], // the optional server is dropped from the scoped set
+      allowedTools: ["Read", "Grep", "Glob"], // the read-only built-ins still ground the cast
+      deny: ["AskUserQuestion"],
+      strict: true,
+      reducedGrounding: true, // the honest flag the run record (T-060-01-02) threads
+    });
+    // The projected argv completes with the reduced-grounding tools: read-only built-ins + strict,
+    // but NO --mcp-config and NO codebase-memory wildcard (the absent server is not scoped).
+    const argv = buildArgs(toolFlags(resolved, PATH));
+    const ai = argv.indexOf("--allowedTools");
+    expect(ai).toBeGreaterThan(-1);
+    expect(argv[ai + 1]).toBe("Read,Grep,Glob");
+    expect(argv).toContain("--strict-mcp-config");
+    expect(argv).not.toContain("--mcp-config");
+    expect(argv.join(",")).not.toContain("mcp__codebase-memory-mcp");
   });
 });
 

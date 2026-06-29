@@ -123,6 +123,13 @@ export interface EffectResult {
  * - `mcp` — the MCP server ids the play REQUIRES. At cast (T-032-02) the project's available
  *   ids are matched against these; any required id absent raises the missing-MCP andon rather
  *   than silently inheriting the wrong set.
+ * - `optionalMcp` — MCP server ids the play uses for GROUNDING but can run WITHOUT (E-060 #3,
+ *   T-060-01-01). A present optional server is scoped EXACTLY like a required one (same
+ *   `--mcp-config` + `mcp__<id>` wildcard); an ABSENT optional server is dropped from the
+ *   scoped set and flips the resolution's `reducedGrounding` flag instead of andoning — the
+ *   cast proceeds with reduced grounding (the play's read-only built-ins) rather than halting,
+ *   so a fresh seed without the server still clears (P2/P5 onboarding friction). Declaring
+ *   `optionalMcp` opts the cast into strict scoping, same as `mcp`/`allow`.
  * - `allow` — the built-in tool allowlist (e.g. `"Read"`, `"Grep"`) → `--allowedTools`.
  * - `deny` — the built-in tool DENYLIST (e.g. `"AskUserQuestion"`) → `--disallowedTools` (E-051).
  *   ORTHOGONAL to `allow`/`mcp`: a SUBTRACTIVE filter that needs no allowlist and does NOT opt the
@@ -134,6 +141,7 @@ export interface EffectResult {
  */
 export interface PlayTools {
   readonly mcp?: readonly string[];
+  readonly optionalMcp?: readonly string[];
   readonly allow?: readonly string[];
   readonly deny?: readonly string[];
   readonly skills?: readonly string[];
