@@ -105,12 +105,21 @@ desk cycle, not an epic, so it carries no number.
 **vend mirror (E-061 scope):**
 - Compile vend to per-platform self-contained binaries (`bun build --compile`); tar.xz; name
   `vend-cli-<arch>-<os>.tar.xz`.
-- **Release CI** on the vend repo (build 4 assets + sha256) — **currently absent** (no `.github/workflows`).
+- **Release CI** on the vend repo (build the asset + sha256) — **landed by the loop** (`release.yml` +
+  `release-target-check.yml`, `runs-on: macos-14`, single-target per MVP scope; was absent at planning).
 - A `vend.rb` formula in a tap (a parallel `johnhkchen/homebrew-vend`, mirroring lisa's own-tap pattern).
 - **package.json cleanup:** drop `private: true`, real semver (currently `0.0.0`), add `bin`.
 - **"make a workspace":** extend the existing **`vend init --template <name>`** seam (E-058) so a
   brew-installed vend lays down the kitchen seed/workspace — **not** a new command. The cook/dev brings
   their own `claude login`; **no Doppler** (that's our-repo-only).
+- **Verification — the install-availability gate (batch signal #7):** a `macos-14` GitHub Actions job
+  (clean arm64 runner, **no `actions/checkout`** so "no clone" is enforced) runs the real
+  `brew install johnhkchen/vend/vend` → `vend --version` (real semver) → `vend init --template` in a
+  `mktemp -d`; `workflow_dispatch` + weekly `schedule` makes it a standing availability monitor, not a
+  one-time transcript. Pre-publish tier (`brew audit`/`style` + install from a local `file://` tarball,
+  which also proves the BAML-bundled binary runs standalone) rides with the epic; the real-tap tier
+  follows the first published release. **Neither lisa nor vend has this today** — it's the install path's
+  only live proof, the [[expected-outcome-gold-master-pattern]] applied to distribution.
 
 **Risks / decisions:**
 - **BAML native addon × cross-compile.** vend's compiled binary is ~108 MB (bundles BAML) vs lisa's

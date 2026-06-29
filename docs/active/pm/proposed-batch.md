@@ -67,6 +67,24 @@ strategic pull.*
 **Signal:** vend reads its own `runs.jsonl` + `work/` + git to stage fixes automatically — makes this
 retrospective a repeatable gesture (P3). A candidate, not a prerequisite.
 
+### 7. Brew-availability acceptance gate — install proven on a clean arm64-mac (T-065-01 → CI) — **High** (sequences after E-061 go-live)
+**Signal:** a dedicated GitHub Actions workflow on `macos-14` (the clean arm64 runner the loop already
+adopted — **no `actions/checkout`**, so "no clone" is enforced for free) that runs the **real**
+`brew install johnhkchen/vend/vend` → asserts `vend --version` is real semver → `vend init --template`
+lays a workspace in a `mktemp -d` — purely from the published tap, no Doppler. Triggered
+`workflow_dispatch` + a weekly `schedule`, so it's a **standing availability monitor**, not a one-time
+transcript. Two tiers: (a) **pre-publish** — `brew audit --strict`/`style` + install from a local `file://`
+tarball (also proves the BAML-bundled binary runs standalone, de-risking the compile unknown), lands with
+E-061; (b) **post-publish** — the real-tap gate, after the first release. **Neither lisa nor vend has this
+today** — it's a genuine gap, not a mirror.
+- **Advances:** P5 + honest-on-outcome — turns E-061's "done looks like" into a re-runnable gold-master bar
+  ([[expected-outcome-gold-master-pattern]]) instead of a human-deferred transcript (the F1 lesson, applied
+  to the install path).
+- **Depends on:** E-061 landed + the human go-live tail (tap repo `johnhkchen/homebrew-vend` created, first
+  `v*` release published). Tier (a) can land with E-061; tier (b) sequences after the first publish.
+- **Budget:** small (one workflow + a tiny assert script). Tactical-leaning, but it's the install path's
+  *only* live proof — surface it, don't let it auto-drain silently.
+
 **Carried forward (lower now):** headless-operability hardening (F7 — notifications fixed; budget/andon
 legible in diff/PR + SVG-as-remote-read remain); `EXPECTED-OUTCOME` → `src/probe` consistency wiring
 (carried from E-058). **Auto-drained:** F2.
@@ -76,7 +94,9 @@ legible in diff/PR + SVG-as-remote-read remain); `EXPECTED-OUTCOME` → `src/pro
 **#2 (E-061 Homebrew) is now PULLED** — minted to the board on 2026-06-29 (`vend chain`, propose→decompose,
 all gates green; 5 stories / 8 tickets), ready for lisa's loop. Remaining: **#1** the cheap honesty-close
 verification drive (run when ready to spend the metered budget), then **#3 E-062 (the seed)** after a cheap
-A3-for-EmDash spike. The E-061 signal string below is retained for the trail. Signal strings for the build pulls:
+A3-for-EmDash spike. **#7 (the brew-availability gate)** sequences right behind E-061's human go-live tail
+(create the tap, cut the first release) — its pre-publish tier can ride along with E-061. The E-061 signal
+string below is retained for the trail. Signal strings for the build pulls:
 
 ```
 vend chain "vend Homebrew distribution + make-a-workspace — make vend brew-installable mirroring lisa exactly (compiled per-platform binary via bun build --compile, a tap formula, package.json cleanup: drop private, real semver, add bin) and extend the vend init --template seam so a brew-installed vend lays down a workspace. The end-user install path — a hard prerequisite for the kitchen dogfood and every future user. Mirror johnhkchen/homebrew-lisa; ship the cook/dev's platform (arm64-mac) first. Spec: pm/plan-kitchen-dogfood.md (E-061)."
