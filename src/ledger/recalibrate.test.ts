@@ -5,6 +5,7 @@ import {
   type BiasPrior,
   calibrate,
   CENSORED_WIDEN_RATE,
+  coldStartEnvelope,
   COLD_START_MIN_SUCCESSES,
   DEFAULT_SHRINKAGE,
   formatCorrectionLabel,
@@ -631,5 +632,88 @@ describe("fundingEnvelope — rational band (T-053-01)", () => {
     expect(FUNDING_FLOOR_TOKENS).toBeLessThan(FUNDING_CEILING_TOKENS);
     expect(FUNDING_FLOOR_TOKENS).toBe(350_000);
     expect(FUNDING_CEILING_TOKENS).toBe(700_000);
+  });
+});
+
+// T-060-02-01: the seed cold-start macro budget = Σ recalibrate over the propose→decompose chain's
+// plays, MEASURED from the run-log tails (never hand-picked). Same fabricated-ledger discipline.
+describe("coldStartEnvelope — Σ recalibrate over the drive's plays (T-060-02-01)", () => {
+  const PLAYS = ["propose-epic", "decompose-epic"];
+
+  /** `n` ascending successes for `play`: tokens `unit·k`, durations `unit·10·k` ms (k=1..n) — so the
+   *  nearest-rank percentile is hand-computable (standard/p90 of n=5 lands on the max). */
+  const successesFor = (play: string, unit: number, n = 5): RunRecord[] =>
+    Array.from({ length: n }, (_, i) => recordOf({ play, tokens: unit * (i + 1), durationMs: unit * 10 * (i + 1) }));
+
+  // propose-epic: tokens 10k..50k (p90 → 50k), durations 100k..500k ms (p90 → 500k).
+  // decompose-epic: tokens 20k..100k (p90 → 100k), durations 200k..1000k ms (p90 → 1,000,000).
+  const measured = [...successesFor("propose-epic", 10_000), ...successesFor("decompose-epic", 20_000)];
+  // The summed hand prior (PRIOR per play) — what a hand-picked constant would yield.
+  const PRIOR_SUM: Budget = { timeMs: PRIOR.timeMs * 2, tokens: PRIOR.tokens * 2 };
+
+  test("AC: measured from the tails, value-tier percentile, distinguishable from the hand prior", () => {
+    const r = coldStartEnvelope(PLAYS, measured, "standard", PRIOR);
+    // Read FROM the ledger: the per-denomination Σ of each play's p90, computed from the fixtures.
+    expect(r.envelope).toEqual({ timeMs: 1_500_000, tokens: 150_000 });
+    expect(r.source).toBe("measured");
+    // Not a literal/hand-picked constant: distinguishable from the summed hand prior.
+    expect(r.envelope).not.toEqual(PRIOR_SUM);
+    // And it equals the independent Σ of per-play recalibrate (the envelope is not invented here).
+    const sum = (a: Budget, b: Budget): Budget => ({ timeMs: a.timeMs + b.timeMs, tokens: a.tokens + b.tokens });
+    const independent = PLAYS.map((p) => recalibrate(p, measured, "standard", PRIOR).envelope).reduce(sum);
+    expect(r.envelope).toEqual(independent);
+    expect(r.perPlay.map((p) => p.result.source)).toEqual(["measured", "measured"]);
+  });
+
+  test("the value tier drives the macro: keystone (p95) bounds above leaf (p75)", () => {
+    const key = coldStartEnvelope(PLAYS, measured, "keystone", PRIOR).envelope;
+    const leaf = coldStartEnvelope(PLAYS, measured, "leaf", PRIOR).envelope;
+    expect(key.tokens).toBeGreaterThan(leaf.tokens);
+    expect(key.timeMs).toBeGreaterThan(leaf.timeMs);
+  });
+
+  test("censored-aware: andon'd-at-envelope runs are counted but never inflate the envelope", () => {
+    const withCensored = [
+      ...measured,
+      recordOf({ play: "propose-epic", tokens: 999_000, durationMs: 9_000_000, outcome: "budget-exhausted" }),
+      recordOf({ play: "propose-epic", tokens: 999_000, durationMs: 9_000_000, outcome: "timed-out" }),
+      recordOf({ play: "decompose-epic", tokens: 999_000, durationMs: 9_000_000, outcome: "budget-exhausted" }),
+      recordOf({ play: "decompose-epic", tokens: 999_000, durationMs: 9_000_000, outcome: "timed-out" }),
+    ];
+    const r = coldStartEnvelope(PLAYS, withCensored, "standard", PRIOR);
+    // Unchanged from the un-censored measured case — the huge censored costs are right-censored OUT.
+    expect(r.envelope).toEqual({ timeMs: 1_500_000, tokens: 150_000 });
+    expect(r.source).toBe("measured");
+    // …but counted, not swallowed (the andon-rate signal survives per play).
+    expect(r.perPlay.every((p) => p.result.confidence.censored === 2)).toBe(true);
+  });
+
+  test("cold-start fallback: below minSuccesses ⇒ the labelled summed prior, not a measured value", () => {
+    const thin = [...successesFor("propose-epic", 10_000, 2), ...successesFor("decompose-epic", 20_000, 2)];
+    expect(thin.length).toBeLessThan(COLD_START_MIN_SUCCESSES * PLAYS.length);
+    const r = coldStartEnvelope(PLAYS, thin, "standard", PRIOR);
+    expect(r.source).toBe("prior");
+    expect(r.envelope).toEqual(PRIOR_SUM);
+    expect(r.perPlay.map((p) => p.result.source)).toEqual(["prior", "prior"]);
+  });
+
+  test("mixed provenance ⇒ aggregate is 'prior' (only as earned as its weakest leg)", () => {
+    const mixed = [...successesFor("propose-epic", 10_000, 5), ...successesFor("decompose-epic", 20_000, 2)];
+    const r = coldStartEnvelope(PLAYS, mixed, "standard", PRIOR);
+    expect(r.source).toBe("prior");
+    expect(r.perPlay.map((p) => p.result.source)).toEqual(["measured", "prior"]);
+  });
+
+  test("degenerate empty plays ⇒ the hand prior floor, never a NaN/zero budget", () => {
+    const r = coldStartEnvelope([], measured, "standard", PRIOR);
+    expect(r).toEqual({ envelope: PRIOR, source: "prior", perPlay: [] });
+    expect(Number.isFinite(r.envelope.timeMs) && r.envelope.timeMs > 0).toBe(true);
+    expect(Number.isFinite(r.envelope.tokens) && r.envelope.tokens > 0).toBe(true);
+  });
+
+  test("single-play list ⇒ exactly that play's recalibrated envelope (Σ over one)", () => {
+    const r = coldStartEnvelope(["propose-epic"], measured, "standard", PRIOR);
+    expect(r.envelope).toEqual(recalibrate("propose-epic", measured, "standard", PRIOR).envelope);
+    expect(r.source).toBe("measured");
   });
 });

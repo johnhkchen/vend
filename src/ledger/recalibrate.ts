@@ -327,6 +327,71 @@ export function fundingEnvelope(
   return { envelope, widened };
 }
 
+// ── Cold-start drive budget (T-060-02-01, E-060 finding #2) ─────────────────────────────
+// The seed's cold-start budget envelope — the macro budget that funds a FRESH-SEED first drive
+// (`vend steer → vend work`) to a real slice clear — MEASURED from the run-log fat tails, never a
+// hand-picked constant (E-060: "calibrate from E-013/recalibrate tails, do not hand-pick"). The
+// cold-start drive's `vend work` casts the propose→decompose CHAIN per signal, so the per-clear cost
+// is the per-denomination SUM of those plays' recalibrated envelopes — exactly the `price` line
+// `work.ts` already computes. This is that price, as a reusable pure derivation the seed default
+// (T-060-02-02) reads, instead of the inflated hand prior the wallet refused to fund (the EXPECTED-
+// OUTCOME "budget-shape finding": cold-start priced at ~120 min because there were no successes yet,
+// so recalibrate fell back to the 4h hand prior, and the denomination-separate wallet (IA-8) refuses
+// a pull whose price exceeds EITHER axis). Once real successes exist, the measured time is seconds,
+// not the prior's hours — which is what makes the tight two-gesture `--budget` fundable.
+//
+// PURE/TOTAL, same stance as the rest of the module. It DELEGATES every statistical decision to
+// `recalibrate` — so it is value-tier-percentile (IA-12) and censored-aware (IA-13) for FREE, and
+// never re-implements percentile/censoring. `plays` and `prior` are PASSED IN, never imported: that
+// keeps recalibrate.ts decoupled from `src/play/` (the play names) and from `src/shelf/` (the hand
+// prior `budgetForTier`), exactly as `recalibrate` itself takes its `prior` rather than redefining
+// budget policy. The returned `envelope` is the p90 PRICE (the honest quote, IA-8) — funding headroom
+// (`fundingEnvelope`) is a separate per-cast guard applied in `work.ts`, never folded in here.
+
+/** "Two-gesture cold-start macro budget" derivation. `envelope` is the per-denomination Σ of the
+ *  drive plays' recalibrated envelopes; `source` is `"measured"` ONLY when EVERY constituent
+ *  recalibrate was measured (a macro budget is only as earned as its weakest leg — one cold-start
+ *  play ⇒ the aggregate is honestly `"prior"`); `perPlay` is the breakdown so a caller can label or
+ *  inspect confidence per play without re-deriving. */
+export interface ColdStartEnvelopeResult {
+  readonly envelope: Budget;
+  readonly source: "measured" | "prior";
+  readonly perPlay: readonly { readonly play: string; readonly result: RecalibrateResult }[];
+}
+
+/** Per-denomination sum of two budgets — tokens and wall-clock summed INDEPENDENTLY (IA-8: never
+ *  cross-add the axes). Private two-liner, not imported from `work.ts`'s `sumBudgets` — the
+ *  no-shared-util idiom this module already follows (it inlines `totalTokens` rather than coupling). */
+function sumEnvelopes(a: Budget, b: Budget): Budget {
+  return { timeMs: a.timeMs + b.timeMs, tokens: a.tokens + b.tokens };
+}
+
+/**
+ * Derive the seed's cold-start MACRO budget from the run-log tails. PURE/TOTAL. Recalibrates each of
+ * the cold-start drive's `plays` at the value `tier` over `records` (delegating ALL percentile and
+ * right-censoring semantics to {@link recalibrate} — IA-12/IA-13), then sums their envelopes
+ * per-denomination into one `Budget` — the measured per-clear cost of the propose→decompose chain.
+ * Aggregate `source` is `"measured"` iff every constituent recalibrate was measured; one cold-start
+ * leg makes the whole macro honestly `"prior"`. `plays` and `prior` are passed in (never imported)
+ * so this core stays decoupled from `src/play/` and `src/shelf/`. Empty `plays` ⇒ the single hand
+ * `prior` as the floor (a zero-play sum would be an invalid `{0,0}` budget) — TOTAL, never a `NaN`.
+ * The returned envelope is the PRICE (the honest p90 quote); funding headroom is a separate guard.
+ */
+export function coldStartEnvelope(
+  plays: readonly string[],
+  records: readonly RunRecord[],
+  tier: ValueTier,
+  prior: Budget,
+  opts: RecalibrateOptions = {},
+): ColdStartEnvelopeResult {
+  if (plays.length === 0) return { envelope: prior, source: "prior", perPlay: [] };
+
+  const perPlay = plays.map((play) => ({ play, result: recalibrate(play, records, tier, prior, opts) }));
+  const envelope = perPlay.reduce<Budget>((acc, p) => sumEnvelopes(acc, p.result.envelope), { timeMs: 0, tokens: 0 });
+  const source = perPlay.every((p) => p.result.source === "measured") ? "measured" : "prior";
+  return { envelope, source, perPlay };
+}
+
 // ── Reference-class bias correction (T-013-03, IA-16) ───────────────────────────────────
 // The OUTSIDE view: "we usually overestimate by ~80%." Where `recalibrate` bounds a play's
 // cost from its OWN percentile history, `calibrate` learns the systematic ESTIMATE-vs-ACTUAL
