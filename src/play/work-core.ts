@@ -14,6 +14,9 @@
 import type { Budget } from "../budget/budget.ts";
 import { formatWallet, type Wallet } from "../budget/wallet.ts";
 import type { SessionResult, StepSignal } from "../engine/spend-core.ts";
+import { coldStartEnvelope } from "../ledger/recalibrate.ts";
+import type { ValueTier } from "../shelf/menu.ts";
+import type { RunRecord } from "../log/run-log.ts";
 
 /** Match a staged board's `vend chain "<signal>"` line — the `## Pull these` gesture every board
  *  emits (steer-effect / survey-core), already ranked highest-leverage-first (IA-1). The inner text
@@ -52,6 +55,77 @@ function fmtDur(ms: number): string {
 /** A per-cast cost as the two denominations, never conflated (IA-8). */
 function fmtCost(b: Budget): string {
   return `◇ ${fmtTok(b.tokens)}   ⏱ ${fmtDur(b.timeMs)}`;
+}
+
+// ── The default work budget (T-060-02-02, E-060 finding #2) ──────────────────────────────
+// The macro budget `vend work` funds when `--budget` is omitted is no longer a hand-picked constant
+// (the old 2h/2M `DEFAULT_MACRO_BUDGET`) but the CALIBRATED cold-start envelope — `coldStartEnvelope`'s
+// p90 Σ over the drive plays (T-060-02-01), i.e. the per-clear price `work.ts` already derives. Funding
+// the wallet at that price AUTHORIZES the first pull (`canAfford` is `≥`, true at equality) and the
+// per-cast funding floor (E-053) carries the clear — so a tight two-gesture run funds a real cold-start
+// clear instead of colliding with the P7 wall (the EXPECTED-OUTCOME budget-shape finding). IA-8 stays
+// honest: the displayed QUOTE is the bare p90 price; the E-050 funding-headroom is a separate per-cast
+// guard (`fundingEnvelope`), never folded into the quote.
+
+/** The resolved macro budget for a `vend work` gesture (T-060-02-02). */
+export interface WorkBudgetPlan {
+  /** The funded macro budget: the user's `--budget` override, else the calibrated default (== quote). */
+  readonly funded: Budget;
+  /** The displayed p90 PRICE quote (IA-8). The honest per-clear price — NEVER the E-050 funding-headroom. */
+  readonly quote: Budget;
+  /** `"measured"` once the ledger has ≥ `COLD_START_MIN_SUCCESSES` successes on every drive leg, else
+   *  `"prior"` (a macro budget is only as earned as its weakest leg) — so a cold-start estimate is never
+   *  mistaken for an earned price. */
+  readonly source: "measured" | "prior";
+  /** `true` iff `--budget` was omitted (the calibrated default is in force) — gates the quote display. */
+  readonly usedDefault: boolean;
+}
+
+/**
+ * Build a {@link WorkBudgetPlan} from an already-derived p90 `quote` (the `coldStartEnvelope` price) and
+ * an optional `--budget` override. PURE/TOTAL. The single resolution rule, shared by `castWork` (fed the
+ * envelope it already computes — no recompute) and {@link planWorkBudget}: the funded budget is the
+ * override when present, otherwise the calibrated default == the quote. `usedDefault` records which.
+ * GUARD ≠ PRICE (IA-8): this never folds funding headroom into the quote — that guard is per-cast.
+ */
+export function makeWorkBudgetPlan(
+  quote: Budget,
+  source: "measured" | "prior",
+  override?: Budget,
+): WorkBudgetPlan {
+  return { funded: override ?? quote, quote, source, usedDefault: override === undefined };
+}
+
+/**
+ * Resolve the default `vend work` budget from the run-log tails. PURE/TOTAL. Derives the p90 per-clear
+ * price via {@link coldStartEnvelope} (the T-060-02-01 unit — value-tier percentile + right-censoring
+ * inherited for free, IA-12/IA-13) over the `drivePlays`, then {@link makeWorkBudgetPlan} resolves the
+ * funded budget against the optional `override`. The named unit `castWork` mirrors and the AC pins:
+ * `quote` is the measured p90 once the ledger has history, the summed `prior` floor until then.
+ */
+export function planWorkBudget(
+  records: readonly RunRecord[],
+  drivePlays: readonly string[],
+  tier: ValueTier,
+  prior: Budget,
+  override?: Budget,
+): WorkBudgetPlan {
+  const { envelope, source } = coldStartEnvelope(drivePlays, records, tier, prior);
+  return makeWorkBudgetPlan(envelope, source, override);
+}
+
+/**
+ * Render the one-line budget QUOTE the CLI prints when the calibrated default is in force (IA-6 Confirm
+ * half) — the two IA-8 denominations of the p90 price plus an honest provenance tag so a cold-start
+ * estimate is never read as an earned price. PURE. `color` (default false) gates a dim ANSI emphasis so
+ * the text stays assertable; a quote is informational, never an andon (no amber).
+ */
+export function renderBudgetQuote(plan: WorkBudgetPlan, opts: { color?: boolean } = {}): string {
+  const color = opts.color ?? false;
+  const provenance =
+    plan.source === "measured" ? "measured from the run-log" : "estimate (cold start — no history yet)";
+  const body = `funding the first clear at the quote:  ${fmtCost(plan.quote)}   (${provenance})`;
+  return color ? `\x1b[2m${body}\x1b[0m` : body;
 }
 
 /**

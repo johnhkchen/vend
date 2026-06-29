@@ -23,8 +23,9 @@ vend steer --budget 600000,400000      # ~10 min, ~400k tokens — board + forks
 ## 2. Clear the first slice
 
 - **`vend work`** — fund a budget once, walk away, and let vend spend it down across the
-  ranked board until a clean stop. Omit `--budget` and it defaults to **2 hours / 2M tokens**
-  (`DEFAULT_MACRO_BUDGET`). It clears the staged steer board (falling back to the survey board).
+  ranked board until a clean stop. Omit `--budget` and it funds the **calibrated cold-start
+  clear** — the p90 per-clear price vend quotes (measured from your run-log once it has history;
+  a generous estimate until then). It clears the staged steer board (falling back to the survey board).
 
 ```bash
 vend work --budget 1800000,1000000     # ~30 min, ~1M tokens — clear the first slice, gated

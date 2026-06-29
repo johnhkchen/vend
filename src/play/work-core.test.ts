@@ -1,7 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { parseBoardSignals, labelForSignal, formatStepSignal, renderReceipt, isBoardStale, renderStaleBoard } from "./work-core.ts";
+import {
+  parseBoardSignals,
+  labelForSignal,
+  formatStepSignal,
+  renderReceipt,
+  isBoardStale,
+  renderStaleBoard,
+  planWorkBudget,
+  makeWorkBudgetPlan,
+  renderBudgetQuote,
+} from "./work-core.ts";
 import type { SessionResult, StepSignal } from "../engine/spend-core.ts";
 import type { Budget } from "../budget/budget.ts";
+import { coldStartEnvelope, fundingEnvelope, recalibrate } from "../ledger/recalibrate.ts";
+import { buildRunRecord, type RunOutcome, type RunRecord, type RunRecordInput } from "../log/run-log.ts";
+import { spendDown } from "../engine/spend.ts";
+import { allocate } from "../budget/wallet.ts";
+import type { ChainResult } from "../engine/chain-core.ts";
 
 // T-024-03 work-core: the PURE board-parse + render half of the `vend work` gesture. No addon, no
 // fs, no spawn — work.ts (the impure shell that casts the chain) is proven live (AC#3), this tests
@@ -169,5 +184,156 @@ describe("renderStaleBoard", () => {
     const colored = renderStaleBoard(r, { color: true });
     expect(colored).toContain("\x1b[33m"); // amber
     expect(colored).not.toContain("\x1b[31m"); // never red
+  });
+});
+
+// ── The calibrated default budget (T-060-02-02, E-060 finding #2) ─────────────────────────
+// The omit-`--budget` default is now the calibrated cold-start envelope (the p90 per-clear price),
+// not a hand-picked constant. These tests pin the AC: drive the spend loop with that default → ≥1
+// slice clears with no instant budget-exhausted, and the displayed QUOTE stays the bare p90 price
+// (the E-050 funding-headroom is never folded in). `work.ts`/`cli.ts` value-import the BAML chain, so
+// the wiring is tested here through the PURE resolver + the addon-free `spendDown`, the house pattern.
+
+const DRIVE_PLAYS = ["propose-epic", "decompose-epic"] as const;
+// budgetForTier("standard") — the per-play hand prior `castWork` passes; inlined to keep this test off
+// the shelf import, mirroring recalibrate.test.ts's local PRIOR.
+const STD_PRIOR: Budget = { timeMs: 3_600_000, tokens: 25_000 };
+
+/** A run-log record with a chosen play / token total / duration / outcome — over the real pure writer
+ *  so fixtures match production shape (the recalibrate.test.ts factory). */
+const recordOf = (
+  over: { tokens?: number; durationMs?: number; outcome?: RunOutcome; play?: string } & Partial<RunRecordInput> = {},
+): RunRecord => {
+  const { tokens = 50_000, durationMs = 60_000, outcome = "success", play = "propose-epic", ...rest } = over;
+  const start = "2026-06-25T00:00:00.000Z";
+  const end = new Date(Date.parse(start) + durationMs).toISOString();
+  return buildRunRecord({
+    runId: "r",
+    play,
+    epic: "E-001",
+    model: "m",
+    outcome,
+    usage: { input_tokens: tokens },
+    startedAt: start,
+    endedAt: end,
+    ...rest,
+  });
+};
+
+/** ≥ COLD_START_MIN_SUCCESSES (3) measured successes per drive play — so `coldStartEnvelope` bounds a
+ *  real p90 on both axes (the realistic forward state once the seed/dogfood ledger has history). */
+const measuredLedger = (tokens: number, durationMs: number): RunRecord[] =>
+  DRIVE_PLAYS.flatMap((play) =>
+    [0, 1, 2, 3].map((i) => recordOf({ play, tokens: tokens + i * 1000, durationMs: durationMs + i * 1000 })),
+  );
+
+/** A stub chain cast that CLEARS, burning the given actuals — the injected `castOne` (engine ⊥ play),
+ *  standing in for the real propose→decompose chain so the loop is driven without the BAML addon. */
+const clearingCast =
+  (tokens: number, wallMs: number) =>
+  async (): Promise<ChainResult> => ({
+    steps: [{ runId: "r", outcome: "success", materialized: true, produced: "E-001", actuals: { usage: { input_tokens: tokens }, wallMs } }],
+    outcome: "success",
+    halted: false,
+    produced: "E-001",
+  });
+
+describe("planWorkBudget / the calibrated default (T-060-02-02)", () => {
+  test("AC: drives the loop with the default → ≥1 slice clears, no instant budget-exhausted", async () => {
+    const records = measuredLedger(50_000, 60_000);
+    const plan = planWorkBudget(records, DRIVE_PLAYS, "standard", STD_PRIOR);
+    expect(plan.source).toBe("measured");
+    expect(plan.usedDefault).toBe(true);
+    expect(plan.funded).toEqual(plan.quote); // the default IS the quote (no override)
+
+    // Drive the real spend loop, funded at the calibrated default, with a stub cast that clears under
+    // its envelope — exactly castWork's loop minus the BAML chain.
+    const session = await spendDown<string>({
+      wallet: allocate(plan.funded),
+      candidates: ["Build the team-finder page — the demo keystone", "Add the self-entry form — closes the promise"],
+      priceOf: () => plan.quote,
+      castOne: clearingCast(20_000, 30_000), // well within the measured envelope
+      labelOf: (s) => labelForSignal(s),
+    });
+
+    expect(session.steps.length).toBeGreaterThanOrEqual(1);
+    expect(session.steps[0]!.outcome).toBe("success"); // the first pull was authorized AND cleared
+    expect(session.cleared).toBeGreaterThanOrEqual(1); // a real slice cleared — NOT instant exhaustion
+  });
+
+  test("AC: the displayed quote is the p90 price — E-050 funding-headroom NOT folded in", () => {
+    // Measured successes PLUS large censored tails (rate ≥ widenRate) ⇒ the per-cast FUNDING envelope
+    // floors/widens well above the price; the QUOTE must stay the bare p90.
+    const records = DRIVE_PLAYS.flatMap((play) => [
+      recordOf({ play, tokens: 40_000, durationMs: 50_000 }),
+      recordOf({ play, tokens: 45_000, durationMs: 55_000 }),
+      recordOf({ play, tokens: 50_000, durationMs: 60_000 }),
+      recordOf({ play, tokens: 5_000_000, durationMs: 9_000_000, outcome: "budget-exhausted" }),
+      recordOf({ play, tokens: 5_000_000, durationMs: 9_000_000, outcome: "timed-out" }),
+    ]);
+    const plan = planWorkBudget(records, DRIVE_PLAYS, "standard", STD_PRIOR);
+    const cold = coldStartEnvelope(DRIVE_PLAYS, records, "standard", STD_PRIOR);
+
+    // The quote is exactly coldStartEnvelope's p90 Σ — read from the ledger, not the funding number.
+    expect(plan.quote).toEqual(cold.envelope);
+
+    // The summed per-cast funding envelope is strictly above the quote on tokens (headroom lifted it) —
+    // proving the quote did not absorb the E-050 guard.
+    const fundingTokens = DRIVE_PLAYS.reduce(
+      (sum, play, i) => sum + fundingEnvelope(play, records, cold.perPlay[i]!.result).envelope.tokens,
+      0,
+    );
+    expect(fundingTokens).toBeGreaterThan(plan.quote.tokens);
+  });
+
+  test("measured ⇒ distinguishable from the summed hand prior", () => {
+    const measured = planWorkBudget(measuredLedger(120_000, 90_000), DRIVE_PLAYS, "standard", STD_PRIOR);
+    const summedPrior: Budget = { timeMs: 2 * STD_PRIOR.timeMs, tokens: 2 * STD_PRIOR.tokens };
+    expect(measured.source).toBe("measured");
+    expect(measured.quote).not.toEqual(summedPrior); // the ledger moved the value off the prior
+  });
+
+  test("cold start (no successes) ⇒ source 'prior', default = summed prior, still funds the first pull", async () => {
+    const plan = planWorkBudget([], DRIVE_PLAYS, "standard", STD_PRIOR);
+    expect(plan.source).toBe("prior");
+    expect(plan.usedDefault).toBe(true);
+    expect(plan.quote).toEqual({ timeMs: 2 * STD_PRIOR.timeMs, tokens: 2 * STD_PRIOR.tokens });
+
+    // The budget-shape fix: funded == price ⇒ canAfford is true at equality ⇒ the first pull authorizes
+    // and clears (the per-cast funding floor carries the real burn) instead of colliding with the wall.
+    const session = await spendDown<string>({
+      wallet: allocate(plan.funded),
+      candidates: ["the keystone slice — nothing shows without it"],
+      priceOf: () => plan.quote,
+      castOne: clearingCast(40_000, 45_000),
+      labelOf: (s) => labelForSignal(s),
+    });
+    expect(session.cleared).toBeGreaterThanOrEqual(1);
+  });
+
+  test("makeWorkBudgetPlan: override wins and flips usedDefault; default == quote", () => {
+    const quote: Budget = { timeMs: 120_000, tokens: 100_000 };
+    const override: Budget = { timeMs: 1_800_000, tokens: 1_000_000 };
+
+    const def = makeWorkBudgetPlan(quote, "measured");
+    expect(def).toEqual({ funded: quote, quote, source: "measured", usedDefault: true });
+
+    const overridden = makeWorkBudgetPlan(quote, "measured", override);
+    expect(overridden.funded).toEqual(override); // the user's --budget funds the wallet
+    expect(overridden.quote).toEqual(quote); // …but the displayed quote stays the p90 price
+    expect(overridden.usedDefault).toBe(false);
+  });
+
+  test("renderBudgetQuote: two-denomination quote + honest provenance, plain by default", () => {
+    const measured = makeWorkBudgetPlan({ timeMs: 120_000, tokens: 100_000 }, "measured");
+    const m = renderBudgetQuote(measured);
+    expect(m).toContain("◇"); // tokens denomination (IA-8)
+    expect(m).toContain("⏱"); // wall-clock denomination
+    expect(m).toContain("measured");
+    expect(m).not.toContain("\x1b["); // plain by default — assertable
+
+    const cold = makeWorkBudgetPlan({ timeMs: 7_200_000, tokens: 50_000 }, "prior");
+    expect(renderBudgetQuote(cold)).toContain("cold start"); // never mistaken for an earned price
+    expect(renderBudgetQuote(cold, { color: true })).toContain("\x1b["); // emphasis when asked
   });
 });

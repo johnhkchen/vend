@@ -791,15 +791,22 @@ if (import.meta.main) {
     // doctor preflight (T-042-04) runs first inside `castWork`: a broken dep refuses at the door with
     // the `vend doctor` report before any budget is committed. Lazy import keeps the shell (and its
     // BAML addon) off the pure-parse path, exactly as the other arms.
-    const { castWork, DEFAULT_MACRO_BUDGET } = await import("./play/work.ts");
-    const { renderReceipt, formatStepSignal, renderStaleBoard } = await import("./play/work-core.ts");
-    const funded = parsed.budget ?? DEFAULT_MACRO_BUDGET;
+    const { castWork } = await import("./play/work.ts");
+    const { renderReceipt, formatStepSignal, renderStaleBoard, renderBudgetQuote } = await import("./play/work-core.ts");
+    // `--budget` omitted ⇒ `castWork` defaults to the calibrated cold-start envelope (T-060-02-02) and
+    // emits the resolved plan via `onPlan` BEFORE the loop. Capture `funded` from it (so the IA-7 meter
+    // renders against the real wallet) and print the honest p90 quote when the default is in force.
+    let funded: Budget | undefined = parsed.budget;
     const result = await castWork({
-      budget: funded,
+      ...(parsed.budget ? { budget: parsed.budget } : {}),
       ...(parsed.board ? { boardPath: parsed.board } : {}),
       ...(parsed.staleOk ? { staleOk: true } : {}),
       ...(parsed.intervened !== undefined ? { intervened: parsed.intervened } : {}),
-      onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded)}\n`),
+      onPlan: (plan) => {
+        funded = plan.funded;
+        if (plan.usedDefault) process.stdout.write(`${renderBudgetQuote(plan, { color: true })}\n`);
+      },
+      onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded!)}\n`),
     });
     if (result.kind === "unfit-env") {
       // The doctor preflight refused (T-042-04): a broken dependency. Print the doctor report (the
@@ -825,7 +832,7 @@ if (import.meta.main) {
       process.stderr.write(`${renderStaleBoard(result, { color: true })}\n`);
       process.exit(1);
     }
-    const wallet = { funded, remaining: result.session.remaining };
+    const wallet = { funded: result.funded, remaining: result.session.remaining };
     process.stdout.write(`${renderReceipt(result.session, wallet, { color: true })}\n`);
     process.exit(0);
   }

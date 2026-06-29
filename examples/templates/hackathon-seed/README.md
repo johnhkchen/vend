@@ -73,8 +73,9 @@ vend svg --seat designer          # or: npm run board → writes .vend/work-grap
 ```
 
 > **Budgets are `<ms>,<tokens>`** — e.g. `600000,400000` is ~10 minutes / 400k tokens.
-> Omit `--budget` on `vend work` and it defaults to a "fund it, walk away" **2 hours / 2M
-> tokens**.
+> Omit `--budget` on `vend work` and it funds the **calibrated cold-start clear** — the p90
+> per-clear price `vend` prints as a quote (measured from your run-log once it has history; a
+> generous cold-start estimate until then). Pass an explicit `--budget` for a longer walk-away.
 
 ## What each gesture gives you
 

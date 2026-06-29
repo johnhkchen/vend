@@ -28,14 +28,10 @@ import type { DoctorReport } from "../doctor/doctor-core.ts";
 import { castProposeDecomposeChain } from "./chain-propose-decompose.ts";
 import { proposeEpicPlay } from "./propose-epic.ts";
 import { decomposeEpicPlay } from "./decompose-epic.ts";
-import { fundingEnvelope, recalibrate } from "../ledger/recalibrate.ts";
+import { fundingEnvelope, coldStartEnvelope } from "../ledger/recalibrate.ts";
 import { budgetForTier } from "../shelf/gather.ts";
 import { loadRunLog } from "../log/run-log.ts";
-import { parseBoardSignals, labelForSignal, isBoardStale } from "./work-core.ts";
-
-/** The "fund it, walk away for two hours" default macro budget when `--budget` is omitted (design
- *  D6): the vision's literal framing made the pre-filled default (IA-6 — adjust is the exception). */
-export const DEFAULT_MACRO_BUDGET: Budget = { timeMs: 7_200_000, tokens: 2_000_000 };
+import { parseBoardSignals, labelForSignal, isBoardStale, makeWorkBudgetPlan, type WorkBudgetPlan } from "./work-core.ts";
 
 /** Staged boards tried IN ORDER when no explicit `--board` is given: the steer board (board + forks)
  *  first, then the survey board — both emit the same `vend chain "…"` ranked gesture lines. */
@@ -48,7 +44,8 @@ const PRICE_TIER = "standard" as const;
 
 /** Options for {@link castWork} — the per-gesture values the loop does not carry. */
 export interface WorkOptions {
-  /** The funded macro budget; omitted ⇒ {@link DEFAULT_MACRO_BUDGET}. */
+  /** The funded macro budget; omitted ⇒ the calibrated cold-start envelope (T-060-02-02): the p90
+   *  per-clear price derived from the run-log tails, NOT a hand-picked constant. */
   readonly budget?: Budget;
   /** An explicit staged-board path; omitted ⇒ the {@link DEFAULT_BOARDS} steer→survey fallback. */
   readonly boardPath?: string;
@@ -66,6 +63,10 @@ export interface WorkOptions {
   /** Spend even when the staged board is stale — the human override (IA-5, T-027-01). Default
    *  (absent/false): the freshness gate refuses a board older than the project's live state. */
   readonly staleOk?: boolean;
+  /** The IA-6 Confirm emit (T-060-02-02): called ONCE after the budget is resolved and before the
+   *  loop, carrying the {@link WorkBudgetPlan} (funded / p90 quote / provenance / used-default) so the
+   *  CLI can print the honest quote and meter the stream against the resolved `funded`. */
+  readonly onPlan?: (plan: WorkBudgetPlan) => void;
 }
 
 /** The `docs/active/**` dirs whose newest `*.md` mtime IS the project's "live state" the board is
@@ -93,12 +94,6 @@ export type WorkResult =
    *  so the render needs no second stat. Bypassed by `--stale-ok` (IA-5). */
   | { readonly kind: "stale-board"; readonly boardPath: string; readonly boardMtimeMs: number; readonly liveMtimeMs: number }
   | { readonly kind: "spent"; readonly session: SessionResult; readonly funded: Budget };
-
-/** Per-denomination sum of two budgets — the chain's predicted price is the sum of its two plays'
- *  envelopes (it casts both), kept denomination-separate (IA-8). */
-function sumBudgets(a: Budget, b: Budget): Budget {
-  return { timeMs: a.timeMs + b.timeMs, tokens: a.tokens + b.tokens };
-}
 
 /** Read the first readable board: an explicit path is tried alone; otherwise the steer→survey
  *  fallback. A missing file (ENOENT) is not an error — it just isn't the board (try the next).
@@ -182,28 +177,38 @@ export async function castWork(opts: WorkOptions = {}): Promise<WorkResult> {
     }
   }
 
-  const funded = opts.budget ?? DEFAULT_MACRO_BUDGET;
-  const wallet = allocate(funded);
-
   // Predict the chain's price ONCE from the ledger (it casts the same two plays for every signal):
-  // the per-denomination sum of propose-epic + decompose-epic, each recalibrated at the standard
-  // tier over its measured history, cold-starting to the warranted hand prior (E-013). This gates
-  // P7 authorization; the wallet still debits the cast's actuals, not this prediction.
+  // the per-denomination sum of propose-epic + decompose-epic, each recalibrated at the standard tier
+  // over its measured history, cold-starting to the warranted hand prior (E-013). `coldStartEnvelope`
+  // (T-060-02-01) is that Σ as one derivation, carrying the aggregate provenance + the per-play
+  // breakdown the funding legs reuse. The `envelope` is the PRICE (the honest p90 quote) and gates P7
+  // authorization; the wallet still debits the cast's ACTUALS, not this prediction.
   const { records } = await loadRunLog();
   const prior = budgetForTier(PRICE_TIER);
-  // Keep the two per-step results — they recalibrate separately and can diverge. The PRICE (the
-  // honest p90 sum) gates `canAfford`/`fitNext`; the FUNDING envelope is what each cast RUNS under.
-  // GUARD ≠ PRICE (IA-8, T-050-02): the wallet AUTHORIZES on `price` and DEBITS the actuals, while a
-  // cold-start/under-calibrated cast is FUNDED at `max(price, maxCensoredActual × headroom)` so it
-  // clears its observed wall, FINISHES, and RECORDS — breaking the censoring ratchet (E-049's 120k
-  // decompose). A well-calibrated play funds == price (back-compat). Threaded PER STEP into the cast
-  // below so the chain runs under exactly what funding authorized (E-025: the E-024 sweep authorized
-  // at 227k but cast at the 150k static default → budget-exhausted, cleared 0).
-  const proposeResult = recalibrate(proposeEpicPlay.name, records, PRICE_TIER, prior);
-  const decomposeResult = recalibrate(decomposeEpicPlay.name, records, PRICE_TIER, prior);
-  const price = sumBudgets(proposeResult.envelope, decomposeResult.envelope);
-  const proposeFunding = fundingEnvelope(proposeEpicPlay.name, records, proposeResult).envelope;
-  const decomposeFunding = fundingEnvelope(decomposeEpicPlay.name, records, decomposeResult).envelope;
+  const drivePlays = [proposeEpicPlay.name, decomposeEpicPlay.name] as const;
+  const cold = coldStartEnvelope(drivePlays, records, PRICE_TIER, prior);
+  const price = cold.envelope;
+
+  // The default `--budget` (T-060-02-02, E-060 #2): omitted ⇒ the calibrated cold-start envelope (==
+  // the p90 `price` above), so a tight two-gesture run AUTHORIZES the first pull (`canAfford` is `≥`,
+  // true at equality) instead of colliding with the P7 wall at the inflated hand prior. The funded
+  // wallet is the QUOTE; the E-050 funding headroom below is a separate per-cast guard. Confirm (IA-6)
+  // is emitted before the loop so the CLI can print the quote + meter the stream against `funded`.
+  const plan = makeWorkBudgetPlan(price, cold.source, opts.budget);
+  const funded = plan.funded;
+  const wallet = allocate(funded);
+  opts.onPlan?.(plan);
+
+  // Keep the two per-play results — they recalibrate separately and can diverge. The FUNDING envelope
+  // is what each cast RUNS under. GUARD ≠ PRICE (IA-8, T-050-02): the wallet AUTHORIZES on `price` and
+  // DEBITS the actuals, while a cold-start/under-calibrated cast is FUNDED at `max(price,
+  // maxCensoredActual × headroom)` so it clears its observed wall, FINISHES, and RECORDS — breaking the
+  // censoring ratchet (E-049's 120k decompose). A well-calibrated play funds == price (back-compat).
+  // Read from `cold.perPlay` (same Σ as `price`) so the chain runs under exactly what pricing measured
+  // (E-025: the E-024 sweep authorized at 227k but cast at the 150k static default → budget-exhausted,
+  // cleared 0).
+  const proposeFunding = fundingEnvelope(drivePlays[0], records, cold.perPlay[0]!.result).envelope;
+  const decomposeFunding = fundingEnvelope(drivePlays[1], records, cold.perPlay[1]!.result).envelope;
 
   const session = await spendDown<string>({
     wallet,
