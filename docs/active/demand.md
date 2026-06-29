@@ -83,9 +83,7 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-| Signal | Value | Status |
-|---|---|---|
-| **`seed-intent-reaches-steer`** (Frontier 7 + 4 / P2·P5) — close E-058's make-or-break finding: `vend steer` reads the seed's one-line `SEED.md` intent (threaded into the go-and-see snapshot, no BAML change) + its tuned charter (template overlay), so a designer's two gestures stage a real grounded board they can SEE. Hand-authored from the E-058 gold-master finding. | **High / unblocks Set B** (turns E-058's negative gold master into a closed loop; the make-or-break wire) | **active → E-059** — S-059-01 wire the intent (T-059-01 snapshot+SEED read · T-059-02 tuned-charter overlay) · S-059-02 **LIVE re-drive** → positive gold master + forward-E1 (T-059-03). Build free/deterministic; the closing re-drive is the one live cast. Findings #2 (budget shape) + #3 (`codebase-memory-mcp`) explicitly out of scope → separate signals. |
+_Nothing in flight — **E-059** (`seed-intent-reaches-steer`) and **E-060** (`fresh-seed-full-slice-clear`) both swept to done; the Set-B round-trip (board renders → slice clears) is whole. The next pull comes off the PM batch (`pm/proposed-batch.md`) or the kitchen-dogfood plan (`pm/plan-kitchen-dogfood.md`)._
 
 ---
 
@@ -269,8 +267,10 @@ already cleared — autonomously, by E-039's wallet sweep:** ✅ `vend init` (�
 driveable project, idempotent) · ✅ `vend doctor` (→ E-042, envinfo preflight + cast precondition
 guard) · ✅ a driveable hackathon `examples/` template (→ **E-058**, the Astro+React+Cloudflare seed + `vend
 init --template` seam + a LIVE gold-master drive — which surfaced the make-or-break steer-wiring gap, now
-closed by **E-059**; the full-slice clear carries to **E-060**). **Remaining:** Homebrew / `bun --compile`
-delivery · onboarding docs. **High** (foundation laid; delivery next). *Pull from the PM
+✅ closed by **E-059** (board renders) and ✅ **E-060** (the fresh-seed full-slice clear — graceful-degrade +
+cold-start budget; the round-trip is whole)). **Remaining:** Homebrew / `bun --compile` delivery (now a
+**kitchen-dogfood prerequisite** — `pm/plan-kitchen-dogfood.md`) · onboarding docs. **High** (foundation
+laid; delivery next). *Pull from the PM
 batch — the human pulls (pull-discipline).*
 
 - ~~Idempotent-mint guard for `propose-epic`~~ → **done → E-043** (`proposeEpicEffect` adopts an
