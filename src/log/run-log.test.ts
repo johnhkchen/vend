@@ -507,6 +507,55 @@ describe("turnsUsed — round-trip, absence, normalization, malformed (T-015-02 
   });
 });
 
+describe("reducedGrounding marker — round-trip, absence, one-way, malformed, legacy (T-060-01-02 AC)", () => {
+  test("reducedGrounding: true round-trips through build → serialize → revive (survives the read boundary)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "rg1", reducedGrounding: true }));
+    expect(rec.reducedGrounding).toBe(true);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.reducedGrounding).toBe(true);
+  });
+
+  test("an absent reducedGrounding is OMITTED from the record (byte-for-byte back-compat)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "rg2" }));
+    expect("reducedGrounding" in rec).toBe(false);
+    expect(rec.reducedGrounding).toBeUndefined();
+    expect(serializeRunRecord(rec).includes("reducedGrounding")).toBe(false);
+  });
+
+  test("reducedGrounding: false is a ONE-WAY flag — never written (a fully-grounded run carries no marker)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "rg3", reducedGrounding: false }));
+    expect("reducedGrounding" in rec).toBe(false);
+    expect(rec.reducedGrounding).toBeUndefined();
+    expect(serializeRunRecord(rec).includes("reducedGrounding")).toBe(false);
+  });
+
+  test("a non-boolean reducedGrounding is coerced to absent on build (legal, not a caller error)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "rg4", reducedGrounding: "yes" as unknown as boolean }));
+    expect("reducedGrounding" in rec).toBe(false);
+  });
+
+  test("a malformed reducedGrounding is dropped on revive, the record stays valid", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "rg5" })))),
+      reducedGrounding: "yes",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.reducedGrounding).toBeUndefined();
+    expect(rec!.runId).toBe("rg5");
+  });
+
+  test("a pre-T-060-01-02 line (no reducedGrounding field) parses, with reducedGrounding === undefined", () => {
+    const legacyLine =
+      '{"v":1,"runId":"L3","play":"decompose-epic","epic":"E-060","model":"claude-cli-default",' +
+      '"outcome":"success","usage":{"input_tokens":1,"output_tokens":2,' +
+      '"cache_read_input_tokens":3,"cache_creation_input_tokens":4},"costUsd":0.1,"gateResults":[],' +
+      '"startedAt":"2026-06-18T20:49:24.679Z","endedAt":"2026-06-18T20:50:40.749Z"}';
+    const { records, skipped } = readRuns(legacyLine);
+    expect(skipped).toBe(0);
+    expect(records[0]!.reducedGrounding).toBeUndefined();
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(

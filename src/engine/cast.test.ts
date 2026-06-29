@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { castPlay } from "./cast.ts";
+import { reviveRecord } from "../log/run-log.ts";
 import type { Play } from "./play.ts";
 import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
@@ -39,6 +40,16 @@ function echoPlay(effectLog: string[]): Play<{ topic: string }, { text: string }
     },
     budget: BIG_BUDGET,
     card: { color: ["blue"], type: "sorcery", rarity: "common" },
+  };
+}
+
+/** A play that declares the OPTIONAL grounding MCP (mirrors decompose's DECOMPOSE_TOOLS) — its
+ *  presence/absence in the project `.mcp.json` is what flips `resolveTools`' `reducedGrounding`,
+ *  so casting it proves the reduced-grounding marker threads onto the run record (T-060-01-02). */
+function groundedEchoPlay(effectLog: string[]): Play<{ topic: string }, { text: string }> {
+  return {
+    ...echoPlay(effectLog),
+    tools: { optionalMcp: ["codebase-memory-mcp"], allow: ["Read", "Grep", "Glob"] },
   };
 }
 
@@ -102,6 +113,53 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.play).toBe("echo");
   expect(rec.outcome).toBe("success");
   expect(rec.model).toBe("stub-model-1");
+});
+
+test("castPlay: a cast WITHOUT codebase-memory-mcp writes the reduced-grounding marker into runs.jsonl (T-060-01-02 AC)", async () => {
+  const root = await tmp(); // no .mcp.json under root ⇒ readProjectMcpServers ⇒ available: []
+  const runLogPath = join(root, "runs.jsonl");
+
+  const summary = await castPlay(groundedEchoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-060-01-02-degraded",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    executor: stubExecutor([]),
+  });
+
+  // The optional MCP was absent ⇒ the cast DEGRADED rather than andon'd: it still cleared.
+  expect(summary.outcome).toBe("success");
+  expect(summary.materialized).toBe(true);
+
+  // The run record carries the honest one-way marker, so a degraded clear is COUNTABLE.
+  const line = (await readFile(runLogPath, "utf8")).trim();
+  const rec = JSON.parse(line);
+  expect(rec.reducedGrounding).toBe(true);
+
+  // …and the marker survives the run-log revive/normalize read boundary (the AC's read half).
+  const revived = reviveRecord(rec);
+  expect(revived).not.toBeNull();
+  expect(revived!.reducedGrounding).toBe(true);
+});
+
+test("castPlay: a cast WITH codebase-memory-mcp present writes NO reduced-grounding marker (T-060-01-02 AC)", async () => {
+  const root = await tmp();
+  // The project registry declares the optional server ⇒ fully grounded ⇒ no marker.
+  await writeFile(join(root, ".mcp.json"), JSON.stringify({ mcpServers: { "codebase-memory-mcp": { command: "x" } } }), "utf8");
+  const runLogPath = join(root, "runs.jsonl");
+
+  const summary = await castPlay(groundedEchoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-060-01-02-grounded",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    executor: stubExecutor([]),
+  });
+
+  expect(summary.outcome).toBe("success");
+  const rec = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect("reducedGrounding" in rec).toBe(false);
+  expect(reviveRecord(rec)!.reducedGrounding).toBeUndefined();
 });
 
 test("castPlay: an executor that throws ExecutorTimeoutError classifies as timed-out", async () => {

@@ -134,6 +134,15 @@ export interface RunRecordInput {
    *  forward-looking signal the warranted turn cap is calibrated from (the cap is a judgment,
    *  not a frozen guess; logging turns is what lets data refine it). */
   readonly turnsUsed?: number;
+  /** One-way honest marker (T-060-01-02, E-060 #3): `true` ⇒ this cast ran with REDUCED
+   *  grounding — a declared `optionalMcp` server (e.g. `codebase-memory-mcp`) was absent and so
+   *  dropped from the scoped tool set (`resolveTools`' `reducedGrounding`). Absent ⇒ fully
+   *  grounded (the default) / unknown. Only `true` is meaningful, so this is a ONE-WAY flag exactly
+   *  like {@link intervenedAttested}: `false`/absent are identical (both not-degraded) and `false`
+   *  is never written, keeping a fully-grounded record byte-identical to a pre-T-060-01-02 one. The
+   *  signal that makes a degraded clear COUNTABLE (a degraded run = a record carrying this marker)
+   *  rather than invisible. */
+  readonly reducedGrounding?: boolean;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -173,6 +182,12 @@ export interface RunRecord {
    *  omitted rather than written, exactly like {@link RunRecord.intervened}. The signal the
    *  warranted turn cap (T-015-02) is calibrated from. */
   readonly turnsUsed?: number;
+  /** Present ONLY when `true` (T-060-01-02) — this cast ran with reduced grounding (a declared
+   *  optional MCP server was absent). A ONE-WAY marker like {@link intervenedAttested}: `false` is
+   *  never written, so a fully-grounded record stays byte-identical to a pre-T-060-01-02 one.
+   *  {@link reviveRecord} preserves it across the read boundary, so a degraded clear stays
+   *  countable after a ledger round-trip. */
+  readonly reducedGrounding?: true;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -256,6 +271,14 @@ function normalizeTurnsUsed(v: number | undefined): number | undefined {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
 }
 
+/** Normalize the reduced-grounding marker (T-060-01-02): a ONE-WAY flag — only `true` is
+ *  meaningful (this cast ran with reduced grounding). Anything else (`false`, absent, or a
+ *  non-boolean from a torn caller) ⇒ `undefined`, so the field is omitted and a fully-grounded
+ *  record stays byte-identical to a pre-T-060-01-02 one. Mirrors {@link normalizeIntervenedAttested}. */
+function normalizeReducedGrounding(v: boolean | undefined): true | undefined {
+  return v === true ? true : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -287,6 +310,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const intervened = normalizeIntervened(input.intervened);
   const intervenedAttested = normalizeIntervenedAttested(input.intervenedAttested);
   const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
+  const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -303,6 +327,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(intervened !== undefined ? { intervened } : {}),
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+    ...(reducedGrounding ? { reducedGrounding } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -409,6 +434,12 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // reads unknown) rather than admitted or used to reject the record. Mirrors `intervened`.
   const turnsUsed = normalizeTurnsUsed(typeof r.turnsUsed === "number" ? r.turnsUsed : undefined);
 
+  // The reduced-grounding marker (T-060-01-02) is kept only when it is the boolean `true`; anything
+  // else (absent — a pre-T-060-01-02 record — `false`, or a malformed value) is dropped (field
+  // omitted, reads as fully-grounded/unknown) rather than admitted or used to reject. One-way, so
+  // the read boundary preserves a degraded clear's countability across the ledger round-trip.
+  const reducedGrounding = normalizeReducedGrounding(typeof r.reducedGrounding === "boolean" ? r.reducedGrounding : undefined);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -424,6 +455,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(intervened !== undefined ? { intervened } : {}),
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+    ...(reducedGrounding ? { reducedGrounding } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });

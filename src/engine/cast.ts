@@ -275,6 +275,17 @@ export async function castPlay<I, O>(
   const turnsUsed = resolveTurnsUsed(result?.num_turns);
   if (turnsUsed !== undefined) process.stdout.write(`· turns: ${turnsUsed}${maxTurns ? ` / ${maxTurns} cap` : ""}\n`);
 
+  // The honest reduced-grounding signal (E-060 #3, T-060-01-02): `resolved.reducedGrounding` exists
+  // only on the strict variant, so the `in` check narrows the resolved union and the `&&` collapses
+  // the strict-but-fully-grounded case to false. One-way — only a DEGRADE is surfaced/recorded
+  // (the andon early-return above is a different condition and never reaches here). The marker rides
+  // onto the run record below so a degraded clear is countable, not invisible; the stdout note makes
+  // it visible at cast time too (a designer watching the cast SEES the degrade, not only the ledger).
+  const reducedGrounding = "reducedGrounding" in resolved && resolved.reducedGrounding;
+  if (reducedGrounding) {
+    process.stdout.write("· reduced grounding — optional codebase-memory MCP absent; proceeding (degraded, recorded)\n");
+  }
+
   // Stamp the end ONCE and reuse it for both the log record and the returned actuals (T-024-02),
   // so the wall-clock the wallet debits is exactly the span the ledger records.
   const endedAt = new Date().toISOString();
@@ -298,6 +309,10 @@ export async function castPlay<I, O>(
       // The agentic turns the cast took (T-015-02) — pass-through, spread only when known so a
       // timed-out run (no result) leaves the field off, exactly like `intervened`.
       ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+      // The reduced-grounding marker (T-060-01-02, E-060 #3) — one-way, spread only when the cast
+      // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
+      // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
+      ...(reducedGrounding ? { reducedGrounding: true } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
