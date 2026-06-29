@@ -1,0 +1,56 @@
+# Release-target guard — pinned by T-062-01 (E-061 / S-062).
+#
+# This is NOT the release pipeline (that is T-062-03). It is a small standing guard
+# that references the pinned target in `.github/release-target.env` and proves the
+# build host's real arch matches it — encoding T-062-01's acceptance criterion
+# ("the confirmed target triple ... matches the cook/dev's actual machine arch") as
+# an automated, re-runnable check. T-062-02/03 add compile/release jobs alongside it.
+name: release-target-check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify-target:
+    # Pinned arm64 macOS runner (CI_RUNNER in release-target.env). macos-14/15 are
+    # Apple Silicon; macos-13 is x86_64. The binary must be built on arm64 to match.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load pinned release target
+        # The literal reference to the SSOT pin — this is what makes the target
+        # "referenced by the CI config".
+        run: cat .github/release-target.env >> "$GITHUB_ENV"
+
+      - name: Assert runner arch matches the pinned bun compile target
+        run: |
+          set -euo pipefail
+          case "$(uname -s)" in
+            Darwin) os=darwin ;;
+            Linux)  os=linux  ;;
+            *) echo "::error::unsupported OS $(uname -s)"; exit 1 ;;
+          esac
+          case "$(uname -m)" in
+            arm64|aarch64) arch=arm64 ;;
+            x86_64|amd64)  arch=x64   ;;
+            *) echo "::error::unsupported arch $(uname -m)"; exit 1 ;;
+          esac
+          actual="bun-${os}-${arch}"
+          echo "runner -> ${actual}; pinned -> ${BUN_COMPILE_TARGET}"
+          if [ "$actual" != "$BUN_COMPILE_TARGET" ]; then
+            echo "::error::runner arch ${actual} != pinned ${BUN_COMPILE_TARGET}"
+            exit 1
+          fi
+
+      - name: Assert tarball name is internally consistent
+        run: |
+          set -euo pipefail
+          expected="${RELEASE_TARBALL_PREFIX}-${RELEASE_ASSET_TRIPLE}.tar.xz"
+          echo "expected -> ${expected}; pinned -> ${RELEASE_TARBALL}"
+          if [ "$expected" != "$RELEASE_TARBALL" ]; then
+            echo "::error::RELEASE_TARBALL ${RELEASE_TARBALL} != ${expected}"
+            exit 1
+          fi
