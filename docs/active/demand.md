@@ -85,7 +85,6 @@ named by the charter principle it advances and the gap it closes:
 
 | Signal | Value | Status |
 |---|---|---|
-| **`hackathon-designer-onboarding`** (Frontier 7 + 4 / P2·P5·P4) — the Set-B non-dev channel proof: a designer clones an Astro + React (→ Cloudflare) frontend seed, runs two gestures, and gets the SVG work-graph board *beside the running app* — understanding by picture, not code. E-058, **hand-authored** from a founder user-story + the build-ready brief (`pm/brief-hackathon-example.md`). | **High / keystone for Set B** (the riskiest must-be-true the PM desk flags; first real `vend steer` on a thin non-vend domain) | **active → E-058** — S-058-01 `vend init --template` seam (E-040 ext) · S-058-02 Astro+React+Cloudflare seed (scaffold → drive wiring) · S-058-03 serve the SVG board beside the app · S-058-04 **LIVE gold-master drive** (steer→work on the seed, capture EXPECTED-OUTCOME, forward-E1). Build free/deterministic; the closing drive is the one live cast (A3 make-or-break, de-risked by E-044). **Built + live-driven; the A3 risk MATERIALIZED** — the gold master (`examples/.../EXPECTED-OUTCOME.md`) recorded an honest-empty steer (shipped flow doesn't reach the board). **Spawned → E-059** (the wiring fix). |
 | **`seed-intent-reaches-steer`** (Frontier 7 + 4 / P2·P5) — close E-058's make-or-break finding: `vend steer` reads the seed's one-line `SEED.md` intent (threaded into the go-and-see snapshot, no BAML change) + its tuned charter (template overlay), so a designer's two gestures stage a real grounded board they can SEE. Hand-authored from the E-058 gold-master finding. | **High / unblocks Set B** (turns E-058's negative gold master into a closed loop; the make-or-break wire) | **active → E-059** — S-059-01 wire the intent (T-059-01 snapshot+SEED read · T-059-02 tuned-charter overlay) · S-059-02 **LIVE re-drive** → positive gold master + forward-E1 (T-059-03). Build free/deterministic; the closing re-drive is the one live cast. Findings #2 (budget shape) + #3 (`codebase-memory-mcp`) explicitly out of scope → separate signals. |
 
 ---
@@ -268,8 +267,10 @@ discovery.md`, `pm/onboarding-examples-discovery.md`). High-leverage **and** it 
 (more driveable projects → more cleared runs → forward-E1 → the wallet ungates). **First two signals
 already cleared — autonomously, by E-039's wallet sweep:** ✅ `vend init` (→ E-040, scaffold a
 driveable project, idempotent) · ✅ `vend doctor` (→ E-042, envinfo preflight + cast precondition
-guard). **Remaining:** a driveable hackathon `examples/` template · Homebrew / `bun --compile`
-delivery · onboarding docs. **High** (foundation laid; example → delivery next). *Pull from the PM
+guard) · ✅ a driveable hackathon `examples/` template (→ **E-058**, the Astro+React+Cloudflare seed + `vend
+init --template` seam + a LIVE gold-master drive — which surfaced the make-or-break steer-wiring gap, now
+closed by **E-059**; the full-slice clear carries to **E-060**). **Remaining:** Homebrew / `bun --compile`
+delivery · onboarding docs. **High** (foundation laid; delivery next). *Pull from the PM
 batch — the human pulls (pull-discipline).*
 
 - ~~Idempotent-mint guard for `propose-epic`~~ → **done → E-043** (`proposeEpicEffect` adopts an
