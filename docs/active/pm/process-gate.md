@@ -1,5 +1,5 @@
 ---
-ready: true           # ← RAISED 2026-06-21 for the visual-channel cycle (one-shot; flip to false on synthesis)
+ready: false          # ← consumed: visual-channel cycle PROCESSED 2026-06-29 (one-shot). Raise again with fresh focus.
 requested_at: 2026-06-21
 ---
 
@@ -26,7 +26,22 @@ a **preliminary draft**, not a decision.
 
 ## Focus / notes for the next processing cycle
 
-_**Visual-channel cycle — RAISED 2026-06-21 (ready, awaiting synthesis).**_
+_**Visual-channel cycle — PROCESSED 2026-06-29 (gate consumed, one-shot, back down).**_
+
+**Synthesized** into `proposed-batch.md` (6 ranked signals) against the committed strategy stack + the
+live board — now reorganized by **E-058's live drive** (the A3 risk materialized: engine produces a
+coherent board, shipped flow doesn't reach it) and **E-059's in-flight wiring fix** (board renders).
+**Recommended pull: the fresh-seed full-slice clear** (E-058 findings #2 + #3 → the next epic E-060;
+brief at `brief-fresh-seed-clear.md`) — it completes the Set-B round-trip E-058/E-059 opened, so the
+channel can be put in front of a real designer as a WHOLE drive (the render-and-watch probe sequences
+after, once the loop clears). **The focus question, answered:** the next pull buys down **Set B (unproven
+channel)**, compounds **Set A (the cleared forward-E1 cadence — each live drive feeds it)**, and defers
+**Set C (moat / install)**. SVG jargon-strip + accessibility fixes follow to sharpen the surface the probe
+tests. Promotion is still a human pull (`vend chain` the recommended signal). Frontier 3 (multi-node DAG)
+is now CLEARED (E-046→E-054), so the prior Frontier-7 batch was stale. Raise the gate again with fresh
+focus for the next cycle.
+
+---
 
 **Focus: the non-dev visual channel — turn the strategy stack into a ranked batch.** A full
 discovery→strategy stack was built and committed this cycle (`d4d649b`): `persona-research.md` →

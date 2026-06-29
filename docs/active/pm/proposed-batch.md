@@ -1,91 +1,118 @@
-# PM — Proposed batch (Frontier 7 continuation cycle, synthesized 2026-06-20)
+# PM — Proposed batch (Visual-channel cycle, synthesized 2026-06-29)
 
-> Synthesized by the orchestrator (full session context), ranking the open demand after the
-> distribution & onboarding v1 landed (`vend init` E-040 + `vend doctor` E-042, cleared live by the
-> macro-wallet sweep E-039). Focus confirmed: **continue Frontier 7 — demonstrate + ship.** Signals
-> **un-elaborated** (PE-6), ranked by **leverage, not effort**. Promotion is a deliberate human pull.
+> Synthesized by the orchestrator (full session context) against the committed strategy stack
+> (`persona-research` → `pestle-analysis` → `product-strategy` → `svg-artifact-discovery` →
+> `OKRs-vend-Q3-2026`) and the live board (`demand.md`), per the process-gate raised 2026-06-21.
+> **Supersedes the 2026-06-20 Frontier-7 batch** (its recommended pull — the hackathon example —
+> cleared as **E-058**). Signals **un-elaborated** (PE-6), ranked by **leverage, not effort**.
+> Promotion is a deliberate human pull.
 
 ## The strategic read
 
-Frontier 7's v1 landed in the strongest possible way: the **macro-wallet cleared its own
-onboarding** — E-039's live sweep minted and the loop built `vend init` + `vend doctor`. So the
-keystone (Frontier 1) is now **watched clearing**, with cleared (not censored) forward-E1 for the
-first time (0→4). Two things follow:
+The Set-B non-dev channel is no longer a hypothesis on paper — **E-058 drove it live and the A3 risk
+materialized honestly**: the articulation engine produces a coherent grounded board on a thin seed, but
+the *shipped* two-gesture flow doesn't reach it. That one live drive reorganized the board:
 
-1. **The PM layer's job now is the strategic pulls, not the tactical fixes.** The loop is
-   **auto-draining** the correctness items its own runs surface (E-038 timeout-headroom, E-043
-   idempotent-mint-guard). Those don't belong in this batch — they clear without a human pull.
-2. **Continue Frontier 7: demonstrate, then ship.** `vend init`/`doctor` are a foundation no one has
-   *seen work* yet and can't yet *install*. The next leverage is the **hackathon example** (makes the
-   value visible **and** accrues the cleared forward-E1 that moves the keystone provisional→confirmed)
-   and **Homebrew delivery** (makes it installable). Both compound the keystone; neither is trust-gated.
+1. **The channel is one-and-a-half pulls from a closed loop, not a fresh bet.** E-059 (in flight) wires
+   the seed's `SEED.md` intent into steer so the board **renders** (finding #1). What remains is the
+   **full-slice clear** — E-058's findings **#2** (cold-start budget shape) + **#3** (`decompose` needs
+   `codebase-memory-mcp`, absent on a fresh seed), which E-059 explicitly deferred as *"separate
+   signals."* Closing them carries the channel from *"see a board"* to *"actually clear work"* — the
+   Set-B round-trip, complete.
+2. **Finish the loop BEFORE you measure it.** The stack's riskiest must-be-true (claim 2b: non-devs want
+   a visual surface) is tested by the render-and-watch probe — but a probe against a *half* loop (board
+   renders, nothing clears) measures the wrong thing. Complete the drive first, then put a whole one in
+   front of a real designer.
+3. **Set B feeds Set A for free.** Each live drive (E-058 did, E-059 will, E-060 will) accrues *cleared*
+   forward-E1 — the ≥10-cleared cadence that ungates the macro-wallet (Set A). The channel work is not a
+   detour from the autonomy keystone; it **is** the cadence. Don't pull Set A as a separate epic (it's a
+   cadence, not a pull — `demand.md` Frontier 1).
+4. **Defer the moat (Set C) one more beat.** The open-model runner is **DEPRIORITIZED** (`demand.md`
+   2026-06-21 — no real cost/sovereignty need). Homebrew delivery is real but lower-leverage than proving
+   the channel converts — ship the install channel once there's a proven loop worth installing.
 
-The **multi-node DAG** stays the standing architectural keystone — ranked high, but **premature now**
-vs. proving and adopting what's built.
+**The focus question the OKRs frame — answered:** the next pull buys down **Set B (unproven channel)**,
+while **compounding Set A (the trust cadence)** and **deferring Set C (moat / install)**. The canvas
+sequences author→operator→designer; this finishes the designer's round-trip so it can finally be measured.
 
 ## Ranked shortlist
 
-### 1. Hackathon driveable example (+ `examples/` scaffold + `vend init --template`) — **Keystone**  ← recommended pull
-**Signal:** `examples/templates/hackathon-seed/` — copy it, drive a *seed of an idea* into a real
-board + first cleared slice in one short session, paired with a PM/designer. The experiential onramp
-that makes the engineer-out-of-the-loop shift *felt*.
-- **Advances:** the core feature on a fresh domain; P5 (non-dev pairing, Frontier 4); **accrues
-  cleared forward-E1** → moves the keystone toward its ≥10 bar.
-- **Budget:** ~1 block; exercises the **already-shipped** articulation trilogy + `vend init`.
-- **Readiness/deps:** wants `vend init --template` (a thin extension of E-040). Related: the **steer
-  self-referential-demotion** signal (E-037/E-039) sharpens the board quality on a fresh seed.
-- **Rationale:** PRD v1.1; the most leverage-dense pull — proves the value, teaches it, and feeds the
-  keystone in one move.
+### 1. Fresh-seed full-slice clear — close E-058 findings #2 + #3 — **Keystone**  ← recommended pull
+**Signal:** on a fresh seed, a designer's two gestures should clear a **real slice end-to-end**, not just
+render a board. Two gaps block it: **(#3)** `decompose` requires `codebase-memory-mcp`, absent on a fresh
+project → **graceful-degrade** (proceed without it, log an honest reduced-grounding note; the make-or-break
+steer→board never needs it); **(#2)** the cold-start chain prices ~120 min, so a tight two-gesture budget
+funds nothing → a **seed-appropriate envelope** calibrated from the run-log fat tails (E-013). Close with a
+**LIVE re-drive** that clears a slice + updates the gold master.
+- **Advances:** P2 (the two-gesture transaction actually *completes* on a fresh seed) · P5 (the non-dev
+  round-trip, whole) · P7 (a seed budget that funds a real clear). Completes the Set-B round-trip
+  E-058/E-059 opened; its live drive **accrues cleared forward-E1** (feeds Set A).
+- **Budget:** ~1 block (≈2h) for the degrade + envelope; +1 live cast for the closing drive.
+- **Readiness/deps:** **sequences after E-059** (board must render before a slice can clear). Findings
+  #2/#3 were *explicitly deferred by E-059 as separate signals* — this is them. Brief prepped:
+  `pm/brief-fresh-seed-clear.md`.
+- **Rationale:** the one pull that turns the half-loop into a complete, measurable drive — and the live
+  drive that closes it is *itself* a cleared forward-E1 record. Most leverage-dense pull on the board.
 
-### 2. Homebrew delivery via `dist` (JS mode) + `justfile` — **High**
-**Signal:** `brew install johnhkchen/vend/vend` — real `package.json` (`bin`/semver/drop `private`),
-`bun build --compile`, tap + shell installer + release CI, mirroring lisa's toolchain.
-- **Advances:** P5 (the literal local-first delivery).
-- **Budget:** ~1–2 blocks; **spike-proven** (compiled binary runs BAML render+parse self-contained).
-- **Readiness/deps:** `dist` is the same tool lisa already uses; composes with init/doctor.
-- **Rationale:** PRD v2 — the "ship it." Best once #1 gives a reason to install.
+### 2. Render-and-watch validation probe (Frontier 4) — **High** (a probe, not a build)
+**Signal:** hand a real designer ONE rendered `.svg` board off a real drive, ask her to narrate, measure
+where she gets lost — the cheapest test of the still-open claim 2b. **Sequence AFTER #1** so she sees a
+COMPLETE drive (board + a cleared slice), not a half-loop.
+- **Advances:** P5; validates (or kills) the desk's riskiest must-be-true — the OKR Set-B KR.
+- **Budget:** small — a measurement, not an epic. **Gated on a recruited real non-dev driver** (the
+  desk's biggest data gap — name it, don't paper over it).
+- **Rationale:** the honest "test it, don't keep building blind" move — but only meaningful against a
+  whole loop. *Not coding-agent-pullable* (needs a human driver) — tracked here as the measure step #1
+  unlocks.
 
-### 3. Accrue cleared forward-E1 → ≥10 (Frontier 1 cadence) — **High**
-**Signal:** keep running `vend work --no-intervened` clearing sweeps until cleared forward records
-reach **≥10** — the bar that moves the macro-wallet's go from *provisional* to **confirmed**.
-- **Advances:** P4/P7 — confirms the headline autonomy claim with evidence, not assertion.
-- **Budget:** small/recurring; a **cadence**, not an epic — naturally driven by #1/#2's real runs.
-- **Rationale:** the single highest-value *outcome* on the board; #1 and #2 are how it's earned.
+### 3. SVG card-face jargon strip (Frontier 4) — **High**
+**Signal:** most faces read clean, but a few leak `Baml…`/`Ci…`/`Claude p…`. Tighten the vocabulary policy
+to strip residual tokens — *the research's #1 weak link: jargon-heavy faces make the SVG a reframed text
+wall.*
+- **Advances:** P5. **Load-bearing for #2's validity** — if faces are jargon-heavy the probe fails for the
+  wrong reason. Sequence before the probe.
+- **Budget:** small (~1h).
 
-### 4. Multi-node DAG (Frontier 3) — the v1 architectural centerpiece — **High/Keystone**
-**Signal:** plays composing into a real typed graph (fan-out, join, conditional) beyond the linear
-propose→decompose chain — "typed, graph-structured agent orchestration" made real.
-- **Advances:** the core architecture; Frontier 2 (open-model runner) wants it underneath.
-- **Budget:** several blocks (heavy).
-- **Rationale:** the standing capability keystone — but **premature now** vs. demonstrating/shipping
-  what just landed. The next big architectural pull once adoption justifies the commitment.
+### 4. SVG accessibility pass — color-blind redundancy + layout-stability (Frontier 4) — **Standard**
+**Signal:** (a) status rides color tokens alone → add a redundant shape/position/label signal so it
+survives without color; (b) add a stability-under-delta check (add one card, re-render, assert other
+groups' boxes don't move) — the deterministic layout is Sam's spatial anchor.
+- **Advances:** P5 (+P4 for stability). Two small accessibility fixes that sharpen the surface the probe
+  tests; bundle as one pass.
+- **Budget:** small (~1–2h).
 
-### 5. Small-business example + deploy-preset shelf (X-2) — **High**
-**Signal:** the production-bar pick-choose-integrate speedrun — assemble a cost-effective full site by
-*choosing* deploy presets (Cloudflare-class stacks), integrating only the APIs this business needs.
-- **Advances:** the core feature at a *production* gate bar; the shelf as an integration catalog.
-- **Budget:** multi-block — the **deploy-preset shelf** is the meatiest genuinely-new capability.
-- **Rationale:** the second example, after #1 proves the driveable-template pattern.
+### 5. Thread the structured stop-reason onto the run record (Frontier 6) — **Standard**, ready ~1h
+**Signal:** STOP plays fold honest-empty into `budget-exhausted` (stdout-only), so the probe + `vend audit`
+can't split them. Thread the reason so it's countable.
+- **Advances:** P3 — makes the consistency/trust measurement (and the Set-A forward-E1 cadence) legible. An
+  enabler; **pairs #1's degraded-grounding note** (same run-record surface — do them together).
+- **Budget:** small (~1h).
 
-### 6. Figma↔SPA design-system example (X-3) — **High**
-**Signal:** an AI-built design system that **passes muster as a real Figma token system** — the
-designer steers the UI by direct token edits, no dev-telephone. Forward (Figma→code) first, then the
-two-way loop.
-- **Advances:** P5 at its fullest (the non-dev round-trip); reuses Frontier 4's annotation→demand;
-  E-032 per-play tooling (`mcp:["figma"]`).
-- **Budget:** highest setup of the three examples; split X-3a (forward) / X-3b (two-way).
-- **Rationale:** the best demo and the purest *consistency* proof — but highest uncertainty (does the
-  generated system clear a designer's bar?); pull after #1 and the Frontier-4 primitive.
+### 6. Homebrew / `bun --compile` delivery (Frontier 7) — **Standard**
+**Signal:** `brew install` — real `package.json` bin/semver, `bun build --compile` (spike-green), tap +
+installer + release CI, mirroring lisa's toolchain.
+- **Advances:** P5 (the literal local-first delivery) — the last open onboarding leg.
+- **Budget:** ~1–2 blocks (spike-proven).
+- **Rationale:** real, but lower-leverage than proving the channel converts; ship it once there's a proven
+  loop worth installing.
 
-**Carried forward (staged, lower now):** Frontier 2 agentic open-model runner (wants #4); Frontier 5
-walk-away UX (design-pull-first); Frontier 6 hygiene (stop-reason threading ~1h — makes #3 legible).
-**Loop is auto-draining:** the `propose-epic` idempotent-mint-guard (E-043) and the steer
-self-referential-demotion fix — tactical correctness its own runs surface; no human pull needed.
+**Carried forward (lower now):** per-play executor / BAML-client selection (Frontier 3, P6 — model
+plurality); walk-away UX (Frontier 5 — design-pull-first); open-model runner (Frontier 2 —
+DEPRIORITIZED). **Loop auto-drains tactical fixes** (the Leaf SVG `status`-grouping tuning, the `git
+bisect` backstop) — kept out of this strategic batch. **Frontier 3 (multi-node DAG) is CLEARED
+(E-046→E-054)** — no longer a candidate.
 
 ## Recommended next pull
 
-**#1, the hackathon example.** `vend init`/`doctor` are a foundation no one has watched work or can
-yet install — and the keystone needs *cleared runs* to go from provisional to confirmed. The
-hackathon example is the one pull that **makes the value visible, teaches the loop-design shift, and
-accrues the forward-E1 that confirms autonomy** — all on already-shipped capability. Ship the demo;
-**#2 (delivery)** makes it installable, and **#3** is the cadence both of them feed.
+**#1 — the fresh-seed full-slice clear (→ E-060).** E-059 makes the board *render*; this makes it
+*clear* — completing the Set-B round-trip E-058 opened, so the channel can finally be put in front of a
+real designer as a WHOLE drive (#2). It buys down the unproven channel (Set B), and its closing live drive
+accrues the cleared forward-E1 the autonomy keystone needs (Set A) — one pull, both payoffs. Signal
+string, ready to pull (the brief `pm/brief-fresh-seed-clear.md` is the spec the epic draws from):
+
+```
+vend chain "Fresh-seed full-slice clear — close E-058 findings #2 + #3 so a designer's two gestures clear a real slice end-to-end on a fresh seed, not just render a board. (#3) decompose tolerates a missing codebase-memory-mcp via graceful-degrade — proceed without it and log an honest reduced-grounding note (the make-or-break steer→board never needs it); (#2) set a seed-appropriate cold-start budget envelope calibrated from the run-log fat tails (E-013) so a tight two-gesture budget funds a real clear; close with a LIVE re-drive that clears >=1 slice and updates the hackathon-seed gold master. Sequences after E-059 (board must render before a slice can clear). Advances P2, P5, P7; the live drive accrues cleared forward-E1 (the Set-A cadence). Brief: pm/brief-fresh-seed-clear.md."
+```
+
+_Staged, not promoted (PE-1 / IA-5). A human pulls the signal onto the active board; the clearing play
+mints the real E-060 card + tickets. The PM writes only to `pm/`._
