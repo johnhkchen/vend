@@ -146,6 +146,7 @@ release-dryrun: release-lint
     bun run src/release/package.ts
     bun run src/release/formula.ts
     bun run src/release/acceptance.ts --out dist/acceptance-transcript.md
+    bun run src/release/publish.ts --dry-run
     @echo ""
-    @echo "✓ release dry-run GREEN — build artifacts + fresh-machine acceptance validated locally."
-    @echo "  Remaining (outward, human-gated): gh release create + tap push (see release.yml)."
+    @echo "✓ release dry-run GREEN — build + acceptance + publish PLAN validated locally (nothing published)."
+    @echo "  The only outward step is the real `bun run release:publish`, on a tag push."

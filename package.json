@@ -23,7 +23,8 @@
     "compile": "bun run src/release/compile.ts",
     "package": "bun run src/release/package.ts",
     "formula": "bun run src/release/formula.ts",
-    "acceptance": "bun run src/release/acceptance.ts"
+    "acceptance": "bun run src/release/acceptance.ts",
+    "release:publish": "bun run src/release/publish.ts"
   },
   "dependencies": {
     "@boundaryml/baml": "^0.222.0",

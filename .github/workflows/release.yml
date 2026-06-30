@@ -6,9 +6,10 @@
 # collapsed to ONE platform (arm64-mac) per the epic scope — no matrix.
 #
 # Every machine decision (target, runner, bun version, asset name) comes from the SSOT pin
-# `.github/release-target.env`, read by key — never hard-coded here. The compile and package
-# steps are tested scripts (src/release/{compile,package}.ts); the only un-gateable step is
-# the final `gh release create`, kept to a single faithful line.
+# `.github/release-target.env`, read by key — never hard-coded here. EVERY step is a tested,
+# locally-runnable bun script (src/release/{compile,package,formula,acceptance,publish}.ts); the
+# publish step's outward commands are validatable at the desk via `bun run release:publish
+# --dry-run` (`just release-dryrun`). No logic lives inline in this YAML — only sequencing.
 name: release
 
 on:
@@ -63,25 +64,6 @@ jobs:
         # dist/vend and writes dist/sha256sums.txt. Fails the release on a tag↔version mismatch.
         run: bun run package
 
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        # Idempotent: if the release already exists (e.g. re-firing the same tag after a
-        # downstream step failed), update its assets instead of failing on "already exists".
-        run: |
-          set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" \
-              "dist/${RELEASE_TARBALL}" \
-              "dist/sha256sums.txt" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              --title "$GITHUB_REF_NAME" \
-              --generate-notes \
-              "dist/${RELEASE_TARBALL}" \
-              "dist/sha256sums.txt"
-          fi
-
       - name: Render the Homebrew formula (T-063-01)
         # Reads dist/sha256sums.txt (just produced) → writes dist/vend.rb whose version/url/sha
         # are sourced from the SSOTs, never hand-typed. Tested by formula.smoke.test.ts.
@@ -95,22 +77,14 @@ jobs:
         # release. The live tap resolution stays human-owned (see the harness's RESIDUAL note).
         run: bun run acceptance
 
-      - name: Publish vend.rb to the homebrew-vend tap (T-063-01)
-        # The un-gateable final line (cf. `gh release create`): push the rendered formula to the
-        # OWN tap so `brew install johnhkchen/vend/vend` resolves it, mirroring lisa's own-tap
-        # pattern. Cross-repo push needs a token with write to johnhkchen/homebrew-vend — the
-        # default github.token cannot write another repo — so a PAT is provided as the
-        # HOMEBREW_TAP_TOKEN repository secret (see docs/active/work/T-063-01/review.md).
+      - name: Publish — GitHub release + homebrew-vend tap (T-063-01)
+        # ONE tested step (src/release/publish.ts, planned by publish-core.ts) replacing the prior
+        # two inline-bash steps: an idempotent `gh release` create-or-upload, then the rendered
+        # formula pushed to the OWN tap so `brew install johnhkchen/vend/vend` resolves it. The same
+        # plan runs locally via `bun run release:publish --dry-run` — this seam is now validatable at
+        # the desk, not only on a tag push.
         env:
+          GH_TOKEN: ${{ github.token }} # auth for `gh release` (same-repo)
+          # PAT with write to the tap — the default github.token cannot push to another repo.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          set -euo pipefail
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/johnhkchen/homebrew-vend.git" tap
-          mkdir -p tap/Formula
-          cp dist/vend.rb tap/Formula/vend.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/vend.rb
-          git commit -m "vend ${GITHUB_REF_NAME}"
-          git push
+        run: bun run release:publish
