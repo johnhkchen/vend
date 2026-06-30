@@ -96,12 +96,16 @@ decompose-play gate so the play can't materialize an invalid board.
 - **Not auto-draining:** `lisa validate`'s blind spot means the loop won't self-correct it; **every** future
   mint (E-062 kitchen seed next) needs a manual renumber until this lands.
 
-### 9. Run vend's own gate at mint, not just `lisa validate` — **Standard** (process guard)
-**Signal:** the E-061 board was committed on the chain's `lisa validate ✓` **without** `bun run check`, so
-it was graph-red from the mint and the loop built on it. Guard: the mint flow (`vend chain`) should run —
-or prompt for — vend's own gate (at minimum a graph-integrity check) before a board counts as landed. The
-net that would have caught #8 at mint instead of after the build.
-- **Advances:** honest-on-outcome / verify-git — catch invalid boards before work compounds on them.
+### 9. A graph-integrity contract at the vend/lisa seam — **High** (the net under #8 + F2)
+**Signal:** the deeper root behind both the graph-red mint *and* the done≠committed gap (5-why root-cause
+layer: `retrospective-2026-06-29.md` addendum) is an **uncontracted seam** between the two engines — two
+sources of truth that don't reconcile. Add the missing gate on both edges: **(a) mint-time** — `vend chain`
+runs vend's own `buildGraph`/gate before a board counts as landed (the E-061 board was committed on
+`lisa validate ✓` without `bun run check` → red from the mint); **(b) pre-sweep** — assert every
+`phase:done` ticket's referenced files are tracked + the tree is clean → andon otherwise (the
+`done ⇒ committed` net that verify-git did by hand this session). One contract, two edges; catches Blocker A
+and the detection half of Blocker B before work compounds.
+- **Advances:** honest-on-outcome / verify-git — reconcile the two sources of truth *at* the seam, not after.
 
 **Carried forward (lower now):** headless-operability hardening (F7 — notifications fixed; budget/andon
 legible in diff/PR + SVG-as-remote-read remain); `EXPECTED-OUTCOME` → `src/probe` consistency wiring

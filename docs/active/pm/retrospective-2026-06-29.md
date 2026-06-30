@@ -66,3 +66,66 @@ gesture. Surface it; don't build it now.
 Ranked into `proposed-batch.md` (this cycle). Strategic-first; the tactical fix (F2) auto-drains; promotion
 stays a human pull. The next pulls found the kitchen phase: **E-061 (install) ∥ E-062 (seed)**, with a cheap
 **live-verification drive (F1)** as the honest first move.
+
+---
+
+## Addendum — root-cause layer from landing E-061 (5 Whys)
+
+> Added after the desk cycle, when the E-061 build was landed. The retrospective above named the *patterns*;
+> this is the *root-cause layer* under fix-signals #8/#9 — three blockers, each run to a 5-why root, all
+> reducing to one systemic seam. Evidence-cited; hypothesis links flagged.
+
+**The episode.** E-061 (Homebrew) was minted, the loop built all 5 stories, but landing it surfaced three
+blockers: the board was **graph-invalid from the mint** (gate red, 8 fails), the build was **almost entirely
+uncommitted** (F2 repeating), and the epic **can't go live autonomously**. Resolved this session: board
+renumbered to nest (`S-061-0X`), gate green (1414/0), work committed in coherent slices.
+
+### Blocker A — board shipped graph-invalid (decompose flat IDs)
+1. Gate red → the live board failed `GraphIntegrityError` (4 stories → missing epics).
+2. → `decompose` emitted flat `S-061…S-065`; the model derives epic from the first number block, so `S-062`
+   → absent `E-062`.
+3. → decompose's ID generator is convention-blind (numbers stories like epics; no `S-<epic>-<NN>` nesting).
+4. → no play gate runs the output through `buildGraph`; integrity is enforced only on the **read** path.
+5. → engine⊥play: the play *writes files*, validation was built as a load-time concern; `lisa validate`'s
+   laxer rule gave a false green.
+
+**Root:** integrity is a read-side invariant, never a write-side gate. **Workable: fully, vend-side** — nest
+decompose's IDs + wire `buildGraph` into its structural gate (signal #8; must precede E-062).
+
+### Blocker B — "done" ≠ "committed" (F2, recurring)
+1. Work uncommitted → loop advanced `phase:done` but didn't commit most tickets (only T-062-01).
+2. → phase-advance and git-commit are separate steps; phase wrote, commit didn't.
+3. → *(hypothesis, lisa-internal)* commit ordering/serialization skipped some tickets' files (matches the
+   prior F2 — later tickets committed while earlier ones dropped). Confirm in lisa's loop commit logic.
+4. → no invariant binds `done ⇒ committed`; phase-state and git-state are independent truths.
+5. → phase-advance is a cheap local write, commit a separate heavier action; no post-step clean-tree assert.
+
+**Root:** lisa-state and git-state are unbound; a silent commit-skip doesn't fail the loop. **Workable:
+detection fully (vend-side guard — every `phase:done` ticket's files tracked + tree clean → andon); the
+deeper fix needs lisa (atomic advance+commit, cross-repo).** Human net = verify-git-not-status (caught it).
+
+### Blocker C — can't go live autonomously (human-owned tail)
+1. Loop can't make `brew install` work → needs a published release + tap repo + fresh-machine install.
+2. → those need external repo creation, a write-scoped secret, a tag-triggered CI run, outbound resolution.
+3. → the executor is scoped to local edits + the gate; no publish/credential/outbound authority.
+4. → outward credentialed hard-to-reverse actions require human authorization — by design.
+5. → the epic's "done looks like" bundled code-complete (autonomous) with live-published (human-authorized).
+
+**Root:** the done-definition conflates two authorization tiers; the boundary is correct, not a defect.
+**Workable: as workflow** — split acceptance into code-complete (loop) vs live-verified (human tail + #7);
+the tail is one-time setup (tap + secret) then a repeatable tag push. T-065-01 already honored this split.
+
+### The systemic root — one seam under all three
+Each blocker is **two sources of truth that don't reconcile at their seam**:
+
+| Blocker | Truth A | Truth B | Missing seam gate |
+|---|---|---|---|
+| A | `lisa validate` (lax) | `vend buildGraph` (strict) | integrity gate at **mint** |
+| B | lisa `phase:done` | git tree | `done ⇒ committed` at **sweep** |
+| C | "code-complete" | "live-published" | explicit **two-tier "done"** |
+
+This is the flip side of the [[vend-lisa-two-engine-split]]: the separation is the strength, the seams
+aren't contracted. **None is fundamental; all are workable.** Highest leverage = a **graph-integrity
+contract at the vend/lisa seam** (a mint-time + pre-sweep gate), which subsumes A and the detection half of
+B. Ranked: (1) #8 decompose-nesting + mint integrity gate; (2) `done ⇒ committed` guard; (3) two-tier "done"
++ go-live runbook.
