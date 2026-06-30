@@ -22,8 +22,9 @@ jobs:
 
       - name: Load pinned release target
         # The literal reference to the SSOT pin — this is what makes the target
-        # "referenced by the CI config".
-        run: cat .github/release-target.env >> "$GITHUB_ENV"
+        # "referenced by the CI config". Filter to KEY=value lines only:
+        # $GITHUB_ENV rejects the file's comment/blank lines.
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .github/release-target.env >> "$GITHUB_ENV"
 
       - name: Assert runner arch matches the pinned bun compile target
         run: |

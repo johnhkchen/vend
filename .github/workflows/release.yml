@@ -30,7 +30,8 @@ jobs:
 
       - name: Load pinned release target
         # The literal reference to the SSOT pin — what makes this CI "reference the pin".
-        run: cat .github/release-target.env >> "$GITHUB_ENV"
+        # Filter to KEY=value lines only: $GITHUB_ENV rejects the file's comment/blank lines.
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .github/release-target.env >> "$GITHUB_ENV"
 
       - name: Assert runner matches the pinned CI_RUNNER
         run: |
