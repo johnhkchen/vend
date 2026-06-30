@@ -50,6 +50,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Generate the BAML client
+        # baml_client/ is generated (gitignored) — absent in a fresh checkout, so the
+        # compile can't resolve its imports. The gate runs this; the release must too.
+        run: bun run baml:gen
+
       - name: Compile the self-contained binary (T-062-02)
         run: bun run compile
 
