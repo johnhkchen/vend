@@ -6,11 +6,20 @@ import {
   classify,
   DECOMPOSE_MAX_TURNS,
   DEFAULT_MODEL,
+  epicIdFromDoc,
+  epicNumOf,
   formatMessage,
   gateRowsFor,
+  graphIntegrityViolations,
   makeStreamSink,
+  renumberPlanToEpic,
   resolveLoggedModel,
 } from "./decompose-epic-core.ts";
+// TYPE-ONLY import (erased under verbatimModuleSyntax) — value-importing baml_client would load the
+// native addon into this `bun test` process and trip the once-per-process reactor hang this whole
+// file is built to avoid (see the header note). The four enum fields are written as string literals
+// `as` their enum type — runtime-identical (the enums are string-valued), zero addon load.
+import type { DraftPhase, DraftPriority, DraftStatus, DraftType, StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
 
 // T-002-03 runner: the PURE decision core. We import ./decompose-epic-core.ts (NOT
 // ./decompose-epic.ts) so this `bun test` process never value-imports `b` from
@@ -111,5 +120,80 @@ describe("DECOMPOSE_MAX_TURNS — the warranted default turn cap (T-015-02 AC #1
   test("is a positive integer (a usable --max-turns value the seam can stringify)", () => {
     expect(Number.isInteger(DECOMPOSE_MAX_TURNS)).toBe(true);
     expect(DECOMPOSE_MAX_TURNS).toBeGreaterThan(0);
+  });
+});
+
+// ── nested-id canonicalization + graph-integrity net (E-061 retro #8) ──────────────────────────
+
+const story = (id: string, tickets: string[]): StoryDraft => ({
+  id, title: `story-${id}`, type: "Task" as DraftType, status: "Open" as DraftStatus,
+  priority: "High" as DraftPriority, tickets,
+});
+const ticket = (id: string, storyId: string, depends_on: string[] = []): TicketDraft => ({
+  id, story: storyId, title: `ticket-${id}`, type: "Task" as DraftType, status: "Open" as DraftStatus,
+  priority: "High" as DraftPriority, phase: "Ready" as DraftPhase, depends_on, purpose: "p",
+  advances: ["P3"], doneSignal: "a check passes",
+});
+
+/** The exact bug shape the E-061 mint emitted: FLAT story ids for one epic, so `S-062` derives a
+ *  non-existent `E-062`. One cross-story `depends_on` edge to prove the remap rewires it. */
+const flatPlan = (): WorkPlan => ({
+  stories: [story("S-061", ["T-061-01"]), story("S-062", ["T-062-01"]), story("S-063", ["T-063-01"])],
+  tickets: [
+    ticket("T-061-01", "S-061"),
+    ticket("T-062-01", "S-062", ["T-061-01"]),
+    ticket("T-063-01", "S-063", ["T-062-01"]),
+  ],
+});
+
+describe("epicNumOf / epicIdFromDoc — pinning the epic the plan belongs to", () => {
+  test("epicNumOf strips E- to the digit block; null on a non-epic id", () => {
+    expect(epicNumOf("E-061")).toBe("061");
+    expect(epicNumOf("S-061-01")).toBeNull();
+    expect(epicNumOf("E61")).toBeNull();
+  });
+  test("epicIdFromDoc reads `id:` out of epic frontmatter; null when absent", () => {
+    expect(epicIdFromDoc("---\nid: E-061\ntitle: x\n---\nbody")).toBe("E-061");
+    expect(epicIdFromDoc("---\ntitle: no-id-here\n---")).toBeNull();
+  });
+});
+
+describe("renumberPlanToEpic — vend OWNS the ids (flat → nested convention)", () => {
+  test("rewrites every story/ticket id onto S-<epic>-<NN> / T-<epic>-<NN>-<MM>", () => {
+    const out = renumberPlanToEpic(flatPlan(), "E-061");
+    expect(out.stories.map((s) => s.id)).toEqual(["S-061-01", "S-061-02", "S-061-03"]);
+    expect(out.tickets.map((t) => t.id)).toEqual(["T-061-01-01", "T-061-02-01", "T-061-03-01"]);
+  });
+  test("remaps ALL cross-refs: story.tickets, ticket.story, and depends_on edges", () => {
+    const out = renumberPlanToEpic(flatPlan(), "E-061");
+    expect(out.stories[1]!.tickets).toEqual(["T-061-02-01"]);
+    expect(out.tickets[1]!.story).toBe("S-061-02");
+    // the S-062→S-061 cross-story edge T-062-01 depends_on T-061-01 is rewired to the new ids
+    expect(out.tickets[1]!.depends_on).toEqual(["T-061-01-01"]);
+    expect(out.tickets[2]!.depends_on).toEqual(["T-061-02-01"]);
+  });
+  test("is a no-op for a non-E-<digits> epic id (degrade, don't invent)", () => {
+    const p = flatPlan();
+    expect(renumberPlanToEpic(p, "not-an-epic")).toEqual(p);
+  });
+});
+
+describe("graphIntegrityViolations — vend's own buildGraph as the pre-write net", () => {
+  test("FLAT plan is rejected — S-062/S-063 resolve to epics that don't exist", () => {
+    const v = graphIntegrityViolations(flatPlan(), "E-061");
+    expect(v.length).toBeGreaterThan(0);
+    expect(v.join("\n")).toContain("E-062");
+  });
+  test("the RENUMBERED plan is graph-valid — the bug is closed end to end", () => {
+    const v = graphIntegrityViolations(renumberPlanToEpic(flatPlan(), "E-061"), "E-061");
+    expect(v).toEqual([]);
+  });
+  test("catches a dangling depends_on the gates' DAG check would miss across the board", () => {
+    const p: WorkPlan = {
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticket("T-061-01-01", "S-061-01", ["T-061-09-09"])], // depends on a ghost
+    };
+    const v = graphIntegrityViolations(p, "E-061");
+    expect(v.join("\n")).toContain("T-061-09-09");
   });
 });

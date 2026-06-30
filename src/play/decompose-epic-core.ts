@@ -19,6 +19,8 @@ import { isStop, type GateResult } from "../gate/gates.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 import type { PlayTools } from "../engine/play.ts";
 import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
+import { buildGraph, GraphIntegrityError, GraphParseError, type RawNode } from "../graph/model.ts";
+import type { WorkPlan } from "../../baml_client/index.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned
@@ -164,4 +166,124 @@ export function makeStreamSink(opts: {
     opts.write(formatMessage(msg));
     opts.sink(JSON.stringify(msg));
   };
+}
+
+// ── nested-id canonicalization + graph-integrity net (E-061 retro #8) ──────────────────────────
+//
+// WHY: the decompose model EMITS ids (its prompt even shows the old flat `T-002-01` / `S-002`
+// form), but vend's graph model derives a story's epic from the id's FIRST number block
+// (`epicIdForStory`: `S-061-02` → `E-061`). A flat plan for epic E-061 (`S-061, S-062, S-063, …`)
+// therefore resolves `S-062` → a non-existent `E-062` and the board fails `bun run check`
+// (GraphIntegrityError) — while passing lisa's laxer `validate`. The fix is to make vend OWN the
+// identifiers (renumber onto the nested convention E-060 follows) and to run vend's OWN model over
+// the would-be board BEFORE any write, so the play can never materialize a graph-invalid board.
+
+/** The digit block of an epic id: `"E-061"` → `"061"`; null if not `E-<digits>`. PURE. */
+export function epicNumOf(epicId: string): string | null {
+  const m = epicId.match(/^E-(\d+)$/);
+  return m ? m[1]! : null;
+}
+
+/** Pull the epic id (`"E-061"`) from an epic markdown doc's frontmatter (`id: E-061`), else null.
+ *  PURE — mirrors `epicIdOf` in decompose-epic.ts but needs no path (the effect has only the doc). */
+export function epicIdFromDoc(epic: string): string | null {
+  const m = epic.match(/^\s*id:\s*(E-\d+)\b/m);
+  return m ? m[1]! : null;
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/**
+ * Deterministically RENUMBER a parsed plan onto the nested id convention the board's graph model
+ * requires: every story becomes `S-<epic>-<NN>` (plan order) and every ticket `T-<epic>-<NN>-<MM>`
+ * (NN = its story's number, MM = its order within that story). All cross-references
+ * (`story.tickets`, `ticket.story`, `ticket.depends_on`) are remapped through the SAME old→new
+ * tables, so the result is a faithful bijection of the model's plan carrying graph-valid ids.
+ *
+ * PURE and TOTAL. An id this cannot place — a ticket whose declared `story` is not in the plan —
+ * is kept VERBATIM (never silently invented), so a genuinely malformed plan trips
+ * {@link graphIntegrityViolations} rather than being papered over. A non-`E-<digits>` epic id is a
+ * no-op (the net then judges the untouched plan). Produces plain objects (the drafts are plain
+ * interfaces) — every downstream reader (gates already ran; materialize/the net) reads fields only.
+ */
+export function renumberPlanToEpic(plan: WorkPlan, epicId: string): WorkPlan {
+  const num = epicNumOf(epicId);
+  if (num === null) return plan;
+
+  // 1. story ids in plan order
+  const storyMap = new Map<string, string>();
+  const storyNN = new Map<string, string>();
+  plan.stories.forEach((s, i) => {
+    const nn = pad2(i + 1);
+    storyMap.set(s.id, `S-${num}-${nn}`);
+    storyNN.set(s.id, nn);
+  });
+
+  // 2. ticket ids — first by each story's declared ticket order, then any unlisted ticket under
+  //    its own declared story (so MM stays dense + unique within a story).
+  const ticketMap = new Map<string, string>();
+  const mmCount = new Map<string, number>();
+  const assign = (oldTid: string, oldSid: string): void => {
+    const nn = storyNN.get(oldSid);
+    if (nn === undefined || ticketMap.has(oldTid)) return;
+    const mm = (mmCount.get(oldSid) ?? 0) + 1;
+    mmCount.set(oldSid, mm);
+    ticketMap.set(oldTid, `T-${num}-${nn}-${pad2(mm)}`);
+  };
+  for (const s of plan.stories) for (const tid of s.tickets) assign(tid, s.id);
+  for (const t of plan.tickets) assign(t.id, t.story);
+
+  // 3. rebuild with remapped refs (unmapped → kept verbatim so the net andons, not this)
+  const stories = plan.stories.map((s) => ({
+    ...s,
+    id: storyMap.get(s.id) ?? s.id,
+    tickets: s.tickets.map((tid) => ticketMap.get(tid) ?? tid),
+  }));
+  const tickets = plan.tickets.map((t) => ({
+    ...t,
+    id: ticketMap.get(t.id) ?? t.id,
+    story: storyMap.get(t.story) ?? t.story,
+    depends_on: t.depends_on.map((d) => ticketMap.get(d) ?? d),
+  }));
+  return { ...plan, stories, tickets };
+}
+
+/**
+ * Run vend's OWN graph model ({@link buildGraph}) over the plan as a would-be board FRAGMENT — a
+ * synthetic node for the epic under decomposition plus the plan's stories/tickets — and return the
+ * integrity violations. `[]` ⇒ the plan would materialize to a graph-valid board (every story
+ * resolves to its epic, every edge resolves, no duplicate/cycle); a non-empty list is exactly WHY it
+ * would not, straight from the same andon `bun run check` raises. PURE — builds RawNodes in-memory
+ * (no fs, no `Bun.YAML`) and never throws: an expected integrity/parse refusal becomes data the
+ * effect relabels to a `graph-invalid` outcome. The synthetic epic carries only the fields
+ * `coerceEpic` requires; type/status/etc. are the drafts' enum-member strings (buildGraph keeps them
+ * as opaque strings — the faithful-mirror rule — so no alias mapping is needed here).
+ */
+export function graphIntegrityViolations(plan: WorkPlan, epicId: string): string[] {
+  const epicRaw: RawNode = {
+    data: { id: epicId, title: "epic-under-decomposition", status: "active" },
+    body: "",
+    file: `${epicId} (synthetic)`,
+  };
+  const storyRaws: RawNode[] = plan.stories.map((s) => ({
+    data: { id: s.id, title: s.title, status: s.status, priority: s.priority, tickets: s.tickets },
+    body: "",
+    file: `${s.id}.md`,
+  }));
+  const ticketRaws: RawNode[] = plan.tickets.map((t) => ({
+    data: {
+      id: t.id, story: t.story, title: t.title, type: t.type, status: t.status,
+      priority: t.priority, phase: t.phase, depends_on: t.depends_on,
+    },
+    body: "",
+    file: `${t.id}.md`,
+  }));
+  try {
+    buildGraph([epicRaw], storyRaws, ticketRaws);
+    return [];
+  } catch (e) {
+    if (e instanceof GraphIntegrityError) return [...e.violations];
+    if (e instanceof GraphParseError) return [e.message];
+    throw e;
+  }
 }

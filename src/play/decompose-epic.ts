@@ -42,7 +42,13 @@ import {
   type Play,
 } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
-import { DECOMPOSE_MAX_TURNS, DECOMPOSE_TOOLS } from "./decompose-epic-core.ts";
+import {
+  DECOMPOSE_MAX_TURNS,
+  DECOMPOSE_TOOLS,
+  epicIdFromDoc,
+  graphIntegrityViolations,
+  renumberPlanToEpic,
+} from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
 import { assembleInputs, type DecomposeInputs } from "./project-context.ts";
 import { materialize, IdCollisionError } from "./materialize.ts";
@@ -129,8 +135,31 @@ export function epicIdOf(epic: string, epicPath: string): string {
  */
 const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>): Promise<EffectResult> => {
   const root = ctx.projectRoot;
+
+  // Canonicalize ids, then PROVE the board before writing (E-061 retro #8). The model emits ids
+  // (its prompt shows the old flat `T-002-01` form), but vend OWNS the board's identifiers: derive
+  // the epic from the epic doc and renumber every story/ticket onto the nested `S-<epic>-<NN>` /
+  // `T-<epic>-<NN>-<MM>` convention the graph model requires, remapping all cross-refs. Then run
+  // vend's OWN `buildGraph` over the would-be board fragment; on any violation, refuse with a
+  // relabeled `graph-invalid` andon BEFORE the first write (no partial materialization), so the play
+  // can never land a board `bun run check` would reject — the exact failure of the flat E-061 mint
+  // that passed `lisa validate` but failed the strict gate. A doc with no parseable `id:` skips both
+  // (degrade, not regress); gates already cleared the plan's value/allocation/bounds/structural.
+  const epicId = epicIdFromDoc(ctx.inputs.epic);
+  const finalPlan = epicId ? renumberPlanToEpic(plan, epicId) : plan;
+  if (epicId) {
+    const violations = graphIntegrityViolations(finalPlan, epicId);
+    if (violations.length > 0) {
+      return {
+        ok: false,
+        outcome: "graph-invalid",
+        detail: `graph-invalid — the plan would not materialize to a valid board:\n- ${violations.join("\n- ")}`,
+      };
+    }
+  }
+
   try {
-    const { storyFiles, ticketFiles } = await materialize(plan, {
+    const { storyFiles, ticketFiles } = await materialize(finalPlan, {
       storiesDir: join(root, "docs", "active", "stories"),
       ticketsDir: join(root, "docs", "active", "tickets"),
     });
