@@ -85,6 +85,24 @@ today** — it's a genuine gap, not a mirror.
 - **Budget:** small (one workflow + a tiny assert script). Tactical-leaning, but it's the install path's
   *only* live proof — surface it, don't let it auto-drain silently.
 
+### 8. `decompose` mints graph-invalid story IDs — **High** (blocks every future epic mint) ← do before E-062
+**Signal:** the `decompose-epic` play emitted E-061's stories **flat** (`S-061…S-065`), but vend's model
+resolves a story's epic by its first number block, so `S-062` → a non-existent `E-062`. The board failed
+`bun run check` (GraphIntegrityError, 8 cascading fails) **while passing `lisa validate`** — and was red
+from the mint until a manual renumber this session. Fix decompose to emit the nested `S-<epic>-<NN>` /
+`T-<epic>-<NN>-<MM>` convention E-060 follows, **and** add the live-board graph-integrity smoke as a
+decompose-play gate so the play can't materialize an invalid board.
+- **Advances:** P3 / correctness — the clearing play's output must satisfy vend's own model.
+- **Not auto-draining:** `lisa validate`'s blind spot means the loop won't self-correct it; **every** future
+  mint (E-062 kitchen seed next) needs a manual renumber until this lands.
+
+### 9. Run vend's own gate at mint, not just `lisa validate` — **Standard** (process guard)
+**Signal:** the E-061 board was committed on the chain's `lisa validate ✓` **without** `bun run check`, so
+it was graph-red from the mint and the loop built on it. Guard: the mint flow (`vend chain`) should run —
+or prompt for — vend's own gate (at minimum a graph-integrity check) before a board counts as landed. The
+net that would have caught #8 at mint instead of after the build.
+- **Advances:** honest-on-outcome / verify-git — catch invalid boards before work compounds on them.
+
 **Carried forward (lower now):** headless-operability hardening (F7 — notifications fixed; budget/andon
 legible in diff/PR + SVG-as-remote-read remain); `EXPECTED-OUTCOME` → `src/probe` consistency wiring
 (carried from E-058). **Auto-drained:** F2.
@@ -95,8 +113,9 @@ legible in diff/PR + SVG-as-remote-read remain); `EXPECTED-OUTCOME` → `src/pro
 all gates green; 5 stories / 8 tickets), ready for lisa's loop. Remaining: **#1** the cheap honesty-close
 verification drive (run when ready to spend the metered budget), then **#3 E-062 (the seed)** after a cheap
 A3-for-EmDash spike. **#7 (the brew-availability gate)** sequences right behind E-061's human go-live tail
-(create the tap, cut the first release) — its pre-publish tier can ride along with E-061. The E-061 signal
-string below is retained for the trail. Signal strings for the build pulls:
+(create the tap, cut the first release) — its pre-publish tier can ride along with E-061. **#8 (decompose
+graph-valid IDs) must land before the E-062 pull** — otherwise the kitchen-seed mint hits the same
+graph-invalid renumber. The E-061 signal string below is retained for the trail. Signal strings for the build pulls:
 
 ```
 vend chain "vend Homebrew distribution + make-a-workspace — make vend brew-installable mirroring lisa exactly (compiled per-platform binary via bun build --compile, a tap formula, package.json cleanup: drop private, real semver, add bin) and extend the vend init --template seam so a brew-installed vend lays down a workspace. The end-user install path — a hard prerequisite for the kitchen dogfood and every future user. Mirror johnhkchen/homebrew-lisa; ship the cook/dev's platform (arm64-mac) first. Spec: pm/plan-kitchen-dogfood.md (E-061)."
