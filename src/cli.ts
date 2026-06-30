@@ -918,17 +918,27 @@ if (import.meta.main) {
   }
 
   if (parsed.cmd === "doctor") {
-    // The preflight gate (T-042-03): probe the vend-specific deps (lisa & claude on PATH, the BAML
-    // native addon loadable, the active executor's config present), render the verdict, print it,
-    // and exit with the CORE-computed code (0 all-green / 1 any-broken). A broken dep is DATA — a
-    // clean `✗ <check> — <fix-it>` line, never a stack trace: `probeDoctor` never rejects (every
-    // check is wrapped by safeCheck) and `renderDoctorReport` never throws. Read-only — nothing is
-    // cast, so there is no budget. The report prints to STDOUT green OR red (it is a status
-    // checklist, not an error stream, like `work`'s receipt). Lazy import keeps the probe (and its
-    // transitive BAML addon) off the pure-parse path, exactly as the other arms keep their deps lazy.
-    const { probeDoctor } = await import("./doctor/doctor-probe.ts");
+    // The preflight gate (T-042-03), WORKSPACE-AWARE (T-062-02-02): doctor reports on "the
+    // prerequisites for what you'd do HERE". In a build project that is the vend-specific deps
+    // (lisa & claude on PATH, the BAML native addon loadable, the active executor's config) probed
+    // by `probeDoctor`. In a STANDALONE kitchen workspace (the EmDash+Astro seed `vend init
+    // --template kitchen` lays — no lisa marker) those build-engine deps are not what matters; the
+    // app's are — bun, the Astro/Cloudflare storefront config, the EmDash Dish seed — probed by
+    // `probeKitchen`. We dispatch on the cwd signature (`isKitchenWorkspace`); a readdir failure
+    // falls back to the default build-engine probe. Either way: render the verdict, print it, and
+    // exit with the CORE-computed code (0 all-green / 1 any-broken). A broken prereq is DATA — a
+    // clean `✗ <check> — <fix-it>` line, never a stack trace: neither probe rejects (every check is
+    // safeCheck-wrapped) and `renderDoctorReport` never throws. Read-only — nothing is cast, so no
+    // budget. Lazy imports keep the probes (and the transitive BAML addon) off the pure-parse path.
     const { renderDoctorReport } = await import("./doctor/doctor-core.ts");
-    const report = renderDoctorReport(await probeDoctor());
+    const { readdir } = await import("node:fs/promises");
+    const { isKitchenWorkspace, probeKitchen } = await import("./kitchen/kitchen-doctor.ts");
+    const cwd = process.cwd();
+    const entries = await readdir(cwd).catch(() => [] as string[]);
+    const checks = isKitchenWorkspace(entries)
+      ? await probeKitchen(cwd)
+      : await (await import("./doctor/doctor-probe.ts")).probeDoctor();
+    const report = renderDoctorReport(checks);
     process.stdout.write(`${report.report}\n`);
     process.exit(report.exitCode);
   }
