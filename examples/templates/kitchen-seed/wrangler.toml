@@ -1,0 +1,22 @@
+# Cloudflare config for the kitchen storefront (T-062-01-02).
+#
+# HONEST BOUNDARY: this is config present + build-green, NOT a live deploy from this repo.
+# There are no Cloudflare credentials in the vend repo's environment, and nothing here
+# invokes a deploy. The site deploys on the *cook's* own push, under their own Cloudflare
+# account (see .github/workflows/deploy.yml). The @astrojs/cloudflare adapter reads and
+# MERGES this file at build time, then writes the runnable config to dist/server/wrangler.json.
+
+name = "kitchen-storefront"
+compatibility_date = "2026-04-15"
+
+# Bindings the menu-render slice will need once `vend work` clears it — the cook wires their
+# own EmDash store + media library. Left COMMENTED (honest-empty): config-shape, not fake data.
+#
+# [[d1_databases]]            # EmDash content store (dishes)
+# binding = "DB"
+# database_name = "kitchen"
+# database_id = "<your-d1-id>"
+#
+# [[r2_buckets]]              # EmDash media library (dish photos)
+# binding = "MEDIA"
+# bucket_name = "kitchen-media"

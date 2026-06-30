@@ -1,0 +1,11 @@
+# Seed-local ignores. node_modules/ and dist/ are also covered by the repo root .gitignore,
+# but .astro/ (Astro's generated type cache) is not — keep it here.
+node_modules/
+dist/
+.astro/
+
+# Cloudflare adapter / wrangler local dev + build state (miniflare cache, deploy config).
+.wrangler/
+
+# vend project-state (the cook's runs/board) — generated, never committed (honest-empty seed).
+.vend/

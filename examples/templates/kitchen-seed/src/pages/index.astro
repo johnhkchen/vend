@@ -1,0 +1,37 @@
+---
+// The diner storefront `/` — a DELIBERATE STUB (T-062-01-02, decision (b)).
+//
+// This page renders a placeholder ON PURPOSE. The menu itself is the slice `vend work`
+// clears: read the couple's `Dish` content from EmDash's REST API and render an appetizing,
+// mobile-first menu here (one card per dish: photo, name, description). Until that drive,
+// `/` honestly says "coming soon" — no dishes, no EmDash fetch, no fake demand (IA-4).
+//
+// Mobile-first by design (the diner opens this on a phone): a single centered column,
+// system font, fluid padding. Keep it dependency-free so the stub builds green standalone.
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Our Kitchen — menu coming soon</title>
+  </head>
+  <body style="margin: 0; min-height: 100vh; display: flex; background: #fff8f2; font-family: system-ui, -apple-system, sans-serif; color: #2b2b2b;">
+    <main style="margin: auto; max-width: 28rem; padding: 2rem 1.5rem; text-align: center;">
+      <p style="font-size: 3rem; margin: 0;" aria-hidden="true">🍳</p>
+      <h1 style="margin: 0.5rem 0 0; font-size: 1.75rem; line-height: 1.2;">
+        Our kitchen menu is coming soon
+      </h1>
+      <p style="color: #6b6258; margin: 1rem 0 0; line-height: 1.5;">
+        Add your dishes in the EmDash admin — photo, name, and a short description — then let
+        <strong>vend</strong> build this menu. One card per dish, made for the phone you’re
+        holding.
+      </p>
+      <p style="color: #a89c8e; font-size: 0.875rem; margin: 2rem 0 0;">
+        This page is a starting point, not the finished menu.
+      </p>
+    </main>
+  </body>
+</html>
