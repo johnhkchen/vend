@@ -126,3 +126,26 @@ release-local: compile package formula
 # `release-local`. The live `brew install …/vend/vend` tap resolution stays human-owned. (T-065-01)
 acceptance:
     bun run src/release/acceptance.ts --out docs/active/work/T-065-01/acceptance-transcript.md
+
+# Validate the release WORKFLOW wiring without a tag push. Off-the-shelf: actionlint (static
+# lint + shellcheck on the inline `run:` bash) + act (parse/enumerate the job graph locally).
+# Catches the env-load / missing-step / inline-bash class of bug that previously only surfaced
+# on a real tag push. Needs `brew install act actionlint` + a running Docker daemon (for act).
+release-lint:
+    actionlint .github/workflows/release.yml .github/workflows/release-target-check.yml
+    act -W .github/workflows/release.yml --list
+
+# Full LOCAL dry-run of the release BUILD on this machine's real arch. Mirrors the workflow's
+# build steps EXACTLY — baml:gen → compile → package → formula → acceptance — but stops before
+# the outward publish (no GitHub release, no tap push; those stay human/credential-gated). Runs
+# the SAME bun scripts the workflow calls, so the binary, sha, formula, and fresh-machine
+# acceptance are all validated locally before any tag is cut. Pair with `release-lint`.
+release-dryrun: release-lint
+    bun run baml:gen
+    bun run src/release/compile.ts
+    bun run src/release/package.ts
+    bun run src/release/formula.ts
+    bun run src/release/acceptance.ts --out dist/acceptance-transcript.md
+    @echo ""
+    @echo "✓ release dry-run GREEN — build artifacts + fresh-machine acceptance validated locally."
+    @echo "  Remaining (outward, human-gated): gh release create + tap push (see release.yml)."
