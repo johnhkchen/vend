@@ -1,0 +1,49 @@
+{
+  "$schema": "https://emdashcms.com/seed.schema.json",
+  "version": "1",
+  "meta": {
+    "title": "Kitchen — your home-cooking menu"
+  },
+  "collections": [
+    {
+      "slug": "dishes",
+      "label": "Dishes",
+      "labelSingular": "Dish",
+      "description": "A dish on the kitchen menu — a photo, a name, and a short description.",
+      "icon": "utensils",
+      "supports": ["drafts"],
+      "fields": [
+        {
+          "slug": "name",
+          "label": "Name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "slug": "photo",
+          "label": "Photo",
+          "type": "image"
+        },
+        {
+          "slug": "description",
+          "label": "Description",
+          "type": "text"
+        }
+      ]
+    }
+  ],
+  "content": {
+    "dishes": [
+      {
+        "id": "example-dish",
+        "slug": "example-dish",
+        "status": "published",
+        "data": {
+          "name": "Sample Dish (edit or delete me)",
+          "photo": "/media/sample-dish.jpg",
+          "description": "This is the one seeded example dish — it documents the Dish format: a photo, a name, and a short description. Add your real dishes in the EmDash admin (upload a photo to the media library, write a name and description), then edit or delete this one. The menu render is built by your first vend drive."
+        }
+      }
+    ]
+  }
+}

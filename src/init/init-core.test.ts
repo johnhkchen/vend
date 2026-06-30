@@ -226,7 +226,7 @@ describe("TEMPLATE_REGISTRY — a trivial, honest-empty registry (T-058-01)", ()
   test("`hackathon` resolves; an unknown name does not; the available list is sorted", () => {
     expect(resolveTemplate("hackathon")).toBeDefined();
     expect(resolveTemplate("nope")).toBeUndefined();
-    expect(availableTemplates()).toEqual(["hackathon", "minimal"]);
+    expect(availableTemplates()).toEqual(["hackathon", "kitchen", "minimal"]);
   });
 
   test("every overlay adds ONLY structure/knowledge — zero demand rows (honest-empty IA-3/IA-4)", () => {
@@ -241,10 +241,15 @@ describe("TEMPLATE_REGISTRY — a trivial, honest-empty registry (T-058-01)", ()
   });
 
   test("overlays name only vend-owned paths — never a lisa-owned root marker (one-way-to-lisa)", () => {
-    for (const overlay of Object.values(TEMPLATE_REGISTRY)) {
+    for (const [name, overlay] of Object.entries(TEMPLATE_REGISTRY)) {
       for (const entry of overlay) {
+        // No overlay EVER writes a lisa marker — absolute, for standalone and non-standalone alike.
         expect(LISA_MARKERS.includes(entry.path as (typeof LISA_MARKERS)[number])).toBe(false);
-        expect(entry.path).not.toBe(".gitignore");
+        // A NON-standalone overlay (e.g. hackathon) layers onto an existing lisa checkout, so it must
+        // not own/clobber the lisa project's root `.gitignore`. A STANDALONE template (kitchen) mints a
+        // fresh workspace into an EMPTY dir — there is no lisa project to clobber — so it legitimately
+        // owns the root `.gitignore` (and no-clobber protects any pre-existing one regardless).
+        if (!isStandaloneTemplate(name)) expect(entry.path).not.toBe(".gitignore");
       }
     }
   });

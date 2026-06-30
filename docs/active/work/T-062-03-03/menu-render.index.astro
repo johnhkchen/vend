@@ -1,0 +1,139 @@
+---
+// The diner storefront `/` — THE MENU RENDER (the gold-master target for the menu-render slice,
+// T-062-03-03, epic E-062). This is the reference page the live `vend work` drive should produce in
+// the cook's scaffolded copy — NOT a commit into the template (the template ships index.astro as a
+// deliberate stub so the cook's drive clears this slice). It is kept as a work artifact, built green
+// offline (build.proof.txt), and mirrors vend's pure render spec (src/kitchen/menu-render.ts) — a
+// drift guard in menu-render.test.ts pins the two together.
+//
+// SSR (output: "server", already set in astro.config.mjs): runs per request on the Cloudflare Worker.
+// It reads the couple's Dish content from EmDash's REST API at request time (the genuine fork on the
+// gold-master board resolves to SSR — the couple edits dishes often; instant freshness beats a
+// re-deploy). When no EmDash endpoint is reachable (the cold-start / preview / no-server state) it
+// falls back to the ONE seeded example dish, so the page renders green standalone — the same
+// "config present, not live" honesty the seed's Cloudflare config carries (IA-4 honest-empty).
+//
+// Mobile-first by design (the diner opens this on a phone): a single centered column, system font,
+// fluid padding — carried over from the stub. Self-contained: no import outside this app.
+
+const PUBLISHED = "published";
+const MENU_CARD_CLASS = "dish-card";
+const MENU_EMPTY = "No dishes on the menu yet";
+
+// The one seeded example dish (mirrors examples/templates/kitchen-seed/.emdash/seed.json →
+// content.dishes[0]) — what EmDash's REST serves on a fresh boot, and the request-time fallback when
+// no live endpoint answers. The cook edits or deletes this once they add real dishes in the admin.
+const EXAMPLE_DISH = {
+  id: "example-dish",
+  slug: "example-dish",
+  status: "published",
+  data: {
+    name: "Sample Dish (edit or delete me)",
+    photo: "/media/sample-dish.jpg",
+    description:
+      "This is the one seeded example dish — it documents the Dish format: a photo, a name, and a short description. Add your real dishes in the EmDash admin (upload a photo to the media library, write a name and description), then edit or delete this one.",
+  },
+};
+
+type DishRecord = { id?: string; slug?: string; status?: string; data?: Record<string, unknown> };
+
+// Read the dishes from EmDash's REST list endpoint at request time; fall back to the seeded example
+// when the endpoint is unset or unreachable. Honest: never throws to the diner — a fetch failure
+// degrades to the seeded example, not a 500.
+async function loadDishes(): Promise<DishRecord[]> {
+  const base = import.meta.env.EMDASH_API_URL ?? import.meta.env.PUBLIC_EMDASH_API_URL;
+  if (!base) return [EXAMPLE_DISH];
+  try {
+    const res = await fetch(`${base.replace(/\/$/, "")}/api/collections/dishes/records?status=${PUBLISHED}`);
+    if (!res.ok) return [EXAMPLE_DISH];
+    const body: unknown = await res.json();
+    // EmDash REST returns either an array or `{ records: [...] }` / `{ data: [...] }` — tolerate all.
+    const list = Array.isArray(body)
+      ? body
+      : (body as { records?: unknown }).records ?? (body as { data?: unknown }).data;
+    const records = Array.isArray(list) ? (list as DishRecord[]) : [];
+    return records.length > 0 ? records : [EXAMPLE_DISH];
+  } catch {
+    return [EXAMPLE_DISH];
+  }
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+const records = await loadDishes();
+const cards = records
+  .filter((r) => r.status === PUBLISHED)
+  .map((r) => {
+    const d = r.data ?? {};
+    return {
+      name: typeof d.name === "string" ? d.name : "",
+      photo: strOrNull(d.photo),
+      description: strOrNull(d.description),
+    };
+  });
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Our Kitchen — this week's menu</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; background: #fff8f2;
+        font-family: system-ui, -apple-system, sans-serif; color: #2b2b2b;
+      }
+      main { margin: 0 auto; max-width: 28rem; padding: 2rem 1.25rem 3rem; }
+      header { text-align: center; margin-bottom: 1.5rem; }
+      header h1 { font-size: 1.75rem; line-height: 1.2; margin: 0; }
+      header p { color: #6b6258; margin: 0.5rem 0 0; }
+      .dish-menu { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.25rem; }
+      .dish-card {
+        background: #fff; border-radius: 0.875rem; overflow: hidden;
+        box-shadow: 0 1px 3px rgba(43, 43, 43, 0.08), 0 8px 24px rgba(43, 43, 43, 0.05);
+      }
+      .dish-card__photo { display: block; width: 100%; height: 12rem; object-fit: cover; background: #f0e7dc; }
+      .dish-card__name { font-size: 1.2rem; margin: 0; padding: 0.875rem 1rem 0; }
+      .dish-card__desc { color: #6b6258; line-height: 1.5; margin: 0.4rem 0 0; padding: 0 1rem 1rem; }
+      .menu-empty { text-align: center; color: #a89c8e; padding: 3rem 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>This week's menu</h1>
+        <p>Tap a dish to let the cook know what you'd like.</p>
+      </header>
+      {
+        cards.length === 0 ? (
+          <p class="menu-empty">{MENU_EMPTY} — add dishes in the EmDash admin.</p>
+        ) : (
+          <ul class="dish-menu" role="list">
+            {cards.map((card) => (
+              <li>
+                <article class={MENU_CARD_CLASS}>
+                  {card.photo && (
+                    <img
+                      class={`${MENU_CARD_CLASS}__photo`}
+                      src={card.photo}
+                      alt={card.name}
+                      loading="lazy"
+                    />
+                  )}
+                  <h2 class={`${MENU_CARD_CLASS}__name`}>{card.name}</h2>
+                  {card.description && <p class={`${MENU_CARD_CLASS}__desc`}>{card.description}</p>}
+                </article>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </main>
+  </body>
+</html>

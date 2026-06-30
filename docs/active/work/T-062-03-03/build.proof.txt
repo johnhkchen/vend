@@ -1,0 +1,29 @@
+# astro build — reference menu-render page (T-062-03-03, clause 2)
+# Mechanic: backed up the committed template stub, dropped the gold-master reference page in
+#   as src/pages/index.astro, ran the seed's installed astro 6.4.8 + @astrojs/cloudflare 13.7.0,
+#   then RESTORED the stub byte-for-byte. The committed template tree is left unchanged.
+# Date: 2026-06-30   Dir: examples/templates/kitchen-seed
+# astro:    astro  v6.4.8
+----------------------------------------------------------------------------------------------
+00:59:15 [@astrojs/cloudflare] Enabling image processing with Cloudflare Images for production with the "IMAGES" Images binding.
+00:59:15 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+00:59:15 [types] Generated 545ms
+00:59:15 [build] output: "server"
+00:59:15 [build] mode: "server"
+00:59:15 [build] directory: /Users/johnchen/swe/repos/vend/examples/templates/kitchen-seed/dist/
+00:59:15 [build] adapter: @astrojs/cloudflare
+00:59:15 [build] Collecting build info...
+00:59:15 [build] ✓ Completed in 552ms.
+00:59:15 [build] Building server entrypoints...
+00:59:16 [vite] ✓ built in 316ms
+00:59:16 [vite] ✓ built in 333ms
+00:59:16 [vite] ✓ built in 3ms
+00:59:16 [build] Rearranging server assets...
+00:59:16 [build] ✓ Completed in 671ms.
+00:59:16 [@astrojs/cloudflare] Injected immutable Cache-Control for /_astro/* into _headers.
+00:59:16 [build] Server built in 1.22s
+00:59:16 [build] Complete!
+----------------------------------------------------------------------------------------------
+exit_code: 0
+dist/server present: yes
+dist/client present: yes

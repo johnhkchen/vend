@@ -21,6 +21,13 @@
 // scaffold an empty, no-checkout dir); they still write no lisa-owned file, so one-way-to-
 // lisa is preserved.
 
+// The kitchen template's overlay (E-062). A VALUE import of compile-time string constants — NOT an
+// fs/clock/network import, so the PURE-core rule above holds (it is the same kind of thing as the
+// inlined `HACKATHON_CHARTER` const, just sourced from a sibling module that text-embeds the authored
+// seed). kitchen-overlay imports only the `ScaffoldEntry` TYPE back from here (erased at runtime under
+// verbatimModuleSyntax), so there is no runtime import cycle.
+import { KITCHEN_OVERLAY } from "../kitchen/kitchen-overlay.ts";
+
 /** One element of the scaffold: a directory, or a file with its seed contents. Paths are
  *  project-root-relative, POSIX, no leading `./`. The single shape both {@link planInit}
  *  and the T-040-02 write effect derive from — nobody re-lists the scaffold. */
@@ -261,6 +268,15 @@ export const TEMPLATE_REGISTRY: Readonly<Record<string, readonly ScaffoldEntry[]
     { kind: "file", path: "SEED.md", contents: HACKATHON_SEED_STUB },
     { kind: "file", path: "docs/knowledge/charter.md", contents: HACKATHON_CHARTER },
   ],
+  // The kitchen template (E-062, T-062-02-01): the authored EmDash+Astro seed — the Dish content
+  // type + one example dish (T-062-01-01) and the deliberately-stubbed Astro storefront + Cloudflare
+  // config-present (T-062-01-02). The overlay's content is text-embedded from the authored example
+  // tree (see kitchen-overlay.ts), so `vend init --template kitchen` lays the whole seed via the
+  // SAME write-if-absent / no-clobber path. It is STANDALONE (below): the dress-rehearsal / clean-room
+  // drive scaffolds a fresh app workspace into an EMPTY dir, so kitchen bypasses the lisa gate and
+  // legitimately owns the project-root `.gitignore` (no lisa project to clobber). Honest-empty +
+  // one-way-to-lisa hold (the overlay writes no lisa marker and adds no demand row).
+  kitchen: KITCHEN_OVERLAY,
   // The minimal/placeholder template (E-061, T-064-01): an EMPTY overlay — it adds no files. The
   // base {@link SCAFFOLD_MANIFEST} already lays a complete, honest-empty, usable workspace; `minimal`
   // exists to mark the STANDALONE path (the lisa-project gate is bypassed for it — see
@@ -277,7 +293,7 @@ export const TEMPLATE_REGISTRY: Readonly<Record<string, readonly ScaffoldEntry[]
  *  lisa project — it overlays onto one (one-way). Kept as a small policy SET beside the registry (gate
  *  policy, not overlay content) so the registry value shape stays a plain `ScaffoldEntry[]`. INVARIANT:
  *  every name here is also a {@link TEMPLATE_REGISTRY} key (a pure test pins it). */
-export const STANDALONE_TEMPLATES: ReadonlySet<string> = new Set(["minimal"]);
+export const STANDALONE_TEMPLATES: ReadonlySet<string> = new Set(["minimal", "kitchen"]);
 
 /** Does this template make a standalone workspace (gate-bypassing)? PURE — membership in
  *  {@link STANDALONE_TEMPLATES}. An unknown name is not standalone (false). */

@@ -285,7 +285,7 @@ describe("runInit — template overlay (T-058-01)", () => {
     const root = await seedBareLisa();
     try {
       const outcome = await runInit(root, "bogus");
-      expect(outcome).toEqual({ kind: "unknown-template", name: "bogus", available: ["hackathon", "minimal"] });
+      expect(outcome).toEqual({ kind: "unknown-template", name: "bogus", available: ["hackathon", "kitchen", "minimal"] });
       // the refusal is inert: neither the base tree nor any overlay file materialized.
       for (const entry of SCAFFOLD_MANIFEST) {
         expect(await exists(join(root, entry.path))).toBe(false);

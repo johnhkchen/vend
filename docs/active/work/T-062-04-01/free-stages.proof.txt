@@ -1,0 +1,26 @@
+free-stages.proof.txt — captured re-run of the FREE deterministic kitchen drive stages
+ticket: T-062-04-01  ·  host: Darwin (arm64)  ·  executor (metered casts): claude / claude-opus-4-8
+date: 2026-06-30  ·  driver: src/cli.ts  ·  throwaway sandbox (committed template NOT mutated)
+scope: the FREE half only (init/doctor/svg). The metered steer→work clear is human-authorized (P7) and stays ⟪…⟫.
+============================================================================================
+
+$ vend init --template kitchen
+vend init: scaffolded --template kitchen — 31 created, 0 skipped
+exit: 0
+
+$ vend doctor   (cwd = the materialized workspace)
+doctor: ok — 3 check(s) passed
+  ✓ bun on PATH
+  ✓ Astro storefront config present
+  ✓ EmDash Dish seed valid
+exit: 0
+
+$ vend svg      (pre-drive — honest-empty board)
+wrote .vend/work-graph.svg — 0 groups, 0 cards, 0 links
+exit: 0
+
+--- materialized seam confirmations (free) ---
+SEED.md at root:            present
+kitchen charter overlaid:   # Charter — your home-kitchen menu
+storefront stub (cook's slice) intact: yes (coming soon)
+honest-empty svg written:   yes
