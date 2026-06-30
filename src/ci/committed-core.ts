@@ -60,17 +60,22 @@ export function parsePorcelainLine(line: string): string | null {
 
 /**
  * Classify full `git status --porcelain` text → the SORTED, DEDUPED list of offending paths
- * under {@link SOURCE_PREFIXES}. PURE/TOTAL. An EMPTY array is the verdict "clean" — there is no
- * separate boolean to desync. Gitignored runtime (`baml_client/`, `node_modules/`, `.vend/*`…)
- * never appears in porcelain in the first place (we never pass `--ignored`), so the classifier
- * only needs to KEEP source-prefixed paths, not maintain an ignore denylist.
+ * under the given prefix scope (default {@link SOURCE_PREFIXES}). PURE/TOTAL. An EMPTY array is the
+ * verdict "clean" — there is no separate boolean to desync. Gitignored runtime (`baml_client/`,
+ * `node_modules/`, `.vend/*`…) never appears in porcelain in the first place (we never pass
+ * `--ignored`), so the classifier only needs to KEEP in-scope paths, not maintain an ignore denylist.
+ *
+ * `prefixes` is parameterized (default = the E-008 source contract) so a sibling gate can REUSE this
+ * one parser over a different scope — the pre-sweep `done ⇒ committed` net (E-061 #9) classifies
+ * source PLUS the board (`docs/active/`) without re-implementing porcelain parsing. Existing callers
+ * pass no second arg and are byte-identical.
  */
-export function classifyPorcelain(porcelain: string): string[] {
+export function classifyPorcelain(porcelain: string, prefixes: readonly string[] = SOURCE_PREFIXES): string[] {
   const offenders = new Set<string>();
   for (const line of porcelain.split("\n")) {
     const path = parsePorcelainLine(line);
     if (path === null) continue;
-    if (SOURCE_PREFIXES.some((prefix) => path.startsWith(prefix))) offenders.add(path);
+    if (prefixes.some((prefix) => path.startsWith(prefix))) offenders.add(path);
   }
   return [...offenders].sort();
 }
