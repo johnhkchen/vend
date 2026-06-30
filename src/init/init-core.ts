@@ -124,12 +124,76 @@ _Stub — author the canonical statement of what this project is and why it exis
 durable anchor planning references; keep it small and slow-changing._
 `;
 
+/** Seeds + documents \`docs/active/epic/\` so the dir survives git (an empty dir is not tracked) and
+ *  a reader learns what the layer is. Carries a frontmatter fence but NO \`id:\`, so the board loader
+ *  (load.ts: skip TEMPLATE.md + any \`.md\` without an id) skips it — the board still starts honestly
+ *  empty (IA-4), the README is structure, not demand. */
+const EPIC_DIR_README = `---
+doc: epic-dir
+---
+
+# Epics — the top of the board
+
+Epics live here (\`E-001.md\`, \`E-002.md\`, …), one file per epic — the bigger-picture plays
+intent clears into.
+
+**Vend owns this layer; you don't hand-author these.** \`vend chain "<signal>"\` proposes an
+epic here, then decomposes it into the stories (\`../stories/\`) and tickets (\`../tickets/\`)
+lisa builds. The id convention is nested and enforced at mint: epic \`E-007\` → stories
+\`S-007-01…\` → tickets \`T-007-01-01…\` (a flat id that doesn't resolve to its epic is refused).
+
+This note carries no \`id:\`, so the board loader skips it.
+`;
+
+/** The instruction document (\`docs/knowledge/vend-workflow.md\`): how vend's clearing layer and
+ *  lisa's build loop drive one shared board. The complement to lisa's \`rdspi-workflow.md\` — laid by
+ *  \`vend init\` for a project run under both engines. */
+const VEND_WORKFLOW = `# Driving with vend (and lisa)
+
+Two engines share one board under \`docs/active/\`.
+
+## The two engines
+- **vend clears intent into work.** A signal — a one-line idea or a pulled demand — becomes a
+  typed board: an **epic** (\`docs/active/epic/\`), its **stories** (\`docs/active/stories/\`),
+  and **tickets** (\`docs/active/tickets/\`). Work is admitted only if it clears the gates
+  (valuable · allocatable · in-bounds · well-formed). Nothing unworthy settles.
+- **lisa builds the work into commits.** It picks up \`phase: ready\` tickets and runs each
+  through the RDSPI loop (\`rdspi-workflow.md\`), committing as it goes.
+
+vend writes the board; lisa consumes it. The board is the contract between them.
+
+## The drive (two gestures)
+1. **Author once** — edit \`SEED.md\` (your one-line intent) and tune
+   \`docs/knowledge/charter.md\` (your value function: what "valuable" means here).
+2. **Clear, then build:**
+   - \`vend steer\` — read the project; stage a ranked board + the genuine forks.
+   - \`vend chain "<signal>"\` — mint an epic and decompose it (graph-valid by construction).
+   - \`vend work [--budget <ms>,<tokens>] [--no-intervened]\` — clear the next ready slice
+     autonomously, against its gates and a hard budget; \`--no-intervened\` records the
+     walk-away trust signal when you let it run untouched.
+   - \`vend doctor\` (green = sound) · \`vend svg\` (see the board).
+
+## Complementarity — run \`lisa init\`, then \`vend init\`
+\`lisa init\` lays the build side (\`.lisa.toml\`, the hooks, \`stories/tickets/work/\`, the RDSPI
+doc). \`vend init\` adds the clearing side on top, never clobbering: \`docs/active/epic/\`, the
+\`charter\`/\`vision\`, the demand board, the PM desk, and this doc.
+
+## The gates that hold it together
+- **Mint-time** — a decomposed board must be graph-valid (every story resolves to its epic) or
+  the mint is refused.
+- **Budget (P7)** — \`vend work\` honors its funded time/token envelope (a hard wall-clock latch,
+  a token ceiling) and stops clean when spent.
+- **Pre-sweep** — before an epic is marked done, every \`done\` ticket's work must be committed
+  (\`bun run check:presweep\`): done means committed.
+`;
+
 /** Vend-owned ignore: drop runtime telemetry, KEEP the durable decision log — the
  *  local-first (P5) intent the live root \`.gitignore\` expresses, localized here so init
  *  never mutates a lisa-owned file (one-way vend → lisa). */
 const VEND_GITIGNORE = `*
 !.gitignore
 !decisions.jsonl
+!forward-e1.jsonl
 `;
 
 /** The hackathon template's SEED — the ONE thing the user edits (brief piece B). A STUB this
@@ -233,6 +297,7 @@ export const SCAFFOLD_MANIFEST: readonly ScaffoldEntry[] = [
   // Active board tree
   { kind: "dir", path: "docs/active" },
   { kind: "dir", path: "docs/active/epic" },
+  { kind: "file", path: "docs/active/epic/README.md", contents: EPIC_DIR_README },
   { kind: "dir", path: "docs/active/stories" },
   { kind: "dir", path: "docs/active/tickets" },
   { kind: "dir", path: "docs/active/work" },
@@ -249,6 +314,7 @@ export const SCAFFOLD_MANIFEST: readonly ScaffoldEntry[] = [
   { kind: "dir", path: "docs/knowledge" },
   { kind: "file", path: "docs/knowledge/charter.md", contents: CHARTER_STUB },
   { kind: "file", path: "docs/knowledge/vision.md", contents: VISION_STUB },
+  { kind: "file", path: "docs/knowledge/vend-workflow.md", contents: VEND_WORKFLOW },
   // Local-first runtime state (P5)
   { kind: "dir", path: ".vend" },
   { kind: "file", path: ".vend/.gitignore", contents: VEND_GITIGNORE },
