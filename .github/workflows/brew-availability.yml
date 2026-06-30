@@ -1,0 +1,76 @@
+# vend brew-availability gate — proposed-batch #7 (E-061 / S-065, tier b: post-publish).
+#
+# The install path's ONLY live proof. A standing availability MONITOR (not a one-time
+# transcript) that runs the REAL `brew install johnhkchen/vend/vend` over the network on a
+# clean arm64-mac, then asserts the published binary actually works: `vend --version` is real
+# semver and `vend init --template minimal` lays a workspace in a `mktemp -d` — purely from the
+# published tap, with NO clone and NO Doppler.
+#
+# WHY NO `actions/checkout`: this is deliberate, and the structural half of the test. The job
+# must touch NOTHING from this repo — not the source, not the bun scripts, not the env. If it
+# checked out the tree, "installs purely from the tap" would no longer be enforced. So unlike
+# `release.yml` (whose every step is a tested bun script), the assertions here are inline shell:
+# there is intentionally no `src/` on the runner to run. That is the point, not a regression.
+# The local analog that DOES verify the bytes via tested cores is `bun run acceptance`
+# (src/release/acceptance.ts, T-065-01) — this is its live, network-resolved counterpart.
+#
+# Complements the pre-publish tier (the local `acceptance` harness, which installs from a
+# `file://` tarball and names the live-tap gap as RESIDUAL). This closes that gap.
+name: brew-availability
+
+on:
+  workflow_dispatch: # run it on demand right after a release
+  schedule:
+    - cron: "0 15 * * 1" # weekly, Mondays 15:00 UTC — a standing monitor, not a one-shot
+
+# No `permissions:` block needed — this job reads a public tap and writes nothing.
+
+jobs:
+  install-from-tap:
+    # Pinned clean arm64 macOS runner — the same label the release builds on (CI_RUNNER in
+    # .github/release-target.env). macos-14/15 are Apple Silicon; the binary is arm64-only.
+    # NOTE: no `actions/checkout` step on purpose — see the header. The runner ships Homebrew.
+    runs-on: macos-14
+    env:
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - name: Install vend from the published tap (the real `brew install`)
+        # Resolves johnhkchen/homebrew-vend's Formula/vend.rb, fetches the release tarball,
+        # verifies its sha against the formula, and puts `vend` on PATH. A 404/sha-mismatch
+        # (tap not published, asset missing, or sha drift) fails the job here — the live proof.
+        run: brew install johnhkchen/vend/vend
+
+      - name: Assert `vend --version` is real semver
+        # The published binary runs standalone (BAML bundled) and reports a real MAJOR.MINOR.PATCH.
+        run: |
+          set -euo pipefail
+          got="$(vend --version)"
+          echo "vend --version -> ${got}"
+          if ! printf '%s' "$got" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::vend --version '${got}' is not a real semver"
+            exit 1
+          fi
+
+      - name: Assert `vend init --template minimal` lays a workspace (mktemp, no clone, no Doppler)
+        # Into a scratch dir with no checkout and no DOPPLER_TOKEN in env: init must create files
+        # and leave NO .git (the "no clone" structural check, mirroring acceptance-core's verifyScaffold).
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          echo "workspace -> ${work}"
+          # Belt-and-suspenders: ensure no Doppler creds leak in even if the runner image grows them.
+          env -u DOPPLER_TOKEN -u DOPPLER_PROJECT -u DOPPLER_CONFIG \
+            sh -c "cd '${work}' && vend init --template minimal"
+          created="$(find "${work}" -mindepth 1 | wc -l | tr -d ' ')"
+          echo "paths created -> ${created}"
+          if [ "${created}" -eq 0 ]; then
+            echo "::error::vend init laid down no files"
+            exit 1
+          fi
+          if [ -e "${work}/.git" ]; then
+            echo "::error::a .git appeared — init depended on or created a checkout"
+            exit 1
+          fi
+          echo "brew-availability: ok — installed from tap, version real, workspace laid with no clone / no Doppler."
