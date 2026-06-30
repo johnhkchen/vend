@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { countDemandRows, resolveTemplate, SCAFFOLD_MANIFEST, type ScaffoldEntry } from "./init-core.ts";
+import {
+  countDemandRows,
+  isLisaProject,
+  resolveTemplate,
+  SCAFFOLD_MANIFEST,
+  type ScaffoldEntry,
+} from "./init-core.ts";
 import { applyInitScaffold, runInit } from "./init-effect.ts";
 
 // T-040-02: the guarded-live proof for the scaffold WRITE EFFECT — an ordinary `bun test`
@@ -279,7 +285,7 @@ describe("runInit — template overlay (T-058-01)", () => {
     const root = await seedBareLisa();
     try {
       const outcome = await runInit(root, "bogus");
-      expect(outcome).toEqual({ kind: "unknown-template", name: "bogus", available: ["hackathon"] });
+      expect(outcome).toEqual({ kind: "unknown-template", name: "bogus", available: ["hackathon", "minimal"] });
       // the refusal is inert: neither the base tree nor any overlay file materialized.
       for (const entry of SCAFFOLD_MANIFEST) {
         expect(await exists(join(root, entry.path))).toBe(false);
@@ -395,5 +401,117 @@ describe("runInit — tuned charter overlay (T-059-02)", () => {
     // sync. If the example file is edited (or removed), this fails loudly — the correct signal.
     const seedCharter = await readFile("examples/templates/hackathon-seed/charter.md", "utf8");
     expect(tunedCharter!).toBe(seedCharter);
+  });
+});
+
+// T-064-01: the STANDALONE template path through `runInit(root, "minimal")` — the E-061 brew seam. A
+// brew-installed binary runs in an EMPTY dir with NO checkout and NO Doppler env; the `minimal`
+// standalone template bypasses the lisa-project gate so the workspace still lands. Same guarded-live
+// temp-dir discipline. The AC, clause by clause: (1) an empty no-checkout dir scaffolds the full
+// workspace; (2) a second run is a no-clobber converge (zero created, edits survive); (3)+(4) the path
+// has no Doppler-env / no-repo dependency. Plus a regression pin: the gate still refuses bare init and
+// the non-standalone `hackathon` overlay in the same empty dir.
+describe("runInit — standalone template, no clone / no Doppler (T-064-01)", () => {
+  /** A throwaway projectRoot that is an EMPTY, bare dir — no lisa marker, no `.git`, no checkout.
+   *  Exactly the state a brew-installed `vend` lands in. `mkdtemp` yields a fresh empty directory. */
+  async function bareEmptyDir(): Promise<string> {
+    return mkdtemp(join(tmpdir(), "vend-init-standalone-"));
+  }
+
+  test("an empty, no-checkout dir scaffolds the full workspace via `minimal`", async () => {
+    const root = await bareEmptyDir();
+    try {
+      // precondition: the dir is NOT a lisa project — bare init would be refused here.
+      expect(isLisaProject(await readdir(root))).toBe(false);
+
+      const outcome = await runInit(root, "minimal");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+
+      // the full base workspace materialized (the empty overlay adds nothing beyond it).
+      for (const entry of SCAFFOLD_MANIFEST) {
+        expect(await exists(join(root, entry.path))).toBe(true);
+      }
+      // a truthful tally on a bare dir: all created, nothing skipped.
+      expect(outcome.result.created.length).toBe(SCAFFOLD_MANIFEST.length);
+      expect(outcome.result.skipped).toEqual([]);
+      // honest-empty held: the board + archive carry zero demand rows.
+      expect(countDemandRows(await readFile(join(root, "docs/active/demand.md"), "utf8"))).toBe(0);
+      expect(countDemandRows(await readFile(join(root, "docs/archive/demand-cleared.md"), "utf8"))).toBe(0);
+      // the standalone overlay writes NO lisa-owned marker (one-way-to-lisa preserved).
+      expect(await exists(join(root, "CLAUDE.md"))).toBe(false);
+      expect(await exists(join(root, ".lisa.toml"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a second standalone run is a no-clobber converge — zero created, user edits survive", async () => {
+    const root = await bareEmptyDir();
+    const sentinelPath = "docs/knowledge/vision.md";
+    const edited = "MY OWN VISION — do not touch\n";
+    try {
+      await runInit(root, "minimal");
+      // a user edits a scaffolded file, then re-runs init.
+      await writeFile(join(root, sentinelPath), edited, "utf8");
+
+      const outcome = await runInit(root, "minimal");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      // converge: nothing created, everything skipped — and the edit is byte-identical.
+      expect(outcome.result.created).toEqual([]);
+      expect(outcome.result.skipped.length).toBe(SCAFFOLD_MANIFEST.length);
+      expect(await readFile(join(root, sentinelPath), "utf8")).toBe(edited);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("no Doppler dependency — scaffolds with every DOPPLER_* env var removed", async () => {
+    const root = await bareEmptyDir();
+    // scrub any Doppler env for the duration: the standalone path must not read it.
+    const saved: Record<string, string | undefined> = {};
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("DOPPLER")) {
+        saved[key] = process.env[key];
+        delete process.env[key];
+      }
+    }
+    try {
+      const outcome = await runInit(root, "minimal");
+      expect(outcome.kind).toBe("scaffolded");
+      if (outcome.kind !== "scaffolded") throw new Error("unreachable");
+      expect(await exists(join(root, "docs/active/demand.md"))).toBe(true);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) if (value !== undefined) process.env[key] = value;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("no repo dependency — the run needs no checkout and creates no `.git`", async () => {
+    const root = await bareEmptyDir();
+    try {
+      // bare to begin with: not a git repo.
+      expect(await exists(join(root, ".git"))).toBe(false);
+      const outcome = await runInit(root, "minimal");
+      expect(outcome.kind).toBe("scaffolded");
+      // init never inits a repo — there is no `.git` after the run either.
+      expect(await exists(join(root, ".git"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the gate still holds for non-standalone paths in the same empty dir", async () => {
+    const root = await bareEmptyDir();
+    try {
+      // bare init still requires a lisa project...
+      expect(await runInit(root)).toEqual({ kind: "not-lisa", root });
+      // ...and a NON-standalone overlay (`hackathon`) is still refused (it overlays a checkout).
+      expect(await runInit(root, "hackathon")).toEqual({ kind: "not-lisa", root });
+      expect(await exists(join(root, "SEED.md"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

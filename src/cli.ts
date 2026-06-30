@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 // The `vend` CLI entry point (T-002-03) — the two-gesture transaction at its
 // smallest honest size: pick the play + give it a budget + go. For this slice the
 // single hardcoded play is `decompose-epic`:
@@ -12,6 +13,10 @@
 import type { Budget } from "./budget/budget.ts";
 import type { ValueTier } from "./shelf/menu.ts";
 import type { Seat } from "./present/presets.ts";
+// The build-embedded semver (T-061-02). A cheap, BAML-free value import — unlike the
+// heavy dispatch deps it does NOT belong behind a lazy `await import`, so `vend
+// --version` resolves without touching the executor graph.
+import { VERSION } from "./version.ts";
 
 /** Usage banner, printed on any parse error. */
 export const USAGE =
@@ -26,6 +31,7 @@ export const USAGE =
   "       vend shelf\n" +
   "       vend init [--template <name>]\n" +
   "       vend doctor\n" +
+  "       vend --version\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
   "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
 
@@ -88,6 +94,7 @@ export type ParsedCommand =
     }
   | { readonly cmd: "svg"; readonly seat: Seat; readonly out?: string }
   | { readonly cmd: "shelf" }
+  | { readonly cmd: "version" }
   | {
       readonly cmd: "init";
       /** Overlay a named template over the base scaffold (E-058, T-058-01); absent ⇒ bare base
@@ -158,6 +165,11 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   // decompose path (T-002-03). Everything else — `vend --all`, `vend 1,2`,
   // `vend 1 --budget …` — is the browse/press tail (T-003-04).
   if (argv.length === 0) return { cmd: "browse", all: false };
+  // `--version` is a global flag, not a sub-verb (T-061-02): intercept it BEFORE the
+  // verb table and before `parseSelectOrBrowse` (which would otherwise reject it as
+  // `unknown command: --version`). Short-circuits — any trailing tokens are ignored,
+  // the conventional `--version` behavior.
+  if (argv[0] === "--version") return { cmd: "version" };
   if (argv[0] === "run") return parseRunArgs(argv);
   if (argv[0] === "chain") return parseChainArgs(argv);
   if (argv[0] === "expand") return parseExpandArgs(argv);
@@ -666,6 +678,14 @@ if (import.meta.main) {
     if (parsed.error) process.stderr.write(`${parsed.error}\n`);
     process.stderr.write(`${USAGE}\n`);
     process.exit(2);
+  }
+  if (parsed.cmd === "version") {
+    // Print the build-embedded semver (T-061-02) and exit 0 — a successful query,
+    // like `shelf`/`doctor`'s readouts. `VERSION` is statically in scope (no lazy
+    // import); it is the manifest version inlined at `bun build --compile`, so this
+    // is correct even from a single-file binary with no `package.json` on disk.
+    process.stdout.write(`${VERSION}\n`);
+    process.exit(0);
   }
   if (parsed.cmd === "browse") {
     // Bare `vend`: the fused DL-6 Home — board (ranked pull, persisted to `.vend/menu.json`) leading,

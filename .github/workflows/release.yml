@@ -1,0 +1,102 @@
+# vend release pipeline — T-062-03 (E-061 / S-062).
+#
+# On a `v*` tag, compile the single self-contained binary for the PINNED target, tar it
+# (xz) under the pinned asset name, sha256 it, and publish a GitHub release carrying the
+# tarball + a `shasum -c`-verifiable sha256sums.txt. Mirrors lisa's verified release.yml,
+# collapsed to ONE platform (arm64-mac) per the epic scope — no matrix.
+#
+# Every machine decision (target, runner, bun version, asset name) comes from the SSOT pin
+# `.github/release-target.env`, read by key — never hard-coded here. The compile and package
+# steps are tested scripts (src/release/{compile,package}.ts); the only un-gateable step is
+# the final `gh release create`, kept to a single faithful line.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # allow a manual dry-run from a tagged commit
+
+permissions:
+  contents: write # required for `gh release create`
+
+jobs:
+  release:
+    # Pinned arm64 macOS runner — the literal must equal CI_RUNNER in the pin; the guard
+    # step below asserts it (runs-on cannot interpolate $GITHUB_ENV).
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load pinned release target
+        # The literal reference to the SSOT pin — what makes this CI "reference the pin".
+        run: cat .github/release-target.env >> "$GITHUB_ENV"
+
+      - name: Assert runner matches the pinned CI_RUNNER
+        run: |
+          set -euo pipefail
+          echo "runner -> macos-14 (label); pinned CI_RUNNER -> ${CI_RUNNER}"
+          if [ "macos-14" != "${CI_RUNNER}" ]; then
+            echo "::error::runs-on macos-14 != pinned CI_RUNNER ${CI_RUNNER}"
+            exit 1
+          fi
+
+      - name: Set up Bun (pinned)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Compile the self-contained binary (T-062-02)
+        run: bun run compile
+
+      - name: Package — tarball + sha256sums (T-062-03)
+        # Reads GITHUB_REF_NAME → verifies the tag matches the embedded VERSION, then tars
+        # dist/vend and writes dist/sha256sums.txt. Fails the release on a tag↔version mismatch.
+        run: bun run package
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "dist/${RELEASE_TARBALL}" \
+            "dist/sha256sums.txt"
+
+      - name: Render the Homebrew formula (T-063-01)
+        # Reads dist/sha256sums.txt (just produced) → writes dist/vend.rb whose version/url/sha
+        # are sourced from the SSOTs, never hand-typed. Tested by formula.smoke.test.ts.
+        run: bun run formula
+
+      - name: Acceptance — fresh-machine install→version→workspace loop (T-065-01)
+        # On the just-built dist/, verify the asset sha == the formula sha, extract + put
+        # `vend` on a clean PATH (brew's install do, minus the network), then run the binary
+        # in a scrubbed no-checkout env: `vend --version` is the real semver and `vend init
+        # --template minimal` lays a workspace with no clone / no Doppler. A red loop fails the
+        # release. The live tap resolution stays human-owned (see the harness's RESIDUAL note).
+        run: bun run acceptance
+
+      - name: Publish vend.rb to the homebrew-vend tap (T-063-01)
+        # The un-gateable final line (cf. `gh release create`): push the rendered formula to the
+        # OWN tap so `brew install johnhkchen/vend/vend` resolves it, mirroring lisa's own-tap
+        # pattern. Cross-repo push needs a token with write to johnhkchen/homebrew-vend — the
+        # default github.token cannot write another repo — so a PAT is provided as the
+        # HOMEBREW_TAP_TOKEN repository secret (see docs/active/work/T-063-01/review.md).
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/johnhkchen/homebrew-vend.git" tap
+          mkdir -p tap/Formula
+          cp dist/vend.rb tap/Formula/vend.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/vend.rb
+          git commit -m "vend ${GITHUB_REF_NAME}"
+          git push

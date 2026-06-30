@@ -3,12 +3,14 @@ import {
   availableTemplates,
   countDemandRows,
   isLisaProject,
+  isStandaloneTemplate,
   LISA_MARKERS,
   mergeManifests,
   planInit,
   planTemplate,
   resolveTemplate,
   SCAFFOLD_MANIFEST,
+  STANDALONE_TEMPLATES,
   TEMPLATE_REGISTRY,
   type ScaffoldEntry,
 } from "./init-core.ts";
@@ -224,7 +226,7 @@ describe("TEMPLATE_REGISTRY — a trivial, honest-empty registry (T-058-01)", ()
   test("`hackathon` resolves; an unknown name does not; the available list is sorted", () => {
     expect(resolveTemplate("hackathon")).toBeDefined();
     expect(resolveTemplate("nope")).toBeUndefined();
-    expect(availableTemplates()).toEqual(["hackathon"]);
+    expect(availableTemplates()).toEqual(["hackathon", "minimal"]);
   });
 
   test("every overlay adds ONLY structure/knowledge — zero demand rows (honest-empty IA-3/IA-4)", () => {
@@ -245,6 +247,33 @@ describe("TEMPLATE_REGISTRY — a trivial, honest-empty registry (T-058-01)", ()
         expect(entry.path).not.toBe(".gitignore");
       }
     }
+  });
+});
+
+// ── T-064-01: the standalone/minimal template (pure half) ─────────────────────────────────
+// The E-061 standalone seam: a `minimal` placeholder template whose overlay is EMPTY (it adds no
+// files — the base scaffold IS the workspace) and whose name is in STANDALONE_TEMPLATES (so the
+// effect bypasses the lisa-project gate for it). These pins stay fs-free; the empty-dir scaffold /
+// no-clobber converge / no-Doppler-no-repo guards live in the fs-capable init-effect test.
+describe("STANDALONE_TEMPLATES / minimal (T-064-01)", () => {
+  test("`minimal` resolves to an EMPTY overlay (the base scaffold is the whole workspace)", () => {
+    expect(resolveTemplate("minimal")).toEqual([]);
+  });
+
+  test("isStandaloneTemplate — `minimal` is standalone; `hackathon` and unknowns are not", () => {
+    expect(isStandaloneTemplate("minimal")).toBe(true);
+    expect(isStandaloneTemplate("hackathon")).toBe(false);
+    expect(isStandaloneTemplate("nope")).toBe(false);
+  });
+
+  test("invariant — every standalone name is a real TEMPLATE_REGISTRY key", () => {
+    for (const name of STANDALONE_TEMPLATES) {
+      expect(Object.hasOwn(TEMPLATE_REGISTRY, name)).toBe(true);
+    }
+  });
+
+  test("the empty overlay converges to the base — planTemplate([],base,[]) == planInit([],base)", () => {
+    expect(planTemplate([], SCAFFOLD_MANIFEST, [])).toEqual(planInit([], SCAFFOLD_MANIFEST));
   });
 });
 

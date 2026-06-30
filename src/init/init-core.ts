@@ -16,7 +16,10 @@
 // ONE-WAY TO LISA (E-040): the manifest creates only VEND-OWNED paths. The `.vend/*`
 // ignore lives in a vend-owned `.vend/.gitignore`, never by mutating the lisa project's
 // root `.gitignore`. Empty-state rule (IA-3/IA-4): seed STRUCTURE + KNOWLEDGE, never
-// demand — the board and the cleared archive start honestly empty.
+// demand — the board and the cleared archive start honestly empty. The E-061 STANDALONE
+// templates (STANDALONE_TEMPLATES) relax only the lisa-project GATE (so a brew binary can
+// scaffold an empty, no-checkout dir); they still write no lisa-owned file, so one-way-to-
+// lisa is preserved.
 
 /** One element of the scaffold: a directory, or a file with its seed contents. Paths are
  *  project-root-relative, POSIX, no leading `./`. The single shape both {@link planInit}
@@ -258,7 +261,29 @@ export const TEMPLATE_REGISTRY: Readonly<Record<string, readonly ScaffoldEntry[]
     { kind: "file", path: "SEED.md", contents: HACKATHON_SEED_STUB },
     { kind: "file", path: "docs/knowledge/charter.md", contents: HACKATHON_CHARTER },
   ],
+  // The minimal/placeholder template (E-061, T-064-01): an EMPTY overlay — it adds no files. The
+  // base {@link SCAFFOLD_MANIFEST} already lays a complete, honest-empty, usable workspace; `minimal`
+  // exists to mark the STANDALONE path (the lisa-project gate is bypassed for it — see
+  // {@link STANDALONE_TEMPLATES}), so a brew-installed binary can `vend init --template minimal` into
+  // an EMPTY dir with no checkout and no Doppler. Standalone-ness lives in the policy set below, NOT
+  // in this overlay data — so the registry's value shape (and the invariant tests iterating it) stay
+  // untouched, and one-way-to-lisa/honest-empty hold trivially (it names no path at all).
+  minimal: [],
 };
+
+/** The templates that make a STANDALONE workspace (E-061, T-064-01): named with `vend init --template
+ *  <name>`, they BYPASS the lisa-project gate so a brew-installed binary can lay a fresh workspace into
+ *  an empty dir with no checkout. A NON-standalone overlay (e.g. `hackathon`) still requires an existing
+ *  lisa project — it overlays onto one (one-way). Kept as a small policy SET beside the registry (gate
+ *  policy, not overlay content) so the registry value shape stays a plain `ScaffoldEntry[]`. INVARIANT:
+ *  every name here is also a {@link TEMPLATE_REGISTRY} key (a pure test pins it). */
+export const STANDALONE_TEMPLATES: ReadonlySet<string> = new Set(["minimal"]);
+
+/** Does this template make a standalone workspace (gate-bypassing)? PURE — membership in
+ *  {@link STANDALONE_TEMPLATES}. An unknown name is not standalone (false). */
+export function isStandaloneTemplate(name: string): boolean {
+  return STANDALONE_TEMPLATES.has(name);
+}
 
 /** The available template names, sorted — the deterministic list a clean `unknown-template` refusal
  *  names (the `LISA_MARKERS` membership discipline; sorted so the message is stable). PURE. */

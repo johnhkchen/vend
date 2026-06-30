@@ -98,3 +98,31 @@ validate:
 # The gate — typecheck + tests (bun run check).
 check:
     bun run check
+
+# Build the self-contained, single-file `vend` binary for the pinned target
+# (.github/release-target.env → BUN_COMPILE_TARGET). Bundles BAML's native addon;
+# output is dist/vend, runnable with no repo checkout / node_modules. (T-062-02)
+compile:
+    bun run src/release/compile.ts
+
+# Package an already-compiled dist/vend into the release asset: tar (xz) it under the
+# pinned RELEASE_TARBALL name + write a `shasum -c`-verifiable sha256sums.txt. (T-062-03)
+package:
+    bun run src/release/package.ts
+
+# Render the Homebrew formula dist/vend.rb from the pinned tarball + the sha in
+# dist/sha256sums.txt (run after `package`). Published to the johnhkchen/homebrew-vend tap
+# by the release workflow. (T-063-01)
+formula:
+    bun run src/release/formula.ts
+
+# Local end-to-end release artifact build: compile, package, then render the formula (no
+# GitHub release / no tap push; those are the tag-triggered .github/workflows/release.yml). (T-063-01)
+release-local: compile package formula
+
+# Fresh-machine acceptance: on the built dist/, faithfully simulate brew's install (verify
+# sha → extract → vend on a clean PATH), then run the binary in a scrubbed, no-checkout env
+# and assert vend --version + vend init --template minimal. Records the transcript. Run after
+# `release-local`. The live `brew install …/vend/vend` tap resolution stays human-owned. (T-065-01)
+acceptance:
+    bun run src/release/acceptance.ts --out docs/active/work/T-065-01/acceptance-transcript.md

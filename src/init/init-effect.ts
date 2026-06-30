@@ -31,6 +31,7 @@ import { dirname, join } from "node:path";
 import {
   availableTemplates,
   isLisaProject,
+  isStandaloneTemplate,
   mergeManifests,
   planInit,
   resolveTemplate,
@@ -125,22 +126,34 @@ export type InitOutcome =
   | { readonly kind: "scaffolded"; readonly result: InitApplyResult };
 
 /**
- * Drive `vend init [--template <name>]` against `projectRoot`: REFUSE if it is not a lisa project,
- * REFUSE if a named `template` is unknown, else APPLY the scaffold (base, plus the named template's
- * overlay when given). This is the seam the init-effect.ts header flagged for T-040-03, extended for
- * the E-058 overlay (T-058-01) — the `isLisaProject` gate + the registry lookup composed with
- * `applyInitScaffold`. The CLI dispatch arm owns the user-facing hint strings and exit codes; this
- * seam owns only the typed branch, so both refusal paths are unit-testable (the
- * `pressShelf`/`castWork`/`runPlay` returned-kind discipline) rather than buried in the untested
- * `import.meta.main` shell.
+ * Drive `vend init [--template <name>]` against `projectRoot`: REFUSE if a named `template` is
+ * unknown, REFUSE if it is not a lisa project (UNLESS a STANDALONE template is named), else APPLY the
+ * scaffold (base, plus the named template's overlay when given). This is the seam the init-effect.ts
+ * header flagged for T-040-03, extended for the E-058 overlay (T-058-01) and the E-061 standalone
+ * path (T-064-01) — the `isLisaProject` gate + the registry lookup composed with `applyInitScaffold`.
+ * The CLI dispatch arm owns the user-facing hint strings and exit codes; this seam owns only the typed
+ * branch, so both refusal paths are unit-testable (the `pressShelf`/`castWork`/`runPlay` returned-kind
+ * discipline) rather than buried in the untested `import.meta.main` shell.
+ *
+ * STANDALONE (E-061, T-064-01): a brew-installed binary runs in an EMPTY dir with no checkout, where
+ * the lisa gate would refuse. A template named in {@link isStandaloneTemplate} (e.g. `minimal`)
+ * declares "make a fresh workspace HERE, no lisa project required" and BYPASSES the gate — so
+ * `vend init --template minimal` lays the workspace into an empty, no-Doppler dir. A non-standalone
+ * overlay (`hackathon`) still requires an existing lisa project (it overlays onto one). One-way-to-lisa
+ * holds: the bypass relaxes only the GATE, it writes no lisa-owned file.
+ *
+ * ORDER (T-064-01): the template is resolved BEFORE the gate (the standalone bit needs the name
+ * resolved). So an UNKNOWN template now refuses (`unknown-template`) ahead of the `not-lisa` gate —
+ * an unknown name is a usage error independent of the directory, so the more specific arg error wins.
+ * A KNOWN non-standalone template in a non-lisa dir still refuses as `not-lisa` (the gate runs next).
  *
  * The template OVERLAY rides the SAME writer: `applyInitScaffold` is called with the EFFECTIVE
  * manifest `mergeManifests(SCAFFOLD_MANIFEST, overlay)` — so the overlay's files are written through
  * the identical write-if-absent / no-clobber / `wx` path (the plan it reaches is exactly
- * `planTemplate(existing, base, overlay)`). Honest-empty + one-way-to-lisa hold because the overlay
- * names only vend-owned paths and adds no demand row. An `unknown-template` refusal is checked BEFORE
- * any apply, so it writes NOTHING (parity with `not-lisa`). Bare `vend init` (no template) is the
- * unchanged E-040 path.
+ * `planTemplate(existing, base, overlay)`; for the empty `minimal` overlay that merge is the base
+ * manifest unchanged). Honest-empty + one-way-to-lisa hold because the overlay names only vend-owned
+ * paths and adds no demand row. An `unknown-template` refusal is checked BEFORE any apply, so it
+ * writes NOTHING (parity with `not-lisa`). Bare `vend init` (no template) is the unchanged E-040 path.
  *
  * Detection reads ONLY the top-level entries (`readdir`) — both {@link LISA_MARKERS} are
  * project-ROOT files, so a recursive walk would be wasted work and could false-positive on a
@@ -150,13 +163,17 @@ export type InitOutcome =
  */
 export async function runInit(projectRoot: string, template?: string): Promise<InitOutcome> {
   const entries = await readdir(projectRoot);
-  if (!isLisaProject(entries)) return { kind: "not-lisa", root: projectRoot };
+  // Resolve the template first (an unknown name is a usage error regardless of the directory) so the
+  // gate below can honor a standalone template's workspace-making intent.
+  let overlay: readonly ScaffoldEntry[] | undefined;
   if (template !== undefined) {
-    const overlay = resolveTemplate(template);
+    overlay = resolveTemplate(template);
     if (!overlay) return { kind: "unknown-template", name: template, available: availableTemplates() };
-    const result = await applyInitScaffold(projectRoot, mergeManifests(SCAFFOLD_MANIFEST, overlay));
-    return { kind: "scaffolded", result };
   }
-  const result = await applyInitScaffold(projectRoot);
-  return { kind: "scaffolded", result };
+  // The gate: bare init AND non-standalone overlays require an existing lisa project (overlay onto a
+  // checkout). A STANDALONE template (E-061) bypasses it — the brew binary's empty-dir path.
+  const standalone = template !== undefined && isStandaloneTemplate(template);
+  if (!standalone && !isLisaProject(entries)) return { kind: "not-lisa", root: projectRoot };
+  const manifest = overlay ? mergeManifests(SCAFFOLD_MANIFEST, overlay) : SCAFFOLD_MANIFEST;
+  return { kind: "scaffolded", result: await applyInitScaffold(projectRoot, manifest) };
 }
