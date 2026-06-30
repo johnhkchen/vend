@@ -218,12 +218,15 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   parse: (text) => b.parse.DecomposeEpic(text),
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,
-  // Recalibrated 2026-06-19 from MEASURED use (E-014/E-015 probes), not a cold guess: decompose
-  // is bimodal — lean runs land <50k, expensive runs ~85–94k (its GENUINE cost, not turn-sprawl —
-  // the 15-turn cap didn't move the tail). 120k clears the ~94k upper tail with headroom, so a
-  // legitimate run no longer false-andons. (E-013's recalibration loop should set this from the
-  // real log's tails once it warms; by hand until then.)
-  budget: { timeMs: 7_200_000, tokens: 120_000 },
+  // RE-recalibrated 2026-06-29 from the ledger (E-062 kitchen mint): the budget meters TOTAL tokens
+  // (input + output + cache reads), and as the repo grew the "go-and-see" read tail grew with it —
+  // real decompose runs now land 155–195k total (E-060 ~158k, E-061 ~192k, E-062 ~169k — all CLEARED),
+  // far above the prior 120k ceiling tuned to the old ~94k tail (E-014/E-015). At 120k a legitimate
+  // E-062 run FALSE-ANDON'd (budget-exhausted at 166k) and only cleared at a hand-raised budget. 250k
+  // clears the observed ~192k upper tail with ~30% headroom — a false andon is worse than one tail
+  // through (the T-015-02 tie-breaker). Wall-clock was never the limit (runs finish in minutes), so
+  // timeMs is unchanged. (E-013's loop should set this from the log's p95 once it warms; by hand here.)
+  budget: { timeMs: 7_200_000, tokens: 250_000 },
   // The warranted DEFAULT turn cap (T-015-02) — the mid-flight bound on the agentic wandering
   // behind decompose's ~85–95k token tail (E-014 E2). Generous over the 1–7-turn clean band;
   // the per-cast override (CastOptions.maxTurns) still wins. Justified at DECOMPOSE_MAX_TURNS.
