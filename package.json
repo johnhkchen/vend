@@ -13,6 +13,7 @@
     "check:typecheck": "tsc --noEmit",
     "check:committed": "bun run src/ci/check-committed.ts",
     "check:presweep": "bun run src/ci/check-presweep.ts",
+    "forward:promote": "bun run src/ledger/promote-forward.ts",
     "check:head": "bun run src/ci/check-head.ts",
     "check:history": "bun run src/ci/check-history.ts",
     "check:precommit": "bun run src/ci/check-precommit.ts",
