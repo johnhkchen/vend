@@ -66,13 +66,21 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+        # Idempotent: if the release already exists (e.g. re-firing the same tag after a
+        # downstream step failed), update its assets instead of failing on "already exists".
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            "dist/${RELEASE_TARBALL}" \
-            "dist/sha256sums.txt"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "dist/${RELEASE_TARBALL}" \
+              "dist/sha256sums.txt" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              "dist/${RELEASE_TARBALL}" \
+              "dist/sha256sums.txt"
+          fi
 
       - name: Render the Homebrew formula (T-063-01)
         # Reads dist/sha256sums.txt (just produced) → writes dist/vend.rb whose version/url/sha
