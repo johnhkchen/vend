@@ -203,6 +203,36 @@ export function stripNonGoalAdvances(plan: WorkPlan): WorkPlan {
   return { ...plan, tickets };
 }
 
+// ── born-blocked mint: --after <ticket> (honey-kitchen field fix #3) ─────────────────────────────
+//
+// WHY: queuing a fresh epic behind a LIVE lisa loop races the scheduler (tooling-feedback #6). A
+// minted epic's ENTRY tickets are born `depends_on: []`, so a greedy loop grabs them the instant
+// they materialize — before a human can hand-add the blocking edge. There is no way to make
+// "materialize, then edit the edge" atomic from the outside. The fix: `vend chain … --after <ticket>`
+// adds the blocking edge AT MINT TIME, so the epic's front is born blocked on an existing board
+// ticket (e.g. a running loop's terminal ticket) and the loop only flows onto it once that clears.
+//
+// Only ENTRY tickets (empty `depends_on`) need the edge: every other ticket already depends on an
+// entry ticket, so it is transitively blocked. This runs in the effect AFTER the fragment-only
+// graph-integrity net — the `--after` targets live OUTSIDE the plan fragment (they are other epics'
+// tickets), so the net must not see them; they are validated against the live board separately.
+
+/**
+ * Add each `afterId` to the `depends_on` of every ENTRY ticket (one with no in-plan dependency),
+ * returning a NEW plan (PURE — never mutates the input). `afterIds` is de-duplicated; a ticket that
+ * already carries dependencies is left untouched (it is already blocked). An empty `afterIds` returns
+ * the plan structurally unchanged. The targets are NOT checked here (that is the effect's board-
+ * membership job) — this is the pure edge-application half.
+ */
+export function blockEntryTicketsAfter(plan: WorkPlan, afterIds: readonly string[]): WorkPlan {
+  const deps = [...new Set(afterIds)];
+  if (deps.length === 0) return plan;
+  const tickets = plan.tickets.map((t) =>
+    Array.isArray(t.depends_on) && t.depends_on.length === 0 ? { ...t, depends_on: [...deps] } : t,
+  );
+  return { ...plan, tickets };
+}
+
 // ── nested-id canonicalization + graph-integrity net (E-061 retro #8) ──────────────────────────
 //
 // WHY: the decompose model EMITS ids (its prompt even shows the old flat `T-002-01` / `S-002`

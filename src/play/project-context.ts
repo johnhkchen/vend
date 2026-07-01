@@ -26,13 +26,21 @@ export interface ContextSources {
   readonly epicPath: string;
   readonly charterPath?: string;
   readonly projectRoot?: string;
+  /** Born-blocked mint (`vend chain … --after`): existing board ticket id(s) the new epic's ENTRY
+   *  tickets should be born depending on, so queuing behind a live loop is race-free (field fix #3).
+   *  Pass-through to {@link DecomposeInputs}; the effect validates + applies. Absent ⇒ unchanged. */
+  readonly after?: readonly string[];
 }
 
-/** The three rendered strings handed to `b.request.DecomposeEpic`. */
+/** The three rendered strings handed to `b.request.DecomposeEpic`, plus the optional born-blocked
+ *  edge targets. `render`/`gates` read only the three strings; the effect reads `after`. */
 export interface DecomposeInputs {
   readonly epic: string;
   readonly charter: string;
   readonly project: string;
+  /** Existing board ticket id(s) to block the minted epic's entry tickets on (`--after`, field fix
+   *  #3); absent/empty ⇒ no born-blocked edge, byte-identical to a bare mint. */
+  readonly after?: readonly string[];
 }
 
 /** The raw parts of a project snapshot, gathered impurely and formatted purely. */
@@ -176,5 +184,7 @@ export async function assembleInputs(src: ContextSources): Promise<DecomposeInpu
   ]);
 
   const project = buildProjectSnapshot({ root, srcFiles, stories, tickets });
-  return { epic, charter, project };
+  // Pass `--after` targets through verbatim (the effect validates them against the live board and
+  // applies the born-blocked edges); spread only when supplied so a bare mint keeps its shape.
+  return { epic, charter, project, ...(src.after && src.after.length ? { after: src.after } : {}) };
 }

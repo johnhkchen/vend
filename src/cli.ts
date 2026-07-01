@@ -20,8 +20,8 @@ import { VERSION } from "./version.ts";
 
 /** Usage banner, printed on any parse error. */
 export const USAGE =
-  "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened]\n" +
-  "       vend chain <signal> [--budget <ms>,<tokens>]\n" +
+  "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened] [--after <ticket>]\n" +
+  "       vend chain <signal> [--budget <ms>,<tokens>] [--after <ticket>]\n" +
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
   '       vend annotate <node-id> "<feedback>" [--seat <designer|dev>]\n' +
   "       vend survey [--budget <ms>,<tokens>]\n" +
@@ -60,8 +60,12 @@ export type ParsedCommand =
        *  `--no-intervened` ⇒ false (let it clear), neither ⇒ absent (unknown). Spread only
        *  when supplied, so an unreported run keeps the same object shape. */
       readonly intervened?: boolean;
+      /** Born-blocked mint (`--after`, field fix #3): existing board ticket id(s) the decomposed
+       *  epic's entry tickets are born depending on. Spread only when given, so a bare run keeps
+       *  its shape. (Meaningful for `decompose-epic`; other plays ignore it.) */
+      readonly after?: readonly string[];
     }
-  | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget }
+  | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget; readonly after?: readonly string[] }
   | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
   | {
       readonly cmd: "annotate";
@@ -360,11 +364,18 @@ function parseChainArgs(argv: readonly string[]): ParsedCommand {
   const positional: string[] = [];
   let budgetVal: string | undefined;
   let sawBudgetFlag = false;
+  const after: string[] = [];
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i] as string;
     if (a === "--budget") {
       sawBudgetFlag = true;
       budgetVal = argv[++i];
+    } else if (a === "--after") {
+      // Born-blocked mint (field fix #3): existing board ticket id(s) the new epic's entry tickets
+      // are born blocked on. Repeatable and/or comma-separated; a missing value is a usage error.
+      const val = argv[++i];
+      if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --after <ticket>" };
+      after.push(...splitAfter(val));
     } else {
       positional.push(a);
     }
@@ -384,7 +395,20 @@ function parseChainArgs(argv: readonly string[]): ParsedCommand {
   }
 
   const signal = positional.join(" ");
-  return budget ? { cmd: "chain", signal, budget } : { cmd: "chain", signal };
+  const dedupAfter = [...new Set(after)];
+  return {
+    cmd: "chain",
+    signal,
+    ...(budget ? { budget } : {}),
+    ...(dedupAfter.length ? { after: dedupAfter } : {}),
+  };
+}
+
+/** Split one `--after` value into ticket ids: comma-separated, trimmed, blanks dropped. PURE — a
+ *  repeated `--after A --after B` and a single `--after A,B` both round-trip through the caller's
+ *  `push(...)`. Shape is NOT checked here; the decompose effect validates each against the live board. */
+export function splitAfter(value: string): string[] {
+  return value.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
 }
 
 /**
@@ -612,6 +636,16 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
   // flag pair: present-and-true ⇒ the author stepped in, present-and-false ⇒ a clean walk-away,
   // neither ⇒ absent (unknown). Spread only when one was given so an unreported run keeps shape.
   const intervened = argv.includes("--intervened") ? true : argv.includes("--no-intervened") ? false : undefined;
+  // `--after <ticket>` (field fix #3, repeatable/comma-separated): born-blocked mint edge targets,
+  // collected order-independently. A dangling value (`--after --budget`) is a usage error.
+  const after: string[] = [];
+  for (let i = 3; i < argv.length; i++) {
+    if (argv[i] !== "--after") continue;
+    const val = argv[i + 1];
+    if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --after <ticket>" };
+    after.push(...splitAfter(val));
+  }
+  const dedupAfter = [...new Set(after)];
   return {
     cmd: "run",
     play,
@@ -619,6 +653,7 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
     budget,
     ...(skipGates ? { skipGates: true } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
+    ...(dedupAfter.length ? { after: dedupAfter } : {}),
   };
 }
 
@@ -732,7 +767,7 @@ if (import.meta.main) {
     // logged (two run-log records). A ProposeEpic gate STOP halts BEFORE DecomposeEpic — surfaced
     // as `halted`. Lazy import keeps the chain (and its BAML addon) off the pure-parse path.
     const { castProposeDecomposeChain } = await import("./play/chain-propose-decompose.ts");
-    const result = await castProposeDecomposeChain({ signal: parsed.signal, budget: parsed.budget });
+    const result = await castProposeDecomposeChain({ signal: parsed.signal, budget: parsed.budget, after: parsed.after });
     for (const s of result.steps) {
       process.stdout.write(`run ${s.runId}: ${s.outcome} (materialized: ${s.materialized})\n`);
     }
@@ -1003,6 +1038,7 @@ if (import.meta.main) {
     budget: parsed.budget,
     skipGates: parsed.skipGates,
     intervened: parsed.intervened,
+    after: parsed.after,
   });
   if (res.kind === "no-play") {
     process.stderr.write(`${res.error.message}\n`);

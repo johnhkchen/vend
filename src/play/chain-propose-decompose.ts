@@ -56,6 +56,11 @@ export interface ChainProposeDecomposeOptions {
   readonly model?: string;
   /** Override the transcript dir (default `<root>/.vend/transcripts`). */
   readonly transcriptDir?: string;
+  /** Born-blocked mint (`vend chain … --after`, field fix #3): existing board ticket id(s) the
+   *  decomposed epic's ENTRY tickets are born depending on, so queuing behind a live loop is
+   *  race-free. Threaded into the decompose step's inputs; the effect validates + applies. Only the
+   *  DECOMPOSE step consumes it — the propose step mints the card, which carries no dependency. */
+  readonly after?: readonly string[];
 }
 
 /**
@@ -147,7 +152,7 @@ export async function castProposeDecomposeChain(
         intervened: opts.intervened,
         transcriptDir: opts.transcriptDir,
       }),
-      adapt: async (upstream) => assembleInputs({ epicPath: upstream as string, projectRoot: root }),
+      adapt: async (upstream) => assembleInputs({ epicPath: upstream as string, projectRoot: root, after: opts.after }),
     },
   ];
 

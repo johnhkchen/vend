@@ -3,6 +3,7 @@ import type { BudgetOutcome } from "../budget/budget.ts";
 import type { GateResult } from "../gate/gates.ts";
 import type { StreamMessage } from "../executor/claude.ts";
 import {
+  blockEntryTicketsAfter,
   classify,
   DECOMPOSE_MAX_TURNS,
   DEFAULT_MODEL,
@@ -253,5 +254,34 @@ describe("stripNonGoalAdvances — drop mis-tagged non-goals before the gates ru
     });
     expect(out.tickets[0]!.advances).toEqual(["P2"]);
     expect(out.tickets[1]!.advances).toEqual(["P5"]);
+  });
+});
+
+// ── born-blocked mint: --after <ticket> (honey-kitchen field fix #3) ──────────────────────────────
+
+/** A two-ticket plan: T-…-01 is an ENTRY ticket (no deps); T-…-02 depends on it (a downstream). */
+const chainPlan = (): WorkPlan => ({
+  stories: [story("S-062-01", ["T-062-01-01", "T-062-01-02"])],
+  tickets: [ticket("T-062-01-01", "S-062-01"), ticket("T-062-01-02", "S-062-01", ["T-062-01-01"])],
+});
+
+describe("blockEntryTicketsAfter — born-blocked mint edge onto an existing board ticket", () => {
+  test("adds the external dep to ENTRY tickets only; downstream tickets are left untouched", () => {
+    const out = blockEntryTicketsAfter(chainPlan(), ["T-011-03-02"]);
+    expect(out.tickets[0]!.depends_on).toEqual(["T-011-03-02"]); // entry — now blocked
+    expect(out.tickets[1]!.depends_on).toEqual(["T-062-01-01"]); // downstream — already blocked, unchanged
+  });
+  test("blocks every entry ticket on ALL (de-duplicated) targets", () => {
+    const out = blockEntryTicketsAfter(chainPlan(), ["T-011-03-02", "T-012-01-01", "T-011-03-02"]);
+    expect(out.tickets[0]!.depends_on).toEqual(["T-011-03-02", "T-012-01-01"]);
+  });
+  test("empty targets return the plan structurally unchanged (same object)", () => {
+    const p = chainPlan();
+    expect(blockEntryTicketsAfter(p, [])).toBe(p);
+  });
+  test("PURE — never mutates the input ticket's depends_on", () => {
+    const p = chainPlan();
+    blockEntryTicketsAfter(p, ["T-011-03-02"]);
+    expect(p.tickets[0]!.depends_on).toEqual([]); // original entry ticket untouched
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseArgs, parseBudgetArg, USAGE } from "./cli.ts";
+import { parseArgs, parseBudgetArg, splitAfter, USAGE } from "./cli.ts";
 
 // T-002-03 CLI: the PURE arg parsers. The `import.meta.main` dispatch (which imports
 // the impure runner and exits the process) does not run on import, so this test never
@@ -143,6 +143,53 @@ describe("parseArgs", () => {
   test("chain <signal> --budget malformed → usage", () => {
     expect(parseArgs(["chain", "sig", "--budget", "nope"]).cmd).toBe("usage");
     expect(parseArgs(["chain", "sig", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
+  });
+
+  // Field fix #3: born-blocked mint — `--after <ticket>`.
+  test("chain <signal> --after carries a single born-blocked target", () => {
+    expect(parseArgs(["chain", "sig", "--after", "T-011-03-02"])).toEqual({
+      cmd: "chain",
+      signal: "sig",
+      after: ["T-011-03-02"],
+    });
+  });
+  test("chain --after accepts comma-separated AND repeated targets, de-duplicated in order", () => {
+    expect(parseArgs(["chain", "sig", "--after", "T-011-03-02,T-012-01-01", "--after", "T-011-03-02"])).toEqual({
+      cmd: "chain",
+      signal: "sig",
+      after: ["T-011-03-02", "T-012-01-01"],
+    });
+  });
+  test("chain --after coexists with --budget (order-independent)", () => {
+    expect(parseArgs(["chain", "sig", "--after", "T-1", "--budget", "100,200"])).toEqual({
+      cmd: "chain",
+      signal: "sig",
+      budget: { timeMs: 100, tokens: 200 },
+      after: ["T-1"],
+    });
+  });
+  test("chain --after with no value → usage", () => {
+    expect(parseArgs(["chain", "sig", "--after"])).toEqual({ cmd: "usage", error: "missing --after <ticket>" });
+    expect(parseArgs(["chain", "sig", "--after", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing --after <ticket>" });
+  });
+  test("run decompose-epic … --after carries born-blocked targets alongside --budget", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--after", "T-011-03-02"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+      after: ["T-011-03-02"],
+    });
+  });
+  test("run --after with no value → usage", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--after"])).toEqual({
+      cmd: "usage",
+      error: "missing --after <ticket>",
+    });
+  });
+  test("splitAfter: comma-split, trimmed, blanks dropped", () => {
+    expect(splitAfter("T-1, T-2 ,,T-3")).toEqual(["T-1", "T-2", "T-3"]);
+    expect(splitAfter("T-1")).toEqual(["T-1"]);
   });
 
   // T-016-02: the expand-fragment demand-extraction gesture (mirrors chain's parse shape).

@@ -168,6 +168,8 @@ vend writes the board; lisa consumes it. The board is the contract between them.
 2. **Clear, then build:**
    - \`vend steer\` — read the project; stage a ranked board + the genuine forks.
    - \`vend chain "<signal>"\` — mint an epic and decompose it (graph-valid by construction).
+     Add \`--after <ticket>\` to queue an epic BEHIND a running loop race-free: its entry
+     tickets are born blocked on that ticket, so a greedy loop can't grab them early.
    - \`vend work [--budget <ms>,<tokens>] [--no-intervened]\` — clear the next ready slice
      autonomously, against its gates and a hard budget; \`--no-intervened\` records the
      walk-away trust signal when you let it run untouched.

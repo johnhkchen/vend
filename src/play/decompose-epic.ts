@@ -43,6 +43,7 @@ import {
 } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
 import {
+  blockEntryTicketsAfter,
   DECOMPOSE_MAX_TURNS,
   DECOMPOSE_TOOLS,
   epicIdFromDoc,
@@ -51,7 +52,7 @@ import {
   stripNonGoalAdvances,
 } from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
-import { assembleInputs, type DecomposeInputs } from "./project-context.ts";
+import { assembleInputs, listIdsIn, type DecomposeInputs } from "./project-context.ts";
 import { materialize, IdCollisionError } from "./materialize.ts";
 
 /** The play name — the registry key and the value stamped on every run-log record. */
@@ -82,6 +83,10 @@ export interface RunOptions {
   /** The E2 run mode (T-014-02): skip the gate phase so the output materializes ungated. The
    *  `vend run --no-gates` switch; absent/false ⇒ the gated path is unchanged. */
   readonly skipGates?: boolean;
+  /** Born-blocked mint (`--after`, field fix #3): existing board ticket id(s) the minted epic's
+   *  ENTRY tickets are born depending on, so queuing behind a live loop is race-free. Threaded to
+   *  `assembleInputs`; the effect validates against the board + applies. Absent ⇒ a bare mint. */
+  readonly after?: readonly string[];
 }
 
 /** The result of spawning `lisa validate` (the final structural poka-yoke). */
@@ -147,7 +152,7 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
   // that passed `lisa validate` but failed the strict gate. A doc with no parseable `id:` skips both
   // (degrade, not regress); gates already cleared the plan's value/allocation/bounds/structural.
   const epicId = epicIdFromDoc(ctx.inputs.epic);
-  const finalPlan = epicId ? renumberPlanToEpic(plan, epicId) : plan;
+  let finalPlan = epicId ? renumberPlanToEpic(plan, epicId) : plan;
   if (epicId) {
     const violations = graphIntegrityViolations(finalPlan, epicId);
     if (violations.length > 0) {
@@ -157,6 +162,26 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
         detail: `graph-invalid — the plan would not materialize to a valid board:\n- ${violations.join("\n- ")}`,
       };
     }
+  }
+
+  // Born-blocked mint (`--after`, field fix #3): once the INTERNAL net has proven the plan's own
+  // graph, block the epic's ENTRY tickets on the requested existing board ticket(s) so queuing
+  // behind a live loop is race-free. The targets live OUTSIDE the plan fragment (other epics'
+  // tickets), so (a) they are validated here against the LIVE board — a dangling `--after` would
+  // write a graph-red board the fragment-only net cannot see, refused as `graph-invalid` before any
+  // write — and (b) the edge is added AFTER the net, which would otherwise flag the external ref.
+  const after = ctx.inputs.after ?? [];
+  if (after.length > 0) {
+    const boardTickets = new Set(await listIdsIn(join(root, "docs", "active", "tickets")));
+    const missing = [...new Set(after)].filter((id) => !boardTickets.has(id));
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        outcome: "graph-invalid",
+        detail: `--after names ticket(s) not on the board: ${missing.join(", ")} — nothing materialized`,
+      };
+    }
+    finalPlan = blockEntryTicketsAfter(finalPlan, after);
   }
 
   try {
@@ -264,9 +289,9 @@ registry.register(decomposeEpicPlay);
  */
 export async function assembleAndCast(play: AnyPlay, opts: RunOptions): Promise<RunSummary> {
   const root = opts.projectRoot ?? process.cwd();
-  const { epic, charter, project } = await assembleInputs({ epicPath: opts.epicPath, projectRoot: root });
-  return castPlay(play, { epic, charter, project }, opts.budget, {
-    subject: epicIdOf(epic, opts.epicPath),
+  const inputs = await assembleInputs({ epicPath: opts.epicPath, projectRoot: root, after: opts.after });
+  return castPlay(play, inputs, opts.budget, {
+    subject: epicIdOf(inputs.epic, opts.epicPath),
     projectRoot: root,
     model: opts.model,
     runId: opts.runId,
