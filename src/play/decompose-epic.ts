@@ -223,15 +223,16 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   parse: (text) => stripNonGoalAdvances(b.parse.DecomposeEpic(text)),
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,
-  // RE-recalibrated 2026-06-29 from the ledger (E-062 kitchen mint): the budget meters TOTAL tokens
-  // (input + output + cache reads), and as the repo grew the "go-and-see" read tail grew with it —
-  // real decompose runs now land 155–195k total (E-060 ~158k, E-061 ~192k, E-062 ~169k — all CLEARED),
-  // far above the prior 120k ceiling tuned to the old ~94k tail (E-014/E-015). At 120k a legitimate
-  // E-062 run FALSE-ANDON'd (budget-exhausted at 166k) and only cleared at a hand-raised budget. 250k
-  // clears the observed ~192k upper tail with ~30% headroom — a false andon is worse than one tail
-  // through (the T-015-02 tie-breaker). Wall-clock was never the limit (runs finish in minutes), so
-  // timeMs is unchanged. (E-013's loop should set this from the log's p95 once it warms; by hand here.)
-  budget: { timeMs: 7_200_000, tokens: 250_000 },
+  // RE-recalibrated 2026-06-30 from a SUSTAINED real drive (honey-kitchen, 14 epics / 38 casts —
+  // tooling-feedback #4). The budget meters TOTAL tokens (input + output + cache reads), and the
+  // "go-and-see" read tail scales with the project: the prior 250k (tuned 2026-06-29 to the vend
+  // repo's ~192k tail) still FALSE-ANDON'd a legitimate DENSE epic (honey-kitchen E-009 budget-
+  // exhausted at 300k, minted first-try only at 500k), so 500k is now the field's standing default.
+  // A false andon is worse than one fat tail through (the T-015-02 tie-breaker): the ceiling is a
+  // detect-after wall (P7), so headroom over the observed upper tail costs nothing on the common run
+  // and buys the dense outlier a clean mint. Wall-clock was never the limit (runs finish in minutes),
+  // so timeMs is unchanged. (E-013's loop should set this from the log's p95 once it warms; by hand here.)
+  budget: { timeMs: 7_200_000, tokens: 500_000 },
   // The warranted DEFAULT turn cap (T-015-02) — the mid-flight bound on the agentic wandering
   // behind decompose's ~85–95k token tail (E-014 E2). Generous over the 1–7-turn clean band;
   // the per-cast override (CastOptions.maxTurns) still wins. Justified at DECOMPOSE_MAX_TURNS.
