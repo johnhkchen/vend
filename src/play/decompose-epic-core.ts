@@ -168,6 +168,41 @@ export function makeStreamSink(opts: {
   };
 }
 
+// ── advances normalization: strip non-goal codes before gating (honey-kitchen field fix) ────────
+//
+// WHY: the decompose model recurrently tags a ticket's `advances` with a NON-GOAL id (`N2`, `N4`),
+// most often on an epic that is ABOUT respecting a non-goal (an access gate ↔ N2 "one couple";
+// health tags ↔ N4). Advancing a non-goal is definitionally incoherent, so the bounds gate rightly
+// refuses it — but as a HARD chain-halting andon it became the single biggest babysit in a 14-epic
+// real drive (honey-kitchen tooling-feedback #1: hit E-007/008/009/012/014). The fix the field asked
+// for: auto-STRIP any N-code from `advances` before the gates run, so the common `[P4, N2]` case
+// clears cleanly instead of andon-ing on the noise. A ticket whose `advances` was ONLY a non-goal
+// collapses to `[]` and then trips the VALUE gate ("advances nothing") — a real, retry-able defect,
+// not a silent pass. Applied in the play's `parse` (cast.ts feeds one parsed plan to BOTH gates and
+// effect), so the MATERIALIZED board never carries the bogus N-code either. Not hidden: the raw model
+// output is still captured verbatim in the per-run transcript, so the generator defect stays visible.
+
+/** True for an `advances` entry shaped like a non-goal id (`N4`), after trimming. PURE. The bounds
+ *  gate's non-goal set is a subset of these — a charter's non-goals are all `N\d+` — so this shape
+ *  test alone strips every non-goal without needing the charter. */
+export const isNonGoalAdvance = (claim: string): boolean => /^N\d+$/.test(claim.trim());
+
+/**
+ * Drop every non-goal (`N\d+`) entry from each ticket's `advances`, returning a NEW plan (PURE —
+ * never mutates the input; stories carry no `advances`, so they pass through untouched). A ticket
+ * left with an empty `advances` is deliberately NOT patched up here: the value gate then reports it
+ * as advancing nothing, the honest verdict for a ticket that named only a non-goal. Only tickets
+ * that actually carry an N-code are re-allocated, so the common no-N-code plan is returned as-is.
+ */
+export function stripNonGoalAdvances(plan: WorkPlan): WorkPlan {
+  const tickets = plan.tickets.map((t) =>
+    Array.isArray(t.advances) && t.advances.some(isNonGoalAdvance)
+      ? { ...t, advances: t.advances.filter((a) => !isNonGoalAdvance(a)) }
+      : t,
+  );
+  return { ...plan, tickets };
+}
+
 // ── nested-id canonicalization + graph-integrity net (E-061 retro #8) ──────────────────────────
 //
 // WHY: the decompose model EMITS ids (its prompt even shows the old flat `T-002-01` / `S-002`

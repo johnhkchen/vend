@@ -11,9 +11,11 @@ import {
   formatMessage,
   gateRowsFor,
   graphIntegrityViolations,
+  isNonGoalAdvance,
   makeStreamSink,
   renumberPlanToEpic,
   resolveLoggedModel,
+  stripNonGoalAdvances,
 } from "./decompose-epic-core.ts";
 // TYPE-ONLY import (erased under verbatimModuleSyntax) — value-importing baml_client would load the
 // native addon into this `bun test` process and trip the once-per-process reactor hang this whole
@@ -195,5 +197,61 @@ describe("graphIntegrityViolations — vend's own buildGraph as the pre-write ne
     };
     const v = graphIntegrityViolations(p, "E-061");
     expect(v.join("\n")).toContain("T-061-09-09");
+  });
+});
+
+// ── advances normalization: strip non-goal codes before gating (honey-kitchen field fix #1) ──────
+
+/** A ticket with a chosen `advances` list — the `ticket` helper above hardcodes ["P3"]. */
+const ticketAdv = (id: string, advances: string[]): TicketDraft => ({ ...ticket(id, "S-061-01"), advances });
+
+describe("isNonGoalAdvance — the shape test that identifies a non-goal claim", () => {
+  test("true for N-shaped codes (with surrounding space), false for invariants/prose", () => {
+    expect(isNonGoalAdvance("N2")).toBe(true);
+    expect(isNonGoalAdvance("  N14 ")).toBe(true);
+    expect(isNonGoalAdvance("P4")).toBe(false);
+    expect(isNonGoalAdvance("Never blur content into behavior")).toBe(false); // prose starting with N
+    expect(isNonGoalAdvance("N")).toBe(false); // no digits — not an id
+  });
+});
+
+describe("stripNonGoalAdvances — drop mis-tagged non-goals before the gates run", () => {
+  test("the common case: a ticket advancing [P4, N2] keeps P4, loses N2", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["P4", "N2"])],
+    });
+    expect(out.tickets[0]!.advances).toEqual(["P4"]);
+  });
+  test("a ticket that named ONLY a non-goal collapses to [] — the value gate then catches it", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["N2"])],
+    });
+    expect(out.tickets[0]!.advances).toEqual([]);
+  });
+  test("a clean plan is returned structurally unchanged (no needless re-allocation)", () => {
+    const p: WorkPlan = {
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["P4", "P7"])],
+    };
+    const out = stripNonGoalAdvances(p);
+    expect(out.tickets[0]).toBe(p.tickets[0]); // same object — the .some() guard skipped the map
+  });
+  test("PURE — never mutates the input plan or its ticket's advances array", () => {
+    const p: WorkPlan = {
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["P4", "N2"])],
+    };
+    stripNonGoalAdvances(p);
+    expect(p.tickets[0]!.advances).toEqual(["P4", "N2"]); // original untouched
+  });
+  test("strips across multiple tickets independently", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01", "T-061-01-02"])],
+      tickets: [ticketAdv("T-061-01-01", ["N4", "P2"]), ticketAdv("T-061-01-02", ["P5"])],
+    });
+    expect(out.tickets[0]!.advances).toEqual(["P2"]);
+    expect(out.tickets[1]!.advances).toEqual(["P5"]);
   });
 });

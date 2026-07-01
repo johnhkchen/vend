@@ -28,7 +28,7 @@ import { extractPromptText } from "../baml/decompose-bridge.ts";
 import { registry, type Card, type Play } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
 import type { Budget } from "../budget/budget.ts";
-import { clear } from "./propose-core.ts";
+import { clear, stripNonGoalAdvances } from "./propose-core.ts";
 import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 import { buildProjectSnapshot, listIdsIn, CHARTER_PATH } from "./project-context.ts";
 import { EPIC_DIR, proposeEpicEffect, type ProposeEpicInputs } from "./propose-effect.ts";
@@ -67,10 +67,15 @@ const EMPTY_CARD: EpicCard = {
  * return an empty card: the `value` gate then STOPs the line as a clean `gate-failed` andon,
  * rather than an uncontracted throw crashing `castPlay` (the `parseNote` precedent — the same
  * engine-level sharp edge, contained per-play).
+ *
+ * NORMALIZE on the way out (honey-kitchen field fix #1): strip any non-goal (`N\d+`) code the
+ * model mis-tags onto `advances`, so a card that also advances a real invariant clears the propose
+ * bounds gate instead of halting the whole chain. The empty-card path already carries `[]`, so the
+ * strip is a no-op there.
  */
 export function parseProposeEpic(text: string): EpicCard {
   try {
-    return b.parse.ProposeEpic(text);
+    return stripNonGoalAdvances(b.parse.ProposeEpic(text));
   } catch {
     return EMPTY_CARD;
   }

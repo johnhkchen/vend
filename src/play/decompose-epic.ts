@@ -48,6 +48,7 @@ import {
   epicIdFromDoc,
   graphIntegrityViolations,
   renumberPlanToEpic,
+  stripNonGoalAdvances,
 } from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
 import { assembleInputs, type DecomposeInputs } from "./project-context.ts";
@@ -215,7 +216,11 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
       },
     );
   },
-  parse: (text) => b.parse.DecomposeEpic(text),
+  // Parse, then NORMALIZE: strip non-goal (`N\d+`) codes the model recurrently mis-tags onto a
+  // ticket's `advances` before anything gates or materializes (honey-kitchen field fix #1). The
+  // cast loop feeds this one parsed plan to both `gates` and `effect`, so the board never carries
+  // the bogus code and the bounds gate stops babysitting the generator's noise.
+  parse: (text) => stripNonGoalAdvances(b.parse.DecomposeEpic(text)),
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,
   // RE-recalibrated 2026-06-29 from the ledger (E-062 kitchen mint): the budget meters TOTAL tokens

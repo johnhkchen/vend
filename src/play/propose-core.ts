@@ -105,6 +105,27 @@ function flowArray(items: readonly string[]): string {
   return `[${items.join(", ")}]`;
 }
 
+/** True for an `advances` entry shaped like a non-goal id (`N4`), after trimming. The charter's
+ *  non-goal set is a subset of these (they are all `N\d+`), so this shape test alone identifies
+ *  every non-goal without needing the charter — the decompose-core `isNonGoalAdvance` twin. */
+const isNonGoalAdvance = (claim: string): boolean => /^N\d+$/.test(claim.trim());
+
+/**
+ * Drop every non-goal (`N\d+`) entry from an epic card's `advances`, returning a NEW card (PURE —
+ * never mutates the input). The EPIC-LEVEL half of the honey-kitchen field fix (#1): the propose
+ * model recurrently mis-tags a whole card with `advances:<Nx>` on epics that are ABOUT respecting a
+ * non-goal (an access gate ↔ N2 "one couple"), and the propose bounds gate then HALTS the entire
+ * chain before decomposition — nothing materializes, so a retry can't recover it (unlike the
+ * ticket-level variant). Stripping the code before gating lets a card that also advances a real
+ * invariant clear; a card that named ONLY a non-goal collapses to an empty `advances` and honestly
+ * trips the value gate (PE-3), the retry-able "advances nothing" verdict. Applied in the play's
+ * `parse`, so the written `E-0XX.md` never carries the bogus code; the raw reply stays in the transcript.
+ */
+export function stripNonGoalAdvances(card: EpicCard): EpicCard {
+  if (!Array.isArray(card.advances) || !card.advances.some(isNonGoalAdvance)) return card;
+  return { ...card, advances: card.advances.filter((a) => !isNonGoalAdvance(a)) };
+}
+
 /** Epic-card id shape — `E-` + exactly three digits (the R6 granularity, one level up from
  *  the ticket/story ids). */
 const EPIC_ID_RE = /^E-\d{3}$/;
@@ -168,6 +189,12 @@ function valueGate(card: EpicCard): Offense | null {
  * dangling ref. Free-text entries (epic-outcome prose, no grep-able id) are human-judgment
  * territory and are not failed by rule. PE-5's "prerequisites named" is likewise semantic
  * (is this prose a real prerequisite?) — not purely decidable, so not rule-failed here.
+ *
+ * NON-GOAL BACKSTOP: the play strips `N\d+` codes from a card's `advances` in `parse`
+ * (`stripNonGoalAdvances`, honey-kitchen field fix #1), the EPIC-LEVEL half of the fix — an
+ * epic-level mis-tag halts the whole chain BEFORE decomposition, so a retry can't recover it.
+ * On the normal path the non-goal branch below never fires; it is KEPT as defense-in-depth for a
+ * caller that clears an un-normalized card directly (e.g. the propose-core unit tests).
  */
 function boundsGate(card: EpicCard, ctx: ProposeClearContext): Offense | null {
   const invariants = matchIds(ctx.charter, "P");

@@ -5,6 +5,7 @@ import {
   nextEpicId,
   PE_GATE_NAMES,
   renderCard,
+  stripNonGoalAdvances,
   type ProposeClearContext,
 } from "./propose-core.ts";
 
@@ -82,6 +83,31 @@ describe("clear — bounds gate (advances must hold; no non-goal advanced)", () 
   test("a free-text advances entry (no grep-able id) passes bounds", () => {
     const v = clear({ ...FULL_CARD, advances: ["better clearing"] }, ctxWith(CHARTER, []));
     expect(v.status).toBe("clear");
+  });
+});
+
+describe("stripNonGoalAdvances — drop mis-tagged non-goals before the propose gates run (field fix #1)", () => {
+  test("a card advancing [P1, N4] keeps P1, loses N4 — then clears end to end", () => {
+    const normalized = stripNonGoalAdvances({ ...FULL_CARD, advances: ["P1", "N4"] });
+    expect(normalized.advances).toEqual(["P1"]);
+    // the normalized card now clears the very gate the raw card would have halted at
+    expect(clear(normalized, ctxWith(CHARTER, ["E-009"])).status).toBe("clear");
+  });
+  test("a card that named ONLY a non-goal collapses to [] and honestly trips the value gate", () => {
+    const normalized = stripNonGoalAdvances({ ...FULL_CARD, advances: ["N2"] });
+    expect(normalized.advances).toEqual([]);
+    const v = clear(normalized, ctxWith(CHARTER, []));
+    expect(v.status).toBe("stop");
+    if (v.status === "stop") expect(v.gate).toBe("value"); // "advances nothing" — retry-able, not a hard bounds halt
+  });
+  test("a clean card is returned unchanged (same object — the .some() guard skips the copy)", () => {
+    const card = { ...FULL_CARD, advances: ["P1", "P7"] };
+    expect(stripNonGoalAdvances(card)).toBe(card);
+  });
+  test("PURE — never mutates the input card's advances", () => {
+    const card = { ...FULL_CARD, advances: ["P1", "N4"] };
+    stripNonGoalAdvances(card);
+    expect(card.advances).toEqual(["P1", "N4"]);
   });
 });
 
