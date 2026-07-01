@@ -3,6 +3,10 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.2.3 — 2026-07-01
+
+- `vend user-guide` (also `guide` / `setup-guide`) prints a one-screen orientation on driving vend with lisa — so an agent landing in a fresh repo knows where to start.
+
 ## 0.2.2 — 2026-07-01
 
 - Retired `vend work`; drive the loop one deliberate pull at a time (`vend steer` → `vend chain "<signal>"` → let lisa build → sweep).
