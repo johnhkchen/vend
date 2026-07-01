@@ -30,9 +30,12 @@ export const USAGE =
   "       vend shelf\n" +
   "       vend init [--template <name>]\n" +
   "       vend doctor\n" +
+  "       vend user-guide\n" +
   "       vend --version\n" +
   "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
-  "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]";
+  "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]\n" +
+  "\n" +
+  "new here? run `vend user-guide` for how vend and lisa drive one board.";
 
 /** The four leverage tiers (mirrors {@link ValueTier} in shelf/menu.ts), as a value tuple
  *  so `parseEnvelopeArgs` can membership-check a `--tier` word without importing the
@@ -83,6 +86,7 @@ export type ParsedCommand =
   | { readonly cmd: "steer"; readonly budget?: Budget }
   | { readonly cmd: "svg"; readonly seat: Seat; readonly out?: string }
   | { readonly cmd: "shelf" }
+  | { readonly cmd: "user-guide" }
   | { readonly cmd: "version" }
   | {
       readonly cmd: "init";
@@ -169,6 +173,10 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "shelf") return parseShelfArgs(argv);
   if (argv[0] === "init") return parseInitArgs(argv);
   if (argv[0] === "doctor") return parseDoctorArgs(argv);
+  // `user-guide` — the fresh-repo orientation print. Aliased to `guide` and `setup-guide` so an
+  // agent who just learned `lisa setup-guide` finds vend's by the same reflex (discoverability is
+  // the whole point — the reported friction is agents not knowing how vend + lisa fit together).
+  if (argv[0] === "user-guide" || argv[0] === "guide" || argv[0] === "setup-guide") return parseUserGuideArgs(argv);
   if (argv[0] === "envelope") return parseEnvelopeArgs(argv);
   if (argv[0] === "audit") return parseAuditArgs(argv);
   return parseSelectOrBrowse(argv);
@@ -252,6 +260,18 @@ function parseInitArgs(argv: readonly string[]): ParsedCommand {
 function parseDoctorArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length > 1) return { cmd: "usage", error: `unexpected doctor argument: ${argv[1]}` };
   return { cmd: "doctor" };
+}
+
+/**
+ * Parse the read-only `user-guide` path (T-066) — print the fresh-repo orientation on driving vend
+ * with lisa (the reported friction: agents can't tell how the two engines fit). PURE. Reached from
+ * three spellings (`user-guide` / `guide` / `setup-guide` — discoverability), all one command. Like
+ * `doctor`/`shelf` it takes NO arguments (there is nothing to type — it just prints), so any trailing
+ * token is a clean usage error. The `argv[0]` spelling is not carried: the output is identical.
+ */
+function parseUserGuideArgs(argv: readonly string[]): ParsedCommand {
+  if (argv.length > 1) return { cmd: "usage", error: `unexpected ${argv[0]} argument: ${argv[1]}` };
+  return { cmd: "user-guide" };
 }
 
 /**
@@ -789,6 +809,17 @@ if (import.meta.main) {
     // keeps the play modules (and their BAML addon) off the pure-parse path, like the other arms.
     const { shelfText } = await import("./shelf/shelf.ts");
     process.stdout.write(`${await shelfText()}\n`);
+    process.exit(0);
+  }
+
+  if (parsed.cmd === "user-guide") {
+    // The fresh-repo orientation (T-066): print how vend + lisa drive one board — the LLM-friendly
+    // guide agents reach for (the `lisa setup-guide` analogue vend was missing). Read-only, FREE (no
+    // cast, no tokens), always exits 0. The body is the same `VEND_WORKFLOW` doc `vend init` lays into
+    // the repo (one source of truth); guide-core adds the terminal footer. Lazy import keeps it off the
+    // pure-parse path (guide-core pulls init-core, which is addon-free but still lazily loaded here).
+    const { renderUserGuide } = await import("./guide/guide-core.ts");
+    process.stdout.write(`${renderUserGuide()}\n`);
     process.exit(0);
   }
 

@@ -529,3 +529,19 @@ describe("parseArgs — doctor (T-042-03 preflight command)", () => {
     expect(USAGE).toContain("vend doctor");
   });
 });
+
+describe("parseArgs — user-guide (T-066 fresh-repo orientation)", () => {
+  test("all three spellings parse to the same no-arg command", () => {
+    expect(parseArgs(["user-guide"])).toEqual({ cmd: "user-guide" });
+    expect(parseArgs(["guide"])).toEqual({ cmd: "user-guide" });
+    expect(parseArgs(["setup-guide"])).toEqual({ cmd: "user-guide" }); // the `lisa setup-guide` reflex
+  });
+  test("takes no arguments — a trailing token is usage, naming the spelling used", () => {
+    expect(parseArgs(["user-guide", "junk"])).toEqual({ cmd: "usage", error: "unexpected user-guide argument: junk" });
+    expect(parseArgs(["setup-guide", "x"])).toEqual({ cmd: "usage", error: "unexpected setup-guide argument: x" });
+  });
+  test("USAGE lists the guide line and a discovery hint", () => {
+    expect(USAGE).toContain("vend user-guide");
+    expect(USAGE).toContain("new here?");
+  });
+});

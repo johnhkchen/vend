@@ -148,7 +148,10 @@ This note carries no \`id:\`, so the board loader skips it.
 /** The instruction document (\`docs/knowledge/vend-workflow.md\`): how vend's clearing layer and
  *  lisa's build loop drive one shared board. The complement to lisa's \`rdspi-workflow.md\` — laid by
  *  \`vend init\` for a project run under both engines. */
-const VEND_WORKFLOW = `# Driving with vend (and lisa)
+/** The two-engine drive guide — laid into the repo as `docs/knowledge/vend-workflow.md` by
+ *  `vend init`, AND printed verbatim by `vend user-guide` (guide-core.ts imports it), so the file
+ *  and the command share ONE source of truth. Exported for that reuse. */
+export const VEND_WORKFLOW = `# Driving with vend (and lisa)
 
 Two engines share one board under \`docs/active/\`.
 
