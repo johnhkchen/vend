@@ -7,11 +7,25 @@
 > picks **one** as the quarter's single inspiring goal — these are alternatives, equally weighted, not
 > a portfolio. Targets set at ~60–70% confidence. Nothing promoted.
 
-**Relationship to the metrics stack (not alternatives to each other):** the **North Star** (cleared-
-without-intervention) is the long-run KPI all three serve. Each set's **KRs** are the quarter's
-measurable movements — some are NSM input metrics (Set A), some are activation/adoption metrics (Set
-B), some are capability/health metrics (Set C). Health metrics (gates-working andon rate, cost-vs-
-envelope) balance every set so we don't win one KR by breaking the contract.
+**Relationship to the metrics stack (not alternatives to each other):** the **North Star** (~~cleared-
+without-intervention~~ → **gated-valid, stays-committed clears**; see reconciliation) is the long-run KPI
+all three serve. Each set's **KRs** are the quarter's measurable movements — some are NSM input metrics
+(Set A), some are activation/adoption metrics (Set B), some are capability/health metrics (Set C). Health
+metrics (gates-working andon rate, cost-vs-envelope) balance every set so we don't win one KR by breaking
+the contract.
+
+> **⚠ Field reconciliation (2026-07, folded from `product-strategy.md`).** The honey-kitchen dogfood
+> (first real-stakes drive) reshapes this stack:
+> - The **North Star is reframed** from *cleared-without-intervention* to **gated-valid, stays-committed
+>   clears** — the value is the gate holding, not the human's absence.
+> - **Set A's premise is falsified.** "Confirming autonomy is the precondition for selling consistency"
+>   is false — the dogfood *sold consistency on the gates with a human fully in the loop*. So the gate/
+>   trust proof is effectively **in** (first field evidence, in favor), and Set A's autonomy KRs
+>   (walk-away rate; ≥10 forward-E1) drop from *the headline* to a **secondary signal** — doubly so now
+>   that their only meter, `vend work --no-intervened`, is **retired** (the gesture was removed).
+> - **Focus tension, updated:** the open bets are **B (channel)** and **C (moat)**; A is no longer
+>   "prove trust" (trust has its first field proof) but "**keep the gates honest**" — track gate-catch
+>   health (andon-as-gates-working, done⇒committed integrity, cost-vs-envelope), not walk-away rate.
 
 ---
 

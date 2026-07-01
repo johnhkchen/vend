@@ -17,8 +17,10 @@ The aspiration: make **repeatability over a natively unrepeatable process** an o
 Agent work is probabilistic; vend sells the one thing probability can't give you — **consistency** —
 by moving the expensive judgment (the *lotería* labors: examine, synthesize, set the criterion, review)
 to **authoring, paid once**, and freezing it as **gates**. Values upheld: *author once, run forever*;
-*gates are the contract*; *autonomy by default*; *local-first*. We inspire by giving people their
-attention back — you stop babysitting agents and start dispatching pre-built, gated work.
+*gates are the contract*; *walk-away trust* (you can leave because the gates **refuse**, not because no
+one is watching — field-corrected 2026-07 from "autonomy by default"); *local-first*. We inspire by
+giving people their attention back — you stop babysitting agents and start dispatching pre-built,
+gated work.
 
 ## 2. Market segments (by problem/JTBD, grounded in `persona-research.md`)
 
@@ -88,9 +90,14 @@ a **low *marginal* cost** quirk that's a genuine edge:
 
 ## 6. Key metrics
 
-- **North Star — cleared runs that pass their gates without human intervention.** The literal
-  consistency proof; it's the headline promise made countable. (Operationalized today as the keystone's
-  **≥10 cleared forward-E1 records** bar that moves the macro-wallet provisional→confirmed.)
+- **North Star — trustworthy clears: work that passes every gate and stays committed, so you didn't
+  have to hand-verify it.** The literal consistency proof, made countable as **gate-catch integrity**
+  (andon-read-as-gates-working + done⇒committed held + cost-vs-envelope) — *independent of whether a
+  human was in the loop*. **⚠ Reframed 2026-07 (field reconciliation, below):** the prior clause —
+  cleared *without human intervention* — folded **autonomy** into the metric; the honey-kitchen dogfood
+  showed the value is the **gate holding**, not the human's absence, and its meter
+  (`vend work --no-intervened`) is retired. The **≥10 forward-E1** keystone is preserved as a
+  *secondary* autonomy signal (macro-wallet provisional→confirmed), no longer the headline.
 - **OMTM (this cycle) — time-to-first-driven-board for a non-dev** (PRD KR2): copied example + one-line
   seed → a reviewed, ranked demand board in one short session, no code. *Why this one:* it's the single
   measurement that tests the **riskiest strategic hypothesis** (does the non-dev channel convert?) and
@@ -151,6 +158,34 @@ the most encoded playbooks, not whoever ships the best graph. Compete on the cou
 never the plumbing.
 
 ---
+
+## Field reconciliation — the honey-kitchen dogfood (folded in 2026-07)
+
+The first **real-stakes** dogfood (a cook/dev drove vend+lisa 14 epics deep on a live app) is this
+canvas's first non-survey evidence. It lands on the spine — with one correction that sharpens the whole
+positioning:
+
+- **CONFIRMED — the value-delivering feature is the gate contract (§8's "*the* differentiator").** The
+  field verdict was literal: *"the gates pay for themselves."* Every positive (correctness never slipped,
+  honest-on-outcome held, walk-away trust earned) reduced to the same thing — *a gate caught it cheaply,
+  before it compounded three epics later*. This is the **first field data point for hypothesis #2** (gates
+  stay necessary) — in favor — and turns §9's "consistency-as-contract" moat from a stance into a proof
+  point. Evidence is n=1 real project, so it's *confirmation, not closure*.
+- **CORRECTED — the value is in the *refusal*, not the automation.** The same dogfood **disconfirmed the
+  autonomy sub-thesis**: the drive was human-in-the-loop throughout, and the value landed in *correct,
+  decision-sized, trustworthy* — explicitly **not** *fast, unattended* (the driver's words: the framing
+  "oversells autonomy"). vend is a **trust/consistency machine — a "no" machine — not a labor-saving one.**
+  You walk away because it **refuses to let bad work through**, not because no one is watching. (This is
+  why `vend work`, the "vend does the work for you" automation gesture, was retired — the value was never
+  there.)
+- **CONSEQUENCE — the North Star was reframed (§6) and Set A's premise falsified (OKRs).** Autonomy was
+  never the thing being bought; the gate holding is. The OKR premise "confirming autonomy is the
+  precondition for selling consistency" is **false** — the dogfood sold consistency on the gates with a
+  human fully in the loop. So the gate/trust proof is effectively **in** (first field evidence); the
+  quarter's open bets are the **channel (B)** and the **moat (C)**, not proving trust.
+
+**Spine, sharpened:** *win on gates* stands — now read as **the value is the "no": vend makes
+probabilistic agent work trustworthy by refusing to let bad work settle, not by removing the human.**
 
 ## Coherence check (does the canvas reinforce itself?)
 
