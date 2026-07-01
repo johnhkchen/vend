@@ -1,7 +1,7 @@
 # Charter — your hackathon project
 
 The value function this project is judged on. It's small on purpose. `vend steer` and
-`vend work` read this file as **steering context** — it tells the agents *what is worth
+`vend chain` read this file as **steering context** — it tells the agents *what is worth
 building in this session, and why* — so the work they clear is **valuable**, not merely
 valid. Tune it to your hack; keep it to one page.
 
@@ -49,8 +49,8 @@ Kept deliberately light for a hack — but real, because a gate that isn't enfor
   build blocks the demo.
 - **H2 — Every slice is showable.** It ships with something you can point at — a page, an
   interaction, a check that passes.
-- **H3 — Budget is a hard contract.** `vend work` respects the time/tokens you fund it with,
-  both ways. When the budget is spent, the session stops clean.
+- **H3 — Budget is a hard contract.** A metered cast (`vend chain`) respects the time/tokens you
+  fund it with, both ways. When the budget is spent, the session stops clean.
 
 ---
 

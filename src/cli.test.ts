@@ -254,71 +254,13 @@ describe("parseArgs", () => {
     expect(parseArgs(["steer", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
   });
 
-  // T-024-03: the `vend work` counter gesture — fund the macro-wallet, spend down the staged board.
-  test("work (no budget) → a work command, no budget (dispatch defaults the macro budget)", () => {
-    expect(parseArgs(["work"])).toEqual({ cmd: "work" });
-  });
-  test("work --budget carries the macro-wallet allocation", () => {
-    expect(parseArgs(["work", "--budget", "600000,120000"])).toEqual({
-      cmd: "work",
-      budget: { timeMs: 600000, tokens: 120000 },
-    });
-  });
-  test("work --board points at a specific staged board", () => {
-    expect(parseArgs(["work", "--board", "docs/active/pm/staged/survey-board.md"])).toEqual({
-      cmd: "work",
-      board: "docs/active/pm/staged/survey-board.md",
-    });
-    expect(parseArgs(["work", "--budget", "1,2", "--board", "b.md"])).toEqual({
-      cmd: "work",
-      budget: { timeMs: 1, tokens: 2 },
-      board: "b.md",
-    });
-  });
-  test("work --budget malformed / dangling → usage", () => {
-    expect(parseArgs(["work", "--budget", "nope"]).cmd).toBe("usage");
-    expect(parseArgs(["work", "--budget"])).toEqual({ cmd: "usage", error: "missing --budget <ms>,<tokens>" });
-  });
-  test("work --board with no value → usage", () => {
-    expect(parseArgs(["work", "--board"])).toEqual({ cmd: "usage", error: "missing --board <path>" });
-  });
-  test("work with an unexpected positional → usage (there is no subject to type)", () => {
-    expect(parseArgs(["work", "junk"])).toEqual({ cmd: "usage", error: "unexpected work argument: junk" });
-  });
-  // T-027-01: the freshness-gate override — a presence flag, spread only when given (shape preserved).
-  test("work --stale-ok carries the override (IA-5)", () => {
-    expect(parseArgs(["work", "--stale-ok"])).toEqual({ cmd: "work", staleOk: true });
-  });
-  test("work --stale-ok composes with --budget and --board", () => {
-    expect(parseArgs(["work", "--budget", "1,2", "--board", "b.md", "--stale-ok"])).toEqual({
-      cmd: "work",
-      budget: { timeMs: 1, tokens: 2 },
-      board: "b.md",
-      staleOk: true,
-    });
-  });
-  test("bare work carries no staleOk key (the default object shape is unchanged)", () => {
-    expect(parseArgs(["work"])).toEqual({ cmd: "work" });
-  });
-  // T-026-02: the E1 walk-away self-report on the macro-wallet gesture — a presence-flag pair,
-  // spread only when given, so a genuine `vend work` sweep records the `intervened` bit.
-  test("work --intervened sets intervened:true", () => {
-    expect(parseArgs(["work", "--intervened"])).toEqual({ cmd: "work", intervened: true });
-  });
-  test("work --no-intervened sets intervened:false (a clean walk-away is a value)", () => {
-    expect(parseArgs(["work", "--no-intervened"])).toEqual({ cmd: "work", intervened: false });
-  });
-  test("bare work omits the intervened key (unknown — back-compat shape)", () => {
-    expect(parseArgs(["work"])).not.toHaveProperty("intervened");
-  });
-  test("work --no-intervened composes with --budget, --board, and --stale-ok", () => {
-    expect(parseArgs(["work", "--budget", "1,2", "--board", "b.md", "--stale-ok", "--no-intervened"])).toEqual({
-      cmd: "work",
-      budget: { timeMs: 1, tokens: 2 },
-      board: "b.md",
-      staleOk: true,
-      intervened: false,
-    });
+  // `vend work` RETIRED: the fund-once-walk-away macro-drain was incompatible with the real driving
+  // loop (steer → chain → lisa builds → sweep) — it auto-drained the staged board (overproduction),
+  // its freshness gate refused inside an active loop, and it automated the cheap clearing half, not
+  // the expensive build half (honey-kitchen field feedback). `work` is now an unknown command.
+  test("work is retired — parses as an unknown command, not a gesture", () => {
+    expect(parseArgs(["work"])).toEqual({ cmd: "usage", error: "unknown command: work" });
+    expect(parseArgs(["work", "--budget", "1,2"]).cmd).toBe("usage");
   });
 
   // T-013-02: the read-only Ledger envelope readout.

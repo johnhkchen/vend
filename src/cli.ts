@@ -26,7 +26,6 @@ export const USAGE =
   '       vend annotate <node-id> "<feedback>" [--seat <designer|dev>]\n' +
   "       vend survey [--budget <ms>,<tokens>]\n" +
   "       vend steer [--budget <ms>,<tokens>]\n" +
-  "       vend work [--budget <ms>,<tokens>] [--board <path>] [--stale-ok]\n" +
   "       vend svg [--seat <designer|dev>] [--out <path>]\n" +
   "       vend shelf\n" +
   "       vend init [--template <name>]\n" +
@@ -82,20 +81,6 @@ export type ParsedCommand =
     }
   | { readonly cmd: "survey"; readonly budget?: Budget }
   | { readonly cmd: "steer"; readonly budget?: Budget }
-  | {
-      readonly cmd: "work";
-      /** The macro-wallet allocation; absent ⇒ the dispatch defaults to the "two-hour" macro budget. */
-      readonly budget?: Budget;
-      /** An explicit staged-board path; absent ⇒ the steer→survey fallback at dispatch. */
-      readonly board?: string;
-      /** Spend even when the staged board is stale (IA-5 override, T-027-01); absent ⇒ the freshness
-       *  gate refuses a board older than the project's live state. */
-      readonly staleOk?: boolean;
-      /** The E1 trust self-report for the walk-away session (T-026-02): `--intervened` ⇒ true,
-       *  `--no-intervened` ⇒ false, neither ⇒ absent (unknown). Spread only when supplied, so a
-       *  bare `work` keeps the same object shape. Forwarded to every chain cast in the sweep. */
-      readonly intervened?: boolean;
-    }
   | { readonly cmd: "svg"; readonly seat: Seat; readonly out?: string }
   | { readonly cmd: "shelf" }
   | { readonly cmd: "version" }
@@ -180,7 +165,6 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "annotate") return parseAnnotateArgs(argv);
   if (argv[0] === "survey") return parseSurveyArgs(argv);
   if (argv[0] === "steer") return parseSteerArgs(argv);
-  if (argv[0] === "work") return parseWorkArgs(argv);
   if (argv[0] === "svg") return parseSvgArgs(argv);
   if (argv[0] === "shelf") return parseShelfArgs(argv);
   if (argv[0] === "init") return parseInitArgs(argv);
@@ -552,63 +536,6 @@ function parseSteerArgs(argv: readonly string[]): ParsedCommand {
   return budget ? { cmd: "steer", budget } : { cmd: "steer" };
 }
 
-/**
- * Parse the `work [--budget <v>] [--board <path>]` path — the counter gesture (T-024-03): fund a
- * macro-wallet and spend it down on the staged ranked board (the Confirm→Run→Settle spine, IA-6).
- * PURE. Like `survey`/`steer`, work takes NO positional subject — it reads the staged board — so a
- * positional token is an error. UNLIKE the others, `--budget` is OPTIONAL with a real default (the
- * "two-hour" macro budget, IA-6 — adjust is the exception, applied at dispatch); a present-but-empty
- * `--budget` or a malformed value is still a clean usage error. `--board` OPTIONALLY points at a
- * specific staged board (default ⇒ the dispatch's steer→survey fallback).
- */
-function parseWorkArgs(argv: readonly string[]): ParsedCommand {
-  let budgetVal: string | undefined;
-  let sawBudgetFlag = false;
-  let board: string | undefined;
-  let staleOk = false;
-  let intervened: boolean | undefined;
-  for (let i = 1; i < argv.length; i++) {
-    const a = argv[i] as string;
-    if (a === "--budget") {
-      sawBudgetFlag = true;
-      budgetVal = argv[++i];
-    } else if (a === "--board") {
-      const word = argv[++i];
-      if (!word || word.startsWith("--")) return { cmd: "usage", error: "missing --board <path>" };
-      board = word;
-    } else if (a === "--stale-ok") {
-      // The freshness-gate override (T-027-01, IA-5) — a presence flag, like `run`'s `--no-gates`.
-      staleOk = true;
-    } else if (a === "--intervened") {
-      // The E1 trust self-report (T-014-01/T-026-02) — a presence-flag pair, order-independent.
-      intervened = true;
-    } else if (a === "--no-intervened") {
-      intervened = false;
-    } else {
-      return { cmd: "usage", error: `unexpected work argument: ${a}` };
-    }
-  }
-
-  let budget: Budget | undefined;
-  if (budgetVal !== undefined) {
-    try {
-      budget = parseBudgetArg(budgetVal);
-    } catch (e) {
-      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
-    }
-  } else if (sawBudgetFlag) {
-    return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
-  }
-
-  return {
-    cmd: "work",
-    ...(budget ? { budget } : {}),
-    ...(board ? { board } : {}),
-    ...(staleOk ? { staleOk: true } : {}),
-    ...(intervened !== undefined ? { intervened } : {}),
-  };
-}
-
 /** Parse the `run <play> <epic.md> --budget <v>` static path. PURE. The play name is taken
  *  verbatim (any non-flag token); an UNKNOWN name is not a parse error — it parses to a
  *  `run` command and is rejected at dispatch by the registry (`PlayNotFoundError`), so the
@@ -833,63 +760,6 @@ if (import.meta.main) {
     const summary = await castSteer({ budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
-  }
-
-  if (parsed.cmd === "work") {
-    // The counter gesture (T-024-03): fund the macro-wallet ONCE and spend it down on the staged
-    // ranked board — Confirm→Run→Settle at macro scale (IA-6). `castWork` reads the board, prices each
-    // pull, and drives the autonomous loop; the `onStep` callback streams the IA-7 production line
-    // (which pull is running against the two-denomination burn, IA-8) — never the raw executor stream.
-    // On a settled session it prints the receipt (cleared / per-cast cost / remaining / stop reason,
-    // the andon rendered amber per IA-9) and exits 0 — an andon is a SUCCESSFUL refusal, not a crash;
-    // only a broken precondition (unfit env / missing / empty / stale board) exits non-zero. The
-    // doctor preflight (T-042-04) runs first inside `castWork`: a broken dep refuses at the door with
-    // the `vend doctor` report before any budget is committed. Lazy import keeps the shell (and its
-    // BAML addon) off the pure-parse path, exactly as the other arms.
-    const { castWork } = await import("./play/work.ts");
-    const { renderReceipt, formatStepSignal, renderStaleBoard, renderBudgetQuote } = await import("./play/work-core.ts");
-    // `--budget` omitted ⇒ `castWork` defaults to the calibrated cold-start envelope (T-060-02-02) and
-    // emits the resolved plan via `onPlan` BEFORE the loop. Capture `funded` from it (so the IA-7 meter
-    // renders against the real wallet) and print the honest p90 quote when the default is in force.
-    let funded: Budget | undefined = parsed.budget;
-    const result = await castWork({
-      ...(parsed.budget ? { budget: parsed.budget } : {}),
-      ...(parsed.board ? { boardPath: parsed.board } : {}),
-      ...(parsed.staleOk ? { staleOk: true } : {}),
-      ...(parsed.intervened !== undefined ? { intervened: parsed.intervened } : {}),
-      onPlan: (plan) => {
-        funded = plan.funded;
-        if (plan.usedDefault) process.stdout.write(`${renderBudgetQuote(plan, { color: true })}\n`);
-      },
-      onStep: (s) => process.stdout.write(`${formatStepSignal(s, funded!)}\n`),
-    });
-    if (result.kind === "unfit-env") {
-      // The doctor preflight refused (T-042-04): a broken dependency. Print the doctor report (the
-      // named checks + fix-it hints) and exit with its code — a clean precondition refusal at the
-      // door, before any budget was committed, exactly like the no-board / stale-board family.
-      process.stderr.write(`${result.report.report}\n`);
-      process.exit(result.report.exitCode);
-    }
-    if (result.kind === "no-board") {
-      process.stderr.write(
-        `no staged board found (tried ${result.tried.join(", ")}) — run \`vend steer\` or \`vend survey\` first\n`,
-      );
-      process.exit(1);
-    }
-    if (result.kind === "empty-board") {
-      process.stderr.write(`staged board ${result.boardPath} has no signals to spend on\n`);
-      process.exit(1);
-    }
-    if (result.kind === "stale-board") {
-      // The freshness gate refused (T-027-01, IA-9): the board predates the project's live state. An
-      // amber andon — a SUCCESSFUL refusal — handed back with the re-survey move, exiting like the
-      // other broken-precondition outcomes (no-board/empty-board), NOT a crash. `--stale-ok` overrides.
-      process.stderr.write(`${renderStaleBoard(result, { color: true })}\n`);
-      process.exit(1);
-    }
-    const wallet = { funded: result.funded, remaining: result.session.remaining };
-    process.stdout.write(`${renderReceipt(result.session, wallet, { color: true })}\n`);
-    process.exit(0);
   }
 
   if (parsed.cmd === "svg") {

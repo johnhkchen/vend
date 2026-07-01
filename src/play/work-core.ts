@@ -1,10 +1,14 @@
-// The `vend work` gesture's PURE core (T-024-03, story S-024-01, epic E-024) — the Confirm→Run→Settle
-// surface (IA-6) at macro scale, the addon-free half of the counter gesture. Where work.ts is the
-// impure shell (reads the board, casts the chain, drives the loop), THIS module is the parse + the
-// render: the board → ranked signals, and the loop's signals/result → the human-facing production
-// line (IA-7) and receipt (IA-6). Split out for the house testability reason (the steer-core / steer
-// three-file discipline): work.ts value-imports the chain (the BAML native addon), so no `bun test`
-// may value-import it — this pure module holds the load-bearing branching and is unit-tested.
+// [RETIRED GESTURE] `vend work` was retired (the fund-once-walk-away macro-drain was incompatible
+// with the real driving loop and automated the cheap clearing half — honey-kitchen field feedback).
+// work.ts (the impure shell) is deleted and the command is gone. This pure module is KEPT for ONE
+// still-wired export: `parseBoardSignals`, the single source of board→signals truth, reused by
+// graph-real-play-core.ts. The receipt/budget-plan/staleness renderers below are now unused by
+// production (only their unit tests exercise them) — a follow-up may extract `parseBoardSignals` to
+// its own module and delete the rest along with the orphaned spend.ts/wallet.ts primitives.
+//
+// (Historical) The `vend work` gesture's PURE core (T-024-03, story S-024-01, epic E-024) — the
+// Confirm→Run→Settle surface (IA-6) at macro scale, the addon-free half of the counter gesture: the
+// board → ranked signals, and the loop's signals/result → the production line (IA-7) and receipt.
 //
 // PURITY (house pattern): every export takes plain values and returns plain values — no fs, clock,
 // network, process, seam, or addon. The ONE value import is `formatWallet` (wallet.ts), itself pure:

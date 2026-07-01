@@ -162,17 +162,19 @@ Two engines share one board under \`docs/active/\`.
 
 vend writes the board; lisa consumes it. The board is the contract between them.
 
-## The drive (two gestures)
+## The drive (the loop)
 1. **Author once** — edit \`SEED.md\` (your one-line intent) and tune
    \`docs/knowledge/charter.md\` (your value function: what "valuable" means here).
-2. **Clear, then build:**
+2. **Clear → build → sweep, repeated one pull at a time:**
    - \`vend steer\` — read the project; stage a ranked board + the genuine forks.
-   - \`vend chain "<signal>"\` — mint an epic and decompose it (graph-valid by construction).
-     Add \`--after <ticket>\` to queue an epic BEHIND a running loop race-free: its entry
-     tickets are born blocked on that ticket, so a greedy loop can't grab them early.
-   - \`vend work [--budget <ms>,<tokens>] [--no-intervened]\` — clear the next ready slice
-     autonomously, against its gates and a hard budget; \`--no-intervened\` records the
-     walk-away trust signal when you let it run untouched.
+   - \`vend chain "<signal>"\` — pull ONE signal: mint an epic and decompose it (graph-valid by
+     construction). Add \`--after <ticket>\` to queue an epic BEHIND a running loop race-free —
+     its entry tickets are born blocked on that ticket, so a greedy loop can't grab them early.
+   - **lisa builds** the \`phase: ready\` tickets into commits (the RDSPI loop). vend clears
+     intent; lisa builds it. The board under \`docs/active/\` is the contract between them.
+   - **sweep** — when a loop finishes, verify done⇒committed and mark the cleared epics done,
+     then pull the next signal and \`vend chain\` again. (The deliberate one-signal pull is the
+     point — vend recommends, you pull; it never auto-drains the board.)
    - \`vend doctor\` (green = sound) · \`vend svg\` (see the board).
 
 ## Complementarity — run \`lisa init\`, then \`vend init\`
@@ -183,8 +185,8 @@ doc). \`vend init\` adds the clearing side on top, never clobbering: \`docs/acti
 ## The gates that hold it together
 - **Mint-time** — a decomposed board must be graph-valid (every story resolves to its epic) or
   the mint is refused.
-- **Budget (P7)** — \`vend work\` honors its funded time/token envelope (a hard wall-clock latch,
-  a token ceiling) and stops clean when spent.
+- **Budget (P7)** — a metered cast (\`vend chain\`, \`vend steer\`) honors its funded time/token
+  envelope (a hard wall-clock latch, a token ceiling) and stops clean when spent.
 - **Pre-sweep** — before an epic is marked done, every \`done\` ticket's work must be committed
   (\`bun run check:presweep\`): done means committed.
 `;
@@ -219,7 +221,7 @@ hackathon-goers find a team by skill + idea overlap"). The seed is the only inpu
 const HACKATHON_CHARTER = `# Charter — your hackathon project
 
 The value function this project is judged on. It's small on purpose. \`vend steer\` and
-\`vend work\` read this file as **steering context** — it tells the agents *what is worth
+\`vend chain\` read this file as **steering context** — it tells the agents *what is worth
 building in this session, and why* — so the work they clear is **valuable**, not merely
 valid. Tune it to your hack; keep it to one page.
 
@@ -267,8 +269,8 @@ Kept deliberately light for a hack — but real, because a gate that isn't enfor
   build blocks the demo.
 - **H2 — Every slice is showable.** It ships with something you can point at — a page, an
   interaction, a check that passes.
-- **H3 — Budget is a hard contract.** \`vend work\` respects the time/tokens you fund it with,
-  both ways. When the budget is spent, the session stops clean.
+- **H3 — Budget is a hard contract.** A metered cast (\`vend chain\`) respects the time/tokens you
+  fund it with, both ways. When the budget is spent, the session stops clean.
 
 ---
 
