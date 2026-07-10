@@ -1,14 +1,19 @@
 // Clearing gates (T-002-02) — the contract that nothing unworthy settles into execution
-// (charter P3). The four value-ordered gates from playbook-decompose-epic.md run over a
-// BAML-parsed WorkPlan and STOP THE LINE (andon) at the first failure, naming the gate, the
-// offending unit, and why. The runner refuses to materialize on a STOP.
+// (charter P3). The five value-ordered gates (the original four from playbook-decompose-epic.md
+// plus story-completeness, T-066-01-02) run over a BAML-parsed WorkPlan and STOP THE LINE
+// (andon) at the first failure, naming the gate, the offending unit, and why. The runner
+// refuses to materialize on a STOP.
 //
-//   value → allocation → bounds → structural        (priority of VALUE, not of format)
+//   value → story-completeness → allocation → bounds → structural   (priority of VALUE, not of format)
 //
 // DIVISION OF LABOR (decompose.baml lines 11-12): BAML owns SHAPE — the four closed lisa sets
 // (type/status/priority/phase) are enums, so an out-of-set value is unrepresentable and no gate
 // re-checks it. These gates own MEANING — the things the type cannot guarantee: the dependency
 // graph is a DAG, depends_on refs resolve, the plan isn't empty, `advances` claims are backed.
+// The story contract is the same split (T-066-01-01 → T-066-01-02): the five contract fields
+// are OPTIONAL in the schema, so a shell story PARSES (typed absence — the schema cannot refuse
+// it without silently dropping the story); the story-completeness gate is where that absence
+// becomes a refusal.
 //
 // PURE: no fs, clock, network, or process — it judges an already-parsed value, so it never
 // touches the BAML native addon (the WorkPlan import is TYPE-ONLY, erased at runtime). This is
@@ -27,9 +32,9 @@
 
 import type { StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
 
-/** The four gates, in value-priority order. The single source of ordering — `clear()` runs them
+/** The five gates, in value-priority order. The single source of ordering — `clear()` runs them
  *  in this sequence and `cleared` echoes it. */
-export const GATE_NAMES = ["value", "allocation", "bounds", "structural"] as const;
+export const GATE_NAMES = ["value", "story-completeness", "allocation", "bounds", "structural"] as const;
 
 export type GateName = (typeof GATE_NAMES)[number];
 
@@ -182,6 +187,55 @@ function valueGate(plan: WorkPlan): Offense | null {
   return null;
 }
 
+// ── story contract (T-066-01-01 → T-066-01-02): the five fields every story must carry ────────
+
+/**
+ * The five story-contract field names, exactly as they appear on {@link StoryDraft} and as the
+ * prompt demands them. CANONICAL HOME (moved here from decompose-epic-core.ts, which re-exports
+ * — the enforcer owns the contract's vocabulary, and core already imports this module so the
+ * reverse import would cycle). The `satisfies` pin makes a schema rename that misses this list
+ * a COMPILE failure (tsc), before any test runs; the render test additionally asserts each name
+ * appears in the rendered prompt, and {@link storyCompletenessGate} refuses their absence.
+ */
+export const STORY_CONTRACT_FIELDS = [
+  "scope",
+  "storyAcceptance",
+  "honestBoundary",
+  "waveRationale",
+  "outOfSlice",
+] as const satisfies readonly (keyof StoryDraft)[];
+
+/** One of the five story-contract field names. */
+export type StoryContractField = (typeof STORY_CONTRACT_FIELDS)[number];
+
+/**
+ * STORY-COMPLETENESS — every parsed story is a CONTRACT: all five contract fields present and
+ * non-empty. This gate is the FLOOR of P3 — an ungated output degrades to the minimum the gates
+ * accept, which is exactly how the ten-line story shell reproduced in every vend-native repo
+ * (E-066). The schema cannot refuse a shell (the fields are optional so absence parses to a
+ * typed `null` instead of dropping the story — T-066-01-01); refusing is THIS gate's job, and
+ * it covers the empty-string case the schema can't ("" parses as a present string).
+ *
+ * The STOP is the `story-incomplete` andon the epic names: `unit` is the story id, `reason`
+ * leads with the token and lists every missing section (schema order) — never a warning, never
+ * a pad-to-pass. First offending story stops the line (first-offense-wins, like every gate).
+ * A plan with NO stories passes vacuously — no gate demands stories exist (unchanged behavior);
+ * this gate judges the stories that were emitted. Non-emptiness only: prose QUALITY is the
+ * render's demand and the human's judgment, not rule-checkable here.
+ */
+function storyCompletenessGate(plan: WorkPlan): Offense | null {
+  for (const s of plan.stories) {
+    const missing = STORY_CONTRACT_FIELDS.filter((f) => !nonEmpty(s[f]));
+    if (missing.length > 0) {
+      return {
+        unit: nonEmpty(s.id) ? s.id : "<story>",
+        reason: `story-incomplete — missing: ${missing.join(", ")}`,
+      };
+    }
+  }
+  return null;
+}
+
 /**
  * ALLOCATION — capacity never stalls on a missing dependency: ids are unique, every `depends_on`
  * resolves, the graph is a DAG, and every `story.tickets` index points at a real ticket.
@@ -272,13 +326,14 @@ function structuralGate(plan: WorkPlan): Offense | null {
 /** The ordered gate table — names match `GATE_NAMES`, so value-ordering is encoded once. */
 const GATES: ReadonlyArray<readonly [GateName, (plan: WorkPlan, ctx: ClearContext) => Offense | null]> = [
   ["value", (p) => valueGate(p)],
+  ["story-completeness", (p) => storyCompletenessGate(p)],
   ["allocation", (p) => allocationGate(p)],
   ["bounds", (p, ctx) => boundsGate(p, ctx)],
   ["structural", (p) => structuralGate(p)],
 ];
 
 /**
- * Clear a WorkPlan through the four value-ordered gates. Returns the FIRST gate's STOP (the andon
+ * Clear a WorkPlan through the five value-ordered gates. Returns the FIRST gate's STOP (the andon
  * — the line stops, it does not accumulate findings or run later gates), or CLEAR if every gate
  * passes. Reporting the highest-priority defect is the feature: a plan that both advances nothing
  * (value) and is missing a field (structural) is reported as a VALUE failure.

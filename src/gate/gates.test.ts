@@ -8,7 +8,7 @@ import type {
   TicketDraft,
   WorkPlan,
 } from "../../baml_client/index.ts";
-import { type ClearContext, clear, GATE_NAMES, isStop } from "./gates.ts";
+import { type ClearContext, clear, GATE_NAMES, isStop, STORY_CONTRACT_FIELDS } from "./gates.ts";
 
 // T-002-02 clearing-gates: pure module, fabricated WorkPlan fixtures only — no spawn, no fs, no
 // BAML native call. Every BAML import is TYPE-ONLY (erased at runtime): `clear` judges an
@@ -44,7 +44,9 @@ function ticket(over: Partial<TicketDraft> = {}): TicketDraft {
   };
 }
 
-/** A fully-valid story; failing cases override one field. */
+/** A fully-valid story — CONTRACT-SHAPED since T-066-01-02: it carries all five story-contract
+ *  fields (S-066-01-flavored), so it clears the story-completeness gate and every pre-existing
+ *  fixture keeps its original verdict. Failing cases override one field. */
 function story(over: Partial<StoryDraft> = {}): StoryDraft {
   return {
     id: "S-009",
@@ -53,6 +55,11 @@ function story(over: Partial<StoryDraft> = {}): StoryDraft {
     status: "Open" as DraftStatus,
     priority: "High" as DraftPriority,
     tickets: ["T-009-01"],
+    scope: "The module skeleton and its gate — src/gate only; nothing downstream changes shape.",
+    storyAcceptance: "A failing fixture trips the gate and the suite pins the refusal reason.",
+    honestBoundary: "Fixture-proven and free; the live metered cast is deferred to the epic close.",
+    waveRationale: "The scaffold ticket runs alone; the gate ticket follows on the settled shape.",
+    outOfSlice: "Materializer output and workflow docs — sibling tickets own those files.",
     ...over,
   };
 }
@@ -111,6 +118,54 @@ describe("value gate", () => {
     const r = clear(plan([ticket({ purpose: "  " })]), CTX);
     expect(r).toMatchObject({ status: "stop", gate: "value" });
     if (isStop(r)) expect(r.reason).toContain("purpose");
+  });
+});
+
+// All five contract fields as typed absences — today's ten-line shell at the parse layer (the
+// exact SHELL_CANNED shape decompose.test.ts pins; a model may emit explicit `null` or omit, and
+// both parse to the same absence).
+const SHELL: Partial<StoryDraft> = Object.fromEntries(STORY_CONTRACT_FIELDS.map((f) => [f, null]));
+
+describe("story-completeness gate", () => {
+  test("a shell story STOPs with the story-incomplete andon naming the story id and ALL missing sections", () => {
+    const r = clear(plan([ticket()], [story({ ...SHELL })]), CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "story-completeness", unit: "S-009" });
+    if (isStop(r)) {
+      expect(r.reason).toContain("story-incomplete");
+      for (const field of STORY_CONTRACT_FIELDS) expect(r.reason).toContain(field);
+    }
+  });
+
+  test("a partial story names EXACTLY its missing sections, in schema order", () => {
+    const r = clear(plan([ticket()], [story({ honestBoundary: null, outOfSlice: null })]), CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "story-completeness", unit: "S-009" });
+    if (isStop(r)) expect(r.reason).toBe("story-incomplete — missing: honestBoundary, outOfSlice");
+  });
+
+  test("an empty/whitespace-only section is MISSING — the meaning the schema cannot refuse", () => {
+    const r = clear(plan([ticket()], [story({ scope: "  " })]), CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "story-completeness", unit: "S-009" });
+    if (isStop(r)) expect(r.reason).toBe("story-incomplete — missing: scope");
+  });
+
+  test("a contract-shaped story passes — the gate refuses shells, not stories", () => {
+    expect(clear(plan([ticket()]), CTX).status).toBe("clear");
+  });
+
+  test("the FIRST offending story is the unit (first-offense-wins, like every gate)", () => {
+    const stories = [story({ tickets: ["T-009-01"] }), story({ ...SHELL, id: "S-010", tickets: [] }), story({ ...SHELL, id: "S-011", tickets: [] })];
+    const r = clear(plan([ticket()], stories), CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "story-completeness", unit: "S-010" });
+  });
+
+  test("ordering: value still outranks it — a purposeless ticket is reported before the shell story", () => {
+    const r = clear(plan([ticket({ purpose: "  " })], [story({ ...SHELL })]), CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "value" });
+  });
+
+  test("ordering: it outranks allocation — a shell story is reported before a dangling depends_on", () => {
+    const r = clear(plan([ticket({ depends_on: ["T-404-99"] })], [story({ ...SHELL })]), CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "story-completeness", unit: "S-009" });
   });
 });
 

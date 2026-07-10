@@ -20,7 +20,7 @@ import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 import type { PlayTools } from "../engine/play.ts";
 import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 import { buildGraph, GraphIntegrityError, GraphParseError, type RawNode } from "../graph/model.ts";
-import type { StoryDraft, WorkPlan } from "../../baml_client/index.ts";
+import type { WorkPlan } from "../../baml_client/index.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned
@@ -355,28 +355,15 @@ export function graphIntegrityViolations(plan: WorkPlan, epicId: string): string
 
 // ── story contract (T-066-01-01): the five fields every story must carry ───────────────────────
 //
-// WHY HERE: this addon-free core is where decompose's testable constants live (the
-// DECOMPOSE_MAX_TURNS / DECOMPOSE_TOOLS precedent). The schema (decompose.baml StoryDraft) makes
-// the five fields REPRESENTABLE as typed absences; the prompt DEMANDS them; the completeness gate
-// (T-066-01-02) REFUSES their absence. These exports are the single canonical field list and
-// exemplar the render test and the gate both consume, so the three layers cannot drift apart.
+// The schema (decompose.baml StoryDraft) makes the five fields REPRESENTABLE as typed absences;
+// the prompt DEMANDS them; the completeness gate (T-066-01-02) REFUSES their absence. The
+// CANONICAL field list now lives in gates.ts (the enforcer owns the contract's vocabulary — and
+// this module already value-imports gates.ts, so the reverse import would cycle); it is
+// RE-EXPORTED here so the render test and the story writer keep one stable import path in the
+// play's core. The exemplar stays here: it is render vocabulary, and the gate never needs it.
 
-/**
- * The five story-contract field names, exactly as they appear on {@link StoryDraft} and as the
- * prompt demands them. The `satisfies` pin makes a schema rename that misses this list a COMPILE
- * failure (tsc), before any test runs; the render test additionally asserts each name appears in
- * the rendered prompt.
- */
-export const STORY_CONTRACT_FIELDS = [
-  "scope",
-  "storyAcceptance",
-  "honestBoundary",
-  "waveRationale",
-  "outOfSlice",
-] as const satisfies readonly (keyof StoryDraft)[];
-
-/** One of the five story-contract field names. */
-export type StoryContractField = (typeof STORY_CONTRACT_FIELDS)[number];
+export { STORY_CONTRACT_FIELDS } from "../gate/gates.ts";
+export type { StoryContractField } from "../gate/gates.ts";
 
 /**
  * The in-prompt exemplar of a contract-quality story — condensed from the hand-authored
