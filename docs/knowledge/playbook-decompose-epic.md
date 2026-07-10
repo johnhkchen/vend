@@ -59,13 +59,18 @@ In priority of *value*, not of format:
    charter invariant) and is grounded in real project state. A unit that advances
    nothing nameable, or is speculative, is refused. (Overproduction is the worst
    waste.)
-2. **Allocation gate** — each unit is right-sized for one autonomous session and
+2. **Story-completeness gate** — every story is a CONTRACT: scope, acceptance,
+   honest boundary, wave rationale, and out-of-slice, all present and non-empty.
+   A shell story is refused with a `story-incomplete` andon naming the story and
+   its missing sections — never padded to pass. (The floor of "gates are the
+   contract": an ungated output degrades to the minimum accepted.)
+3. **Allocation gate** — each unit is right-sized for one autonomous session and
    sequenced so capacity never stalls on a missing dependency. Mis-sized or
    mis-ordered work fails the clearing.
-3. **Bounds gate** — no non-goal (`N1–N4`) is violated; no invariant is regressed
+4. **Bounds gate** — no non-goal (`N1–N4`) is violated; no invariant is regressed
    to advance another; the epic's `advances` claims actually hold. This is where
    "tied to the vision" is *recomputed*, not stored.
-4. **Structural poka-yoke** — only now: the materialized files parse and pass
+5. **Structural poka-yoke** — only now: the materialized files parse and pass
    `lisa validate` (no cycles, dependency edges complete). The last fixture on the
    way out, not the standard of worth.
 
