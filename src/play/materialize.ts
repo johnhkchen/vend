@@ -18,6 +18,15 @@
 // does mkdir -p + writeFile. The verb itself is untested here exactly as
 // `appendRunLog`/`dispense` are; its guard is covered by a real-fs fixture test
 // (materialize.test.ts) and its pure judgment by id-guard.test.ts.
+//
+// T-066-01-03: `renderStoryFile` writes the story CONTRACT body — the five parsed sections
+// (scope, story acceptance, honest boundary, wave rationale, out of slice), a `## DAG` block
+// DERIVED from the tickets' `depends_on` edges (the edges stay the single source, never
+// duplicated), and the old one-line provenance demoted to a dated footer. The clock stays out
+// of the pure pair: `materialize` supplies `cutDate` as a parameter (the work-core pattern —
+// `new Date(ms)` is total, argless `new Date()` is not), so the golden tests pin exact bytes.
+// An ABSENT contract field renders nothing — the completeness gate (T-066-01-02), not this
+// writer, owns refusing shells; fabricating a placeholder here would launder one.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -152,13 +161,51 @@ export function renderTicketFile(t: TicketDraft): RenderedFile {
   return { name: `${t.id}.md`, body: `${fm}\n${body}` };
 }
 
+// ── story contract body (T-066-01-03) ──────────────────────────────────────────────────────────
+
+/** The three contract sections rendered ABOVE the DAG, in order, with their prose labels
+ *  (the hand-authored S-066-01.md is the look-and-feel bar). `waveRationale` is absent on
+ *  purpose — it renders inside the `## DAG` section, under the block it explains — as is
+ *  `outOfSlice`, which closes the body. The `satisfies` pin makes a StoryDraft field rename
+ *  that misses this table a compile failure. */
+const PRE_DAG_SECTIONS = [
+  ["scope", "Scope"],
+  ["storyAcceptance", "Story acceptance"],
+  ["honestBoundary", "Honest boundary"],
+] as const satisfies readonly (readonly [keyof StoryDraft, string])[];
+
+/** The `## DAG` fenced block: one line per story ticket in `s.tickets` (execution) order —
+ *  `id  title`, plus `  ← deps` when the ticket declares `depends_on` edges. A PROJECTION of
+ *  the tickets' `depends_on` fields, rendered verbatim (edges may name tickets outside the
+ *  story — `--after` legitimately mints those); an id with no matching draft degrades to a
+ *  bare-id line rather than crashing or dropping the node. */
+function dagBlock(s: StoryDraft, storyTickets: readonly TicketDraft[]): string {
+  const byId = new Map(storyTickets.map((t) => [t.id, t]));
+  const lines = s.tickets.map((id) => {
+    const t = byId.get(id);
+    if (t === undefined) return id;
+    const deps = t.depends_on.length > 0 ? `  ← ${t.depends_on.join(", ")}` : "";
+    return `${t.id}  ${t.title}${deps}`;
+  });
+  return `\`\`\`\n${lines.join("\n")}\n\`\`\``;
+}
+
 /**
  * Render one StoryDraft → a lisa-valid story file. PURE. `type` is hardcoded `story`
  * (lisa renders stories at this layer as `type: story`, NOT the draft's DraftType —
  * see S-001.md / decompose.baml StoryDraft note); status/priority map through their
  * alias tables; `tickets` is a flow array in execution order.
+ *
+ * The body is the story CONTRACT (T-066-01-03): the parsed sections that are PRESENT
+ * (an absent field renders nothing — the completeness gate owns refusal), the derived
+ * {@link dagBlock}, and the provenance footer — the play that cut it, the ticket count,
+ * and `cutDate` (`YYYY-MM-DD`, supplied by the impure caller so this stays clock-free).
  */
-export function renderStoryFile(s: StoryDraft): RenderedFile {
+export function renderStoryFile(
+  s: StoryDraft,
+  storyTickets: readonly TicketDraft[],
+  cutDate: string,
+): RenderedFile {
   const fm = [
     "---",
     `id: ${s.id}`,
@@ -169,8 +216,21 @@ export function renderStoryFile(s: StoryDraft): RenderedFile {
     `tickets: ${flowArray(s.tickets)}`,
     "---",
   ].join("\n");
-  const body = `\nMaterialized by Vend's \`${"decompose-epic"}\` play — ${s.tickets.length} ticket(s).\n`;
-  return { name: `${s.id}.md`, body: `${fm}\n${body}` };
+
+  const chunks: string[] = [];
+  for (const [field, label] of PRE_DAG_SECTIONS) {
+    const value = s[field];
+    if (value != null) chunks.push(`**${label}:** ${value}`);
+  }
+  let dag = `## DAG\n\n${dagBlock(s, storyTickets)}`;
+  if (s.waveRationale != null) dag += `\n\nWave rationale: ${s.waveRationale}`;
+  chunks.push(dag);
+  if (s.outOfSlice != null) chunks.push(`**Out of this slice:** ${s.outOfSlice}`);
+  chunks.push(
+    `---\n_Materialized by Vend's \`decompose-epic\` play — ${s.tickets.length} ticket(s), ${cutDate}._`,
+  );
+
+  return { name: `${s.id}.md`, body: `${fm}\n\n${chunks.join("\n\n")}\n` };
 }
 
 /**
@@ -197,9 +257,14 @@ export async function materialize(plan: WorkPlan, targets: MaterializeTargets): 
   await mkdir(targets.storiesDir, { recursive: true });
   await mkdir(targets.ticketsDir, { recursive: true });
 
+  // One clock read per run (the pure renderer takes the date as data); the story's tickets
+  // are the plan's drafts filtered by the story's own membership list, in plan order.
+  const cutDate = new Date().toISOString().slice(0, 10);
+
   const storyFiles: string[] = [];
   for (const s of plan.stories) {
-    const { name, body } = renderStoryFile(s);
+    const storyTickets = plan.tickets.filter((t) => s.tickets.includes(t.id));
+    const { name, body } = renderStoryFile(s, storyTickets, cutDate);
     const path = join(targets.storiesDir, name);
     await writeFile(path, body, "utf8");
     storyFiles.push(path);

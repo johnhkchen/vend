@@ -92,11 +92,42 @@ describe("renderTicketFile — member→alias + lisa frontmatter", () => {
   test("an unknown enum member throws (enum/map drift is a programmer error)", () => {
     expect(() => renderTicketFile(ticket({ status: "Archived" as DraftStatus }))).toThrow(/no alias for status/);
   });
+
+  test("full-file golden — the byte-identical bar for T-066-01-03 (only the story writer changes)", () => {
+    // Captured from the renderer BEFORE the story-body change landed; this is AC2 made
+    // executable. If this golden ever needs editing, the ticket surface moved — that is a
+    // deliberate decision, not a drive-by.
+    expect(renderTicketFile(ticket()).body).toBe(`---
+id: T-009-01
+story: S-009
+title: scaffold-the-module
+type: task
+status: open
+priority: high
+phase: ready
+depends_on: []
+---
+
+## Context
+
+Stand up the module skeleton the rest of the story builds on
+
+_Advances: P1_
+
+## Acceptance Criteria
+
+- [ ] bun run check is green on an empty module export
+`);
+  });
 });
 
 describe("renderStoryFile — story frontmatter", () => {
   test("hardcodes type: story (not the draft's DraftType) and maps status/priority", () => {
-    const { name, body } = renderStoryFile(story({ status: "Open" as DraftStatus, priority: "High" as DraftPriority }));
+    const { name, body } = renderStoryFile(
+      story({ status: "Open" as DraftStatus, priority: "High" as DraftPriority }),
+      [],
+      "2026-07-10",
+    );
     expect(name).toBe("S-009.md");
     expect(body).toContain("id: S-009");
     expect(body).toContain("type: story"); // NOT "task", despite DraftType Task
@@ -107,7 +138,106 @@ describe("renderStoryFile — story frontmatter", () => {
   });
 
   test("an unknown enum member throws", () => {
-    expect(() => renderStoryFile(story({ priority: "Urgent" as DraftPriority }))).toThrow(/no alias for priority/);
+    expect(() => renderStoryFile(story({ priority: "Urgent" as DraftPriority }), [], "2026-07-10")).toThrow(
+      /no alias for priority/,
+    );
+  });
+});
+
+// T-066-01-03 contract body: the story writer now emits the five parsed sections, a `## DAG`
+// block DERIVED from the tickets' depends_on edges, and the provenance line demoted to a dated
+// footer. Byte-exact goldens (house "golden hash" style — inline literals, `toBe`), with the
+// clock passed as data so the bytes are deterministic.
+
+describe("renderStoryFile — contract body (T-066-01-03)", () => {
+  const contractStory = (): StoryDraft =>
+    story({
+      tickets: ["T-009-01", "T-009-02", "T-009-03"],
+      scope: "the module skeleton and its clearing gate — src/module plus the gate list",
+      storyAcceptance: "a failing fixture trips the gate and bun run check is green end to end",
+      honestBoundary: "fixture-proven only; the live metered cast is deferred and named here",
+      waveRationale: "T-009-01 runs alone (settles the skeleton); T-009-02 and T-009-03 then fan out",
+      outOfSlice: "the sibling story's renderer; backfilling boards already minted",
+    });
+  const contractTickets = (): TicketDraft[] => [
+    ticket(),
+    ticket({ id: "T-009-02", title: "wire-the-gate", depends_on: ["T-009-01"] }),
+    ticket({ id: "T-009-03", title: "document-the-gate", depends_on: ["T-009-01", "T-009-02"] }),
+  ];
+
+  test("contract golden — five sections, derived DAG (two-parent join), dated footer", () => {
+    const { body } = renderStoryFile(contractStory(), contractTickets(), "2026-07-10");
+    expect(body).toBe(`---
+id: S-009
+title: lay-the-foundation
+type: story
+status: open
+priority: high
+tickets: [T-009-01, T-009-02, T-009-03]
+---
+
+**Scope:** the module skeleton and its clearing gate — src/module plus the gate list
+
+**Story acceptance:** a failing fixture trips the gate and bun run check is green end to end
+
+**Honest boundary:** fixture-proven only; the live metered cast is deferred and named here
+
+## DAG
+
+\`\`\`
+T-009-01  scaffold-the-module
+T-009-02  wire-the-gate  ← T-009-01
+T-009-03  document-the-gate  ← T-009-01, T-009-02
+\`\`\`
+
+Wave rationale: T-009-01 runs alone (settles the skeleton); T-009-02 and T-009-03 then fan out
+
+**Out of this slice:** the sibling story's renderer; backfilling boards already minted
+
+---
+_Materialized by Vend's \`decompose-epic\` play — 3 ticket(s), 2026-07-10._
+`);
+  });
+
+  test("degraded golden — absent contract fields render NOTHING (the gate owns refusal), DAG + footer stay", () => {
+    // story() carries no contract fields — the shell shape. The writer never fabricates a
+    // placeholder for a section the parse didn't carry; the file is frontmatter + DAG + footer.
+    const { body } = renderStoryFile(
+      story(),
+      [ticket(), ticket({ id: "T-009-02", title: "wire-the-gate", depends_on: ["T-009-01"] })],
+      "2026-07-10",
+    );
+    expect(body).toBe(`---
+id: S-009
+title: lay-the-foundation
+type: story
+status: open
+priority: high
+tickets: [T-009-01, T-009-02]
+---
+
+## DAG
+
+\`\`\`
+T-009-01  scaffold-the-module
+T-009-02  wire-the-gate  ← T-009-01
+\`\`\`
+
+---
+_Materialized by Vend's \`decompose-epic\` play — 2 ticket(s), 2026-07-10._
+`);
+  });
+
+  test("edge fidelity — depends_on renders verbatim (even outside the story); a missing draft degrades to a bare id", () => {
+    // T-009-01 depends on a ticket in ANOTHER story/epic (--after mints exactly this edge);
+    // s.tickets also names T-009-02, for which no draft was passed.
+    const { body } = renderStoryFile(
+      story(),
+      [ticket({ depends_on: ["T-008-77"] })],
+      "2026-07-10",
+    );
+    expect(body).toContain("T-009-01  scaffold-the-module  ← T-008-77");
+    expect(body).toContain("\nT-009-02\n"); // bare id line — degrade, not a crash or a dropped node
   });
 });
 
