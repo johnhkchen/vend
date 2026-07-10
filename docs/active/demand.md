@@ -83,7 +83,11 @@ named by the charter principle it advances and the gap it closes:
 
 ## In flight
 
-_Nothing in flight — **E-059** (`seed-intent-reaches-steer`) and **E-060** (`fresh-seed-full-slice-clear`) both swept to done; the Set-B round-trip (board renders → slice clears) is whole. The next pull comes off the PM batch (`pm/proposed-batch.md`) or the kitchen-dogfood plan (`pm/plan-kitchen-dogfood.md`)._
+- **E-067** (`snapshot-charter-codes-at-cut`) — pulled 2026-07-10 from Frontier 6; 1 story /
+  3 tickets on the board (`lisa validate` green). Doubled as the E-066 live proof: the same
+  card was decomposed by v0.2.3 (shell story, archived at
+  `docs/archive/E-067-decompose-before-v0.2.3/`) and by the E-066 build (contract story,
+  `story-completeness` gate green, +$0.09/cast).
 
 ---
 
@@ -256,6 +260,8 @@ edges fix is in flight (above); these are the rest the personas sharpened:**
   - *(rolls up to)* **auto-structure demands for efficiency** — the engine applies
     ordering + routing + bounding invisibly; the consistency layer measures
     cache-hit + per-model cost and tunes it. The product-level goal these serve.
+- ~~**Snapshot-at-cut — resolve charter codes into carried text when the play cuts
+  artifacts.**~~ → **pulled 2026-07-10 → E-067** (see In flight).
 
 ### Frontier 7 — Distribution & onboarding (PM-staged) — *init + doctor built (by Vend); rest open*
 
