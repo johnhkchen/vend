@@ -8,6 +8,7 @@ import type {
   WorkPlan,
 } from "../../baml_client/index.ts";
 import type { BridgeOp, BridgeResult } from "./decompose-bridge.ts";
+import { STORY_CONTRACT_EXEMPLAR, STORY_CONTRACT_FIELDS } from "../play/decompose-epic-core.ts";
 
 // IMPORTANT: every BAML import here is TYPE-ONLY (erased at runtime). A value import of the
 // generated client would load the BAML native addon INTO this `bun test` process, whose
@@ -45,18 +46,23 @@ async function runBridge(ops: BridgeOp[]): Promise<BridgeResult[]> {
 // A canned model reply. The model emits the lisa-token ALIASES ("task"/"open"/"ready"/
 // "in-progress") because `{{ ctx.output_format }}` shows aliases; b.parse maps them back to
 // the enum MEMBER names ("Task"/"Open"/"Ready"/"InProgress"). One story, two ordered
-// tickets, a depends_on edge, a full value triplet per ticket.
+// tickets, a depends_on edge, a full value triplet per ticket. The story carries all five
+// contract fields (T-066-01-01) populated — the full round-trip fixture.
+const CONTRACT_STORY = {
+  id: "S-009",
+  title: "lay-the-foundation",
+  type: "task",
+  status: "open",
+  priority: "high",
+  tickets: ["T-009-01", "T-009-02"],
+  scope: "the module skeleton and its clearing gate — src/module plus the gate list",
+  storyAcceptance: "a failing fixture trips the gate and bun run check is green end to end",
+  honestBoundary: "fixture-proven only; the live metered cast is deferred and named here",
+  waveRationale: "T-009-01 runs alone (settles the skeleton); T-009-02 builds on it",
+  outOfSlice: "the sibling story's renderer; backfilling boards already minted",
+};
 const CANNED = JSON.stringify({
-  stories: [
-    {
-      id: "S-009",
-      title: "lay-the-foundation",
-      type: "task",
-      status: "open",
-      priority: "high",
-      tickets: ["T-009-01", "T-009-02"],
-    },
-  ],
+  stories: [CONTRACT_STORY],
   tickets: [
     {
       id: "T-009-01",
@@ -97,6 +103,21 @@ const OPEN_MODEL_CANNED =
   CANNED +
   "\n```\n\nLet me know if you'd like me to adjust the story/ticket split.";
 
+// Contract-field absence fixtures (T-066-01-01). PARTIAL omits two of the five contract fields;
+// SHELL omits all five (the pre-contract story shape — exactly what the T-066-01-02 completeness
+// gate will refuse). Both reuse CANNED's plan so the ONLY variable is which fields are absent.
+// The pin: an omitted OPTIONAL field parses to a TYPED ABSENCE (null/undefined), the story is
+// NOT dropped from the all-array plan, and no default is fabricated.
+const CANNED_PLAN = JSON.parse(CANNED) as { stories: Record<string, unknown>[]; tickets: unknown[] };
+const omitFromStory = (fields: string[]): string => {
+  const story = Object.fromEntries(
+    Object.entries(CANNED_PLAN.stories[0]!).filter(([k]) => !fields.includes(k)),
+  );
+  return JSON.stringify({ stories: [story], tickets: CANNED_PLAN.tickets });
+};
+const PARTIAL_CANNED = omitFromStory(["honestBoundary", "outOfSlice"]);
+const SHELL_CANNED = omitFromStory([...STORY_CONTRACT_FIELDS]);
+
 const EPIC = "EPIC_SENTINEL_dispense_slice_intent";
 const CHARTER = "CHARTER_SENTINEL_value_function_P1_P7";
 const PROJECT = "PROJECT_SENTINEL_go_and_see_snapshot";
@@ -106,12 +127,16 @@ const PROJECT = "PROJECT_SENTINEL_go_and_see_snapshot";
 // the request SHAPE is openai-generic, which is the whole point.
 // Op [4] (T-036-02) parses an OPEN-MODEL-STYLE reply — the provider-agnosticism proof. Same single
 // spawn (the native-addon limit is per process); appended last so [0]–[3]'s indices are unchanged.
+// Ops [5]/[6] (T-066-01-01) parse the contract-absence fixtures; appended last so [0]–[4]'s
+// indices are unchanged.
 const RESULTS: Promise<BridgeResult[]> = runBridge([
   { mode: "parse", text: CANNED },
   { mode: "parse", text: "this is not a work plan at all" },
   { mode: "render", epic: EPIC, charter: CHARTER, project: PROJECT },
   { mode: "render", epic: EPIC, charter: CHARTER, project: PROJECT, client: "OpenModelStub" },
   { mode: "parse", text: OPEN_MODEL_CANNED },
+  { mode: "parse", text: PARTIAL_CANNED },
+  { mode: "parse", text: SHELL_CANNED },
 ]);
 
 describe("DecomposeEpic — parse (SAP, offline)", () => {
@@ -145,6 +170,11 @@ describe("DecomposeEpic — parse (SAP, offline)", () => {
     expect(second!.priority).toBe("Medium" as DraftPriority);
     expect(second!.depends_on).toEqual(["T-009-01"]);
     expect(second!.purpose.length).toBeGreaterThan(0);
+
+    // The five story-contract fields (T-066-01-01) survive the round-trip verbatim.
+    for (const field of STORY_CONTRACT_FIELDS) {
+      expect(story[field]).toBe(CONTRACT_STORY[field]);
+    }
   });
 
   test("a malformed reply degrades to an EMPTY plan (pins SAP leniency for T-002-02/03)", async () => {
@@ -158,6 +188,50 @@ describe("DecomposeEpic — parse (SAP, offline)", () => {
   });
 });
 
+// T-066-01-01 — the story contract's TYPED-ABSENCE half. The five fields are optional in the
+// schema on purpose: a reply omitting one must parse to null/undefined (a typed absence the
+// T-066-01-02 gate refuses by name), the story must NOT be dropped from the all-array plan
+// (a required-field coercion failure would silently disappear it), and no default may be
+// fabricated. First optional fields in this repo's BAML — these tests PIN the behavior.
+describe("DecomposeEpic — story contract fields parse to typed absences (offline)", () => {
+  test("a story omitting some contract fields keeps the present ones and nulls the absent ones", async () => {
+    const r = (await RESULTS)[5]!;
+    expect(r.ok).toBe(true);
+    const plan = (r as { plan: WorkPlan }).plan;
+
+    // The story is ADMITTED incomplete, not dropped — the gate needs it to name the id.
+    expect(plan.stories).toHaveLength(1);
+    expect(plan.tickets).toHaveLength(2);
+    const story = plan.stories[0]!;
+    expect(story.id).toBe("S-009");
+
+    // Present contract fields round-trip verbatim…
+    expect(story.scope).toBe(CONTRACT_STORY.scope);
+    expect(story.storyAcceptance).toBe(CONTRACT_STORY.storyAcceptance);
+    expect(story.waveRationale).toBe(CONTRACT_STORY.waveRationale);
+    // …and the omitted ones are TYPED ABSENCES: null/undefined, never a fabricated string.
+    expect(story.honestBoundary ?? null).toBeNull();
+    expect(story.outOfSlice ?? null).toBeNull();
+    expect(typeof story.honestBoundary).not.toBe("string");
+    expect(typeof story.outOfSlice).not.toBe("string");
+  });
+
+  test("a shell story (all five absent — the pre-contract shape) parses with all five as absences", async () => {
+    const r = (await RESULTS)[6]!;
+    expect(r.ok).toBe(true);
+    const plan = (r as { plan: WorkPlan }).plan;
+
+    expect(plan.stories).toHaveLength(1);
+    const story = plan.stories[0]!;
+    expect(story.id).toBe("S-009");
+    // Exactly the shape T-066-01-02's completeness gate refuses: present story, five holes.
+    for (const field of STORY_CONTRACT_FIELDS) {
+      expect(story[field] ?? null).toBeNull();
+      expect(typeof story[field]).not.toBe("string");
+    }
+  });
+});
+
 describe("DecomposeEpic — render (b.request, offline, render-only key)", () => {
   test("renders the epic, charter, and project inputs into the prompt", async () => {
     const r = (await RESULTS)[2]!;
@@ -168,6 +242,31 @@ describe("DecomposeEpic — render (b.request, offline, render-only key)", () =>
     expect(prompt).toContain(PROJECT);
     // The clearing framing is rendered too (the authored judgment, paid once).
     expect(prompt).toContain("clearing function");
+  });
+});
+
+// T-066-01-01 AC2 — the render's DEMAND half of the story contract. The prompt must demand all
+// five sections by their JSON field names and embed the exemplar. Asserted against the CORE's
+// canonical exports so the three copies (schema field names, prompt text, core constants)
+// cannot drift apart: a rename in the schema breaks the `satisfies` pin at compile time; an
+// exemplar edit in either decompose.baml or decompose-epic-core.ts without the other fails here.
+describe("DecomposeEpic — render demands the story contract (offline)", () => {
+  test("the prompt demands every contract field by its JSON name", async () => {
+    const r = (await RESULTS)[2]!;
+    expect(r.ok).toBe(true);
+    const { prompt } = r as { prompt: string };
+    expect(prompt).toContain("Every story is a CONTRACT");
+    for (const field of STORY_CONTRACT_FIELDS) {
+      expect(prompt).toContain(`\`${field}\``);
+    }
+    // The honesty clause: absence over padding (aligns the model with the typed-absence design).
+    expect(prompt).toContain("left ABSENT");
+  });
+
+  test("the prompt embeds the exemplar byte-identically to the core's canonical copy", async () => {
+    const r = (await RESULTS)[2]!;
+    const { prompt } = r as { prompt: string };
+    expect(prompt).toContain(STORY_CONTRACT_EXEMPLAR);
   });
 });
 

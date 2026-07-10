@@ -20,7 +20,7 @@ import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 import type { PlayTools } from "../engine/play.ts";
 import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 import { buildGraph, GraphIntegrityError, GraphParseError, type RawNode } from "../graph/model.ts";
-import type { WorkPlan } from "../../baml_client/index.ts";
+import type { StoryDraft, WorkPlan } from "../../baml_client/index.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned
@@ -352,3 +352,50 @@ export function graphIntegrityViolations(plan: WorkPlan, epicId: string): string
     throw e;
   }
 }
+
+// ── story contract (T-066-01-01): the five fields every story must carry ───────────────────────
+//
+// WHY HERE: this addon-free core is where decompose's testable constants live (the
+// DECOMPOSE_MAX_TURNS / DECOMPOSE_TOOLS precedent). The schema (decompose.baml StoryDraft) makes
+// the five fields REPRESENTABLE as typed absences; the prompt DEMANDS them; the completeness gate
+// (T-066-01-02) REFUSES their absence. These exports are the single canonical field list and
+// exemplar the render test and the gate both consume, so the three layers cannot drift apart.
+
+/**
+ * The five story-contract field names, exactly as they appear on {@link StoryDraft} and as the
+ * prompt demands them. The `satisfies` pin makes a schema rename that misses this list a COMPILE
+ * failure (tsc), before any test runs; the render test additionally asserts each name appears in
+ * the rendered prompt.
+ */
+export const STORY_CONTRACT_FIELDS = [
+  "scope",
+  "storyAcceptance",
+  "honestBoundary",
+  "waveRationale",
+  "outOfSlice",
+] as const satisfies readonly (keyof StoryDraft)[];
+
+/** One of the five story-contract field names. */
+export type StoryContractField = (typeof STORY_CONTRACT_FIELDS)[number];
+
+/**
+ * The in-prompt exemplar of a contract-quality story — condensed from the hand-authored
+ * S-066-01.md, the look-and-feel bar for what decompose must emit. MUST stay byte-identical to
+ * the exemplar block authored inside decompose.baml's prompt: the render test asserts the
+ * rendered prompt CONTAINS this constant, so an edit to either copy without the other stops the
+ * line. Flush-left on purpose — BAML dedents the `#"…"#` template's common indent, so the
+ * rendered block is flush-left too.
+ */
+export const STORY_CONTRACT_EXEMPLAR = `scope: the decompose pipeline end to end — BAML schema + render, the play's gate list, and the
+story writer. Ticket bodies and epic cards are untouched; only the story artifact changes shape.
+storyAcceptance: casting decompose-epic against a fixture epic through a stub executor yields
+story files carrying all five sections plus a DAG block consistent with the tickets' depends_on
+edges — and replaying a ten-line shell through the same cast is refused with a named andon, no
+file written.
+honestBoundary: everything here is fixture-proven and FREE (stub executor, no tokens). The live
+metered cast closes the epic, not this story — authorized by the human at the counter, named
+here as the deferred step, not hidden inside a ticket.
+waveRationale: the schema ticket runs alone — all three consumers depend on the settled field
+shape. The gate, writer, and doc tickets then run in parallel: disjoint files, no overlap.
+outOfSlice: status derivation and the archive sweep (the sibling epic); backfilling shell
+stories already on the board (history stays); the live gold-master cast (see honestBoundary).`;

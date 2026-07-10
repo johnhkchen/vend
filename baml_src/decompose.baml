@@ -69,7 +69,11 @@ class TicketDraft {
   doneSignal string @description("how we'll KNOW it landed: a check, a test, or an observable outcome — not a restated title")
 }
 
-// One story: an ordered group of tickets delivering a coherent slice of the epic.
+// One story: an ordered group of tickets delivering a coherent slice of the epic. The five
+// contract fields (T-066-01-01) are OPTIONAL on purpose: a reply that omits one parses to a
+// TYPED ABSENCE (null) the downstream completeness gate refuses by name — never a fabricated
+// default, and never a required-field coercion failure that would silently DROP the story from
+// the all-array plan. BAML owns shape; the gate owns the refusal.
 class StoryDraft {
   id string @description("lisa story id, e.g. S-002")
   title string @description("kebab-case short name")
@@ -77,6 +81,11 @@ class StoryDraft {
   status DraftStatus @description("usually 'open'")
   priority DraftPriority @description("critical | high | medium | low")
   tickets string[] @description("this story's ticket ids, in execution order")
+  scope string? @description("the seams/files this story touches and the pipeline slice it owns — where the work lives")
+  storyAcceptance string? @description("the observable end-state that proves the story landed — a check or behavior, never a restated title")
+  honestBoundary string? @description("what this story deliberately defers and why — free-vs-metered, fixture-vs-live — named, not hidden")
+  waveRationale string? @description("why the ticket DAG parallelizes the way it does — which tickets run alone, which fan out, and what makes that safe")
+  outOfSlice string? @description("adjacent work this story explicitly does NOT do, so scope creep has a fence to hit")
 }
 
 // The cleared plan: ordered stories and the tickets they contain. Array order IS the
@@ -117,6 +126,40 @@ function DecomposeEpic(epic: string, charter: string, project: string) -> WorkPl
     Order stories most-foundational first; order tickets so dependencies precede dependents.
     Set fresh work to status `open`, phase `ready`. Keep the plan honest and minimal — only
     the work the epic actually needs, nothing speculative.
+
+    ## Every story is a CONTRACT (fill all five, honestly)
+
+    A story is what a downstream worker builds from without ambient context — a shell story
+    starves every session that picks it up. Populate ALL FIVE contract fields on every story:
+    - `scope` — the seams/files the story touches and the pipeline slice it owns; where the
+      work lives, concrete enough to see overlap with a sibling story.
+    - `storyAcceptance` — the observable end-state that proves the story landed: a check, a
+      behavior, a refusal that now fires. Never a restated title.
+    - `honestBoundary` — what the story deliberately defers and why (free vs metered,
+      fixture-proven vs live). Deferred work is NAMED here, never hidden inside a ticket.
+    - `waveRationale` — why the ticket DAG parallelizes the way it does: which tickets run
+      alone, which fan out together, and what makes that safe (disjoint files, settled shape).
+    - `outOfSlice` — adjacent work the story explicitly does NOT do, so scope creep has a
+      fence to hit.
+
+    The bar, drawn from a real cleared story:
+
+    scope: the decompose pipeline end to end — BAML schema + render, the play's gate list, and the
+    story writer. Ticket bodies and epic cards are untouched; only the story artifact changes shape.
+    storyAcceptance: casting decompose-epic against a fixture epic through a stub executor yields
+    story files carrying all five sections plus a DAG block consistent with the tickets' depends_on
+    edges — and replaying a ten-line shell through the same cast is refused with a named andon, no
+    file written.
+    honestBoundary: everything here is fixture-proven and FREE (stub executor, no tokens). The live
+    metered cast closes the epic, not this story — authorized by the human at the counter, named
+    here as the deferred step, not hidden inside a ticket.
+    waveRationale: the schema ticket runs alone — all three consumers depend on the settled field
+    shape. The gate, writer, and doc tickets then run in parallel: disjoint files, no overlap.
+    outOfSlice: status derivation and the archive sweep (the sibling epic); backfilling shell
+    stories already on the board (history stays); the live gold-master cast (see honestBoundary).
+
+    A section you cannot fill truthfully is left ABSENT — never padded. A completeness gate
+    refuses shell stories by name, and padding a section to pass is worse than absence.
 
     ## The epic to clear (intent + value)
     {{ epic }}
