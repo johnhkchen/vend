@@ -4,6 +4,8 @@ Every ticket passes through six phases in order. No phases are skipped regardles
 
 ### Research
 
+First read the ticket's parent story — the `story:` field in the frontmatter names it, and it answers the "why" questions Research would otherwise re-derive (see The Story Layer below).
+
 Map the codebase. Produce `research.md` (~200 lines).
 
 Descriptive, not prescriptive. What exists, where, how it connects. Identify the files, modules, patterns, and boundaries relevant to the ticket. Surface assumptions and constraints. Do not propose solutions.
@@ -63,6 +65,30 @@ Artifact: `docs/active/work/{ticket-id}/review.md`
 4. **High-leverage phases.** Research and Design artifacts are the best return on review time. Reviewing ~200 lines of research or design catches problems before they become thousands of lines of wrong code. Structure and Plan may auto-advance depending on project configuration.
 
 5. **Artifacts are insurance.** If a session crashes or hits limits, the latest artifact plus the ticket is enough to seed a new session at the correct phase.
+
+---
+
+## The Story Layer
+
+Every ticket belongs to a story, and the story is a contract — the middle layer between epic intent and ticket execution. The ticket says what to build; its parent story says why this slice exists, what "done" means for the slice as a whole, and what was deliberately left out. Stories live in `docs/active/stories/`, one file per story, named by the `story:` field in the ticket frontmatter.
+
+A story body carries five sections:
+
+- **Scope** — which parts of the system the story touches, and what it explicitly does not.
+- **Story acceptance** — verifiable done-conditions for the whole story, beyond any single ticket's checkboxes.
+- **Honest boundary** — what this story actually proves versus what it defers or leaves unverified, stated plainly rather than hidden.
+- **Wave rationale** — why the ticket DAG is shaped the way it is: what runs alone, what runs in parallel, and why that is safe. It sits under the story's `## DAG` block, beneath the ticket graph it explains.
+- **Out of this slice** — adjacent work deliberately excluded, so a worker does not scope-creep into it.
+
+The story is written to be read, and its readers are:
+
+- **Executing agents** — you. This matters most for workers arriving cold — for example a cross-vendor agent whose entire context is `AGENTS.md` plus this injected document. For a cold worker, the parent story is the whole brief: the intent that would otherwise be two hops away.
+- **The sweep** — the board-review pass that checks Story acceptance when work is closed out.
+- **Allocation policy** — downstream tooling that treats the story as the unit of allocation, reading Scope, the DAG, and Wave rationale to decide what can be routed where and run in parallel.
+
+**Working rule: read your ticket's parent story before starting the Research phase.** Return to it whenever a mid-ticket question is really a scope question — "should I also fix X?" is usually answered by Scope or Out of this slice.
+
+These sections are load-bearing, not aspirational: a generated story missing any of them is refused at the source with a named error, before the story file is ever written.
 
 ---
 
