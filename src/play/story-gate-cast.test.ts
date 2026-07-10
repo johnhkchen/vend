@@ -37,7 +37,11 @@ async function tmp(): Promise<string> {
 /** A high envelope so nothing exhausts — the cast turns on the gate, not the budget. */
 const BIG_BUDGET: Budget = { timeMs: 60_000, tokens: 1_000_000 };
 
-const CHARTER = "P1 — Author once, run forever. P3 — Gates are the contract. N1 — Not a chat copilot.";
+// Bold DEFINITION shape (T-067-01-03): the write guard polices bare P/N codes in rendered
+// bodies against the charter's snapshot, and only bold definitions mint entries — the old
+// prose-shaped charter would refuse the contrast cast's `advances: [P1]` as bare.
+const CHARTER =
+  "**P1 — Author once, run forever.** **P3 — Gates are the contract.** **N1 — Not a chat copilot.**";
 
 /** One fully-valid ticket, so value/allocation/bounds/structural ALL pass — the only gate that
  *  can stop the shell plan below is story-completeness (isolates the refusal to the new gate). */

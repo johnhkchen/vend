@@ -36,6 +36,18 @@
 // resolves it exactly ONCE per cut (snapshot-at-cut, E-067). A code the snapshot misses
 // degrades to the bare code — never a fabricated gloss; refusing that cut is the write
 // guard's job (T-067-01-03), not the renderer's.
+//
+// T-067-01-03: that write guard. "Cut artifacts carry no bare codes" is now a WRITE-SIDE
+// contract, judged on the RENDERED bytes (the renderers stay total; the verb refuses):
+// `materialize` renders every file into memory first, runs the pure `findBareCodes` over
+// the would-be bodies, and throws a typed `BareCodeError` on any bare (unglossed) code in
+// a POLICED prefix family — {P, N} always (the AC's grep bar), plus any prefix family the
+// charter itself defines codes for (a `**K1 — …**` kitchen charter polices K; the resolver
+// is prefix-generic and the guard matches its stance). Foreign prefixes (`E1` in
+// "forward-E1", `A3`) stay unpoliced — the -02 passthrough behavior is unchanged. The
+// throw precedes every mkdir/write (the IdCollisionError bar), so a refused cut leaves
+// zero partial output — the honey-kitchen #1 complaint (strip N-codes) has nothing left
+// to strip, structurally (P3).
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -118,6 +130,34 @@ export interface RenderedFile {
   readonly body: string;
 }
 
+/** One file's bare (unglossed, policed-prefix) codes: `codes` deduped, in body order.
+ *  The payload {@link BareCodeError} carries and the runner's andon detail names. */
+export interface BareCodeHit {
+  readonly file: string;
+  readonly codes: readonly string[];
+}
+
+/**
+ * Thrown by {@link materialize} when a rendered body would land carrying a bare code in a
+ * policed prefix family — the charter cannot resolve a cited code (T-067-01-03).
+ * {@link IdCollisionError}'s sibling, same contract: an EXPECTED refusal the runner
+ * catches by type and relabels to the `bare-code` run-log outcome, thrown BEFORE any
+ * mkdir/write so a refused cut leaves zero partial output (P7). Carries the per-file
+ * hits so the andon names exactly what the charter is missing and where.
+ */
+export class BareCodeError extends Error {
+  readonly hits: readonly BareCodeHit[];
+  constructor(hits: readonly BareCodeHit[]) {
+    super(
+      `materialize: refusing to write — bare unresolved code(s): ${hits
+        .map((h) => `${h.file}: ${h.codes.join(", ")}`)
+        .join("; ")}`,
+    );
+    this.name = "BareCodeError";
+    this.hits = hits;
+  }
+}
+
 /** Map a member through one alias table, throwing on an unknown key — a programmer
  *  error meaning the BAML enum drifted from this map (house rule: caller/wiring
  *  error THROWS; it is never a silently-wrong frontmatter token). */
@@ -141,6 +181,15 @@ function flowArray(items: readonly string[]): string {
  *  idempotent. */
 const PROSE_CODE = /\b([A-Z]{1,3}\d+)\b(?! —)/g;
 
+/** The write guard's shape: {@link PROSE_CODE} with the prefix captured separately and the
+ *  SAME gloss-skip lookahead — the two share the definition of "glossed" (a code followed
+ *  by ` — ` is explained, whether by the charter's carried text or the model's own words;
+ *  anything else is bare). One deliberate widening: the trailing boundary is
+ *  `(?![0-9A-Za-z])` rather than `\b`, because the advances line wraps in italic
+ *  underscores (`_Advances: P1_`) and `_` is a word character — a bare code closing that
+ *  line must still be caught. The widening only ever FLAGS more, never writes more. */
+const BARE_CODE = /\b([A-Z]{1,3})\d+(?![0-9A-Za-z])(?! —)/g;
+
 /** Rewrite each cited code in prose to `code — carried text`, GATED on the snapshot: only a
  *  code the charter actually defines is expanded; anything else (`E1` in "forward-E1", a
  *  K-code cited against the vend charter) passes through verbatim, so the transform can
@@ -162,6 +211,48 @@ function advancesLine(advances: readonly string[], snapshot: CharterSnapshot): s
     return title === undefined ? code : `${code} — ${title}`;
   });
   return `_Advances: ${entries.join("; ")}_`;
+}
+
+/** The prefix families the write guard polices: {P, N} ALWAYS (the story's grep bar —
+ *  bare P/N codes are the honey-kitchen defect, and the floor holds even against a
+ *  charter whose snapshot is empty), plus the leading-letter prefix of every code this
+ *  charter DEFINES (a kitchen charter defining `K1..K3` makes a bare `K7` a detectable
+ *  defect — the charter owns its prefix families). Foreign prefixes pass through. */
+function policedPrefixes(snapshot: CharterSnapshot): Set<string> {
+  const prefixes = new Set(["P", "N"]);
+  for (const code of snapshot.keys()) {
+    const letters = code.match(/^[A-Z]+/);
+    if (letters) prefixes.add(letters[0]);
+  }
+  return prefixes;
+}
+
+/**
+ * Scan rendered files for bare (unglossed) codes in the policed prefix families —
+ * the pure judgment of the T-067-01-03 write guard. PURE and TOTAL: no fs, no clock,
+ * never throws; inputs are not mutated. Judges the RENDERED bytes, so it cannot
+ * disagree with the renderers about what resolved: post-render, every resolvable code
+ * is already glossed — a surviving bare policed code is a defect by definition, whether
+ * it came from an `advances` miss or prose the gates never see. `snapshot` is consulted
+ * only for {@link policedPrefixes}. Per file: codes deduped in body order; a clean file
+ * contributes no hit. `[]` means clear — safe to write.
+ */
+export function findBareCodes(
+  files: readonly RenderedFile[],
+  snapshot: CharterSnapshot,
+): BareCodeHit[] {
+  const prefixes = policedPrefixes(snapshot);
+  const hits: BareCodeHit[] = [];
+  for (const f of files) {
+    const codes: string[] = [];
+    for (const m of f.body.matchAll(BARE_CODE)) {
+      const prefix = m[1];
+      if (prefix === undefined || !prefixes.has(prefix)) continue;
+      if (!codes.includes(m[0])) codes.push(m[0]);
+    }
+    if (codes.length > 0) hits.push({ file: f.name, codes });
+  }
+  return hits;
 }
 
 /**
@@ -283,17 +374,21 @@ export function renderStoryFile(
  * pair with `mkdir -p` + `writeFile`. Not unit-tested (its logic is the tested render
  * pair). Only called on a CLEAR verdict; the runner never reaches here on a STOP.
  *
- * Cross-board collision guard FIRST (T-004-02): gather the ids already living under the
- * target dirs and run the pure `detectCollisions`; if the plan re-mints any, refuse
- * with {@link IdCollisionError} BEFORE the first `mkdir`/`writeFile`. The throw precedes
- * every write, so a refused plan materializes nothing — "no partial materialization"
- * (P7) is structural, not a cleanup. A fresh/disjoint board gathers `[]` and writes
- * normally.
+ * TWO pre-write guards, identity before content, both refusing BEFORE the first
+ * `mkdir`/`writeFile` so a refused plan materializes nothing — "no partial
+ * materialization" (P7) is structural, not a cleanup:
+ *
+ *  1. Cross-board collision guard (T-004-02): gather the ids already living under the
+ *     target dirs, run the pure `detectCollisions`; a re-minted id refuses with
+ *     {@link IdCollisionError}.
+ *  2. Bare-code write guard (T-067-01-03): render EVERY file into memory, run the pure
+ *     {@link findBareCodes} over the would-be bodies; a bare policed code refuses with
+ *     {@link BareCodeError}. Rendering precedes writing entirely, so the guard judges
+ *     the exact bytes that would land.
  *
  * `charter` is the SAME string the runner feeds the gates' `ClearContext` — resolved here
- * into a {@link CharterSnapshot} exactly once per cut (after the guard: no point resolving
- * a refused plan; T-067-01-03's resolvability check slots between that build and the first
- * write) and threaded into both renderers.
+ * into a {@link CharterSnapshot} exactly once per cut (after the collision guard: no
+ * point resolving a refused plan) and threaded into both renderers and the guard.
  */
 export async function materialize(
   plan: WorkPlan,
@@ -308,27 +403,33 @@ export async function materialize(
   const collisions = detectCollisions(generated, existing);
   if (collisions.length > 0) throw new IdCollisionError(collisions);
 
-  await mkdir(targets.storiesDir, { recursive: true });
-  await mkdir(targets.ticketsDir, { recursive: true });
-
   // One clock read per run (the pure renderer takes the date as data), and ONE charter
   // resolution per run (snapshot-at-cut); the story's tickets are the plan's drafts
   // filtered by the story's own membership list, in plan order.
   const cutDate = new Date().toISOString().slice(0, 10);
   const snapshot = snapshotCharterCodes(charter);
 
-  const storyFiles: string[] = [];
-  for (const s of plan.stories) {
+  const stories = plan.stories.map((s) => {
     const storyTickets = plan.tickets.filter((t) => s.tickets.includes(t.id));
-    const { name, body } = renderStoryFile(s, storyTickets, cutDate, snapshot);
+    return renderStoryFile(s, storyTickets, cutDate, snapshot);
+  });
+  const tickets = plan.tickets.map((t) => renderTicketFile(t, snapshot));
+
+  const bare = findBareCodes([...stories, ...tickets], snapshot);
+  if (bare.length > 0) throw new BareCodeError(bare);
+
+  await mkdir(targets.storiesDir, { recursive: true });
+  await mkdir(targets.ticketsDir, { recursive: true });
+
+  const storyFiles: string[] = [];
+  for (const { name, body } of stories) {
     const path = join(targets.storiesDir, name);
     await writeFile(path, body, "utf8");
     storyFiles.push(path);
   }
 
   const ticketFiles: string[] = [];
-  for (const t of plan.tickets) {
-    const { name, body } = renderTicketFile(t, snapshot);
+  for (const { name, body } of tickets) {
     const path = join(targets.ticketsDir, name);
     await writeFile(path, body, "utf8");
     ticketFiles.push(path);

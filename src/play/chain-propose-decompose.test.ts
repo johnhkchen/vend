@@ -49,7 +49,11 @@ const FULL_CARD: EpicCard = {
   context: "Builds on the E-007 engine; prerequisite: the registry. Out: the auto-drainer.",
 };
 
-const CHARTER = "P1 author-once. P7 budget-hard. N1 not-a-copilot. N4 not-an-executor.";
+// Bold DEFINITION shape (T-067-01-03): the write guard refuses a cut whose rendered bodies
+// carry a bare P/N code, and only a bold `**P1 — …**` definition mints a snapshot entry —
+// a prose-shaped charter would empty the snapshot and refuse CANNED_PLAN's `advances: [P1]`.
+const CHARTER =
+  "**P1 — author-once.** **P7 — budget-hard.** **N1 — not-a-copilot.** **N4 — not-an-executor.**";
 
 // A minimal cleared WorkPlan: 1 story + 1 ticket, ids disjoint from any seeded board, member
 // strings = the enum members materialize's alias maps key on (Task/Open/High/Ready).

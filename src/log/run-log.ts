@@ -45,11 +45,14 @@ export const DEFAULT_PROJECT = "(default)";
  * (E-032, T-032-02 — an IA-9 amber refusal, nothing cast/materialized); `graph-invalid`
  * ← decompose's pre-write net: the canonicalized plan would not materialize to a board
  * vend's own `buildGraph` accepts (a dangling/un-nested id), refused BEFORE any write
- * (E-061 retro #8); `errored` ← a node's cast THREW (E-054 — the graph runner wraps the
- * throw into a marked, non-proceeding node summary rather than crashing the wave; a throw
- * is not a crash); `success` ← none tripped. The runner classifies; the log records.
+ * (E-061 retro #8); `bare-code` ← materialize's write guard: a rendered body would carry
+ * a policed charter code with no cut-time gloss — the charter cannot resolve a cited
+ * code — refused BEFORE any write (T-067-01-03); `errored` ← a node's cast THREW (E-054
+ * — the graph runner wraps the throw into a marked, non-proceeding node summary rather
+ * than crashing the wave; a throw is not a crash); `success` ← none tripped. The runner
+ * classifies; the log records.
  */
-export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "id-collision", "missing-capability", "graph-invalid", "errored"] as const;
+export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "id-collision", "missing-capability", "graph-invalid", "bare-code", "errored"] as const;
 
 /** The schema version stamped on every record. An append-only ledger is forever;
  *  this one integer is the cheapest insurance against an unversioned migration. */

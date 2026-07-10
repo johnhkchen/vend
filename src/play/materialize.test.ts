@@ -13,6 +13,8 @@ import type {
 } from "../../baml_client/index.ts";
 import { snapshotCharterCodes } from "./charter-snapshot.ts";
 import {
+  BareCodeError,
+  findBareCodes,
   IdCollisionError,
   materialize,
   PHASE_ALIAS,
@@ -21,6 +23,7 @@ import {
   renderTicketFile,
   STATUS_ALIAS,
   TYPE_ALIAS,
+  type RenderedFile,
 } from "./materialize.ts";
 
 // T-002-03 materialize: the PURE render pair + alias maps, covered to the branch with
@@ -350,6 +353,73 @@ _Advances: P1_
   });
 });
 
+// T-067-01-03 write guard, pure half: `findBareCodes` judges the RENDERED bytes for bare
+// (unglossed) codes in the policed prefix families — {P, N} always, plus any prefix the
+// charter defines codes for. The judgment matrix pinned here is what the real-fs guard
+// tests below and the cast-level proof (bare-code-cast.test.ts) compose.
+
+describe("findBareCodes — the write guard's pure judgment (T-067-01-03)", () => {
+  const file = (body: string, name = "T-009-01.md"): RenderedFile => ({ name, body });
+
+  test("fully-glossed bodies are clear", () => {
+    expect(
+      findBareCodes(
+        [file("_Advances: P1 — Author once, run forever_\n\nhonors N1 — Not a chat copilot")],
+        SNAPSHOT,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a bare policed code is a hit naming the file and the code", () => {
+    expect(findBareCodes([file("aligns with P9 end to end")], SNAPSHOT)).toEqual([
+      { file: "T-009-01.md", codes: ["P9"] },
+    ]);
+  });
+
+  test("codes dedupe per file, body order kept", () => {
+    expect(findBareCodes([file("P9 first, then N7, then P9 again")], SNAPSHOT)).toEqual([
+      { file: "T-009-01.md", codes: ["P9", "N7"] },
+    ]);
+  });
+
+  test("a glossed code is explained, not bare — charter text or the model's own words", () => {
+    expect(findBareCodes([file("P9 — the author's own gloss stands")], SNAPSHOT)).toEqual([]);
+  });
+
+  test("foreign prefixes are never policed (the -02 passthrough stays legal)", () => {
+    expect(findBareCodes([file("counts toward forward-E1; the A3 spike stays out")], SNAPSHOT)).toEqual([]);
+  });
+
+  test("a charter-defined prefix family is policed (kitchen K-codes for free)", () => {
+    const kitchen = snapshotCharterCodes("- **K1 — Ship the seed.** body.");
+    expect(findBareCodes([file("advances K7; the A3 spike stays out")], kitchen)).toEqual([
+      { file: "T-009-01.md", codes: ["K7"] },
+    ]);
+  });
+
+  test("the {P, N} floor holds even against an empty snapshot (the -02 handoff counterexample)", () => {
+    expect(findBareCodes([file("_Advances: P1_")], EMPTY)).toEqual([
+      { file: "T-009-01.md", codes: ["P1"] },
+    ]);
+  });
+
+  test("multi-file: hits keyed by file name, clean files contribute nothing", () => {
+    expect(
+      findBareCodes(
+        [
+          file("cites P9 bare", "T-009-01.md"),
+          file("all clean here (P1 — Author once, run forever)", "T-009-02.md"),
+          file("**Scope:** leans on N7", "S-009.md"),
+        ],
+        SNAPSHOT,
+      ),
+    ).toEqual([
+      { file: "T-009-01.md", codes: ["P9"] },
+      { file: "S-009.md", codes: ["N7"] },
+    ]);
+  });
+});
+
 describe("alias maps cover every BAML enum member", () => {
   test("each map has the exact lisa tokens", () => {
     expect(TYPE_ALIAS).toEqual({ Task: "task", Bug: "bug", Spike: "spike" });
@@ -408,7 +478,7 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     expect(await readdir(storiesDir).catch(() => "ENOENT")).toBe("ENOENT");
   });
 
-  test("fresh/disjoint board → materializes normally", async () => {
+  test("fresh/disjoint board → materializes normally (bodies land glossed — the guard's pass side)", async () => {
     const { storiesDir, ticketsDir } = await targets();
     const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01"] });
 
@@ -418,5 +488,53 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     expect((await readdir(ticketsDir)).sort()).toEqual(["T-009-01.md"]);
     expect(result.storyFiles).toHaveLength(1);
     expect(result.ticketFiles).toHaveLength(1);
+    // The written ticket cleared the bare-code guard the observable way: its citation
+    // carries the cut-time gloss.
+    expect(await readFile(join(ticketsDir, "T-009-01.md"), "utf8")).toContain(
+      "_Advances: P1 — Author once, run forever_",
+    );
+  });
+
+  // T-067-01-03 write guard, impure half: the refusal is proven ON DISK — a plan whose
+  // rendered body would carry a bare policed code throws BareCodeError before mkdir, so
+  // not even an empty directory exists after the refused cut (the collision tests' bar).
+
+  test("bare-code refusal: a prose-cited code the charter cannot resolve → BareCodeError, NOTHING on disk", async () => {
+    const { storiesDir, ticketsDir } = await targets();
+    // advances resolve (P1 is defined) — the bare code arrives through PROSE, the surface
+    // the bounds gate never sees; the guard judges the rendered bytes and catches it.
+    const plan = {
+      stories: [story({ id: "S-009", tickets: [] })],
+      tickets: [ticket({ purpose: "aligns the cut with P9 end to end" })],
+    } as unknown as WorkPlan;
+
+    let caught: unknown;
+    await materialize(plan, { storiesDir, ticketsDir }, CHARTER).catch((e) => {
+      caught = e;
+    });
+    expect(caught).toBeInstanceOf(BareCodeError);
+    expect((caught as BareCodeError).hits).toEqual([{ file: "T-009-01.md", codes: ["P9"] }]);
+    expect((caught as BareCodeError).message).toContain("T-009-01.md: P9");
+
+    // Zero partial output: the throw preceded every mkdir — neither target dir exists.
+    expect(await readdir(storiesDir).catch(() => "ENOENT")).toBe("ENOENT");
+    expect(await readdir(ticketsDir).catch(() => "ENOENT")).toBe("ENOENT");
+  });
+
+  test("guard order: a plan that BOTH collides and carries a bare code refuses as id-collision (identity before content)", async () => {
+    const { storiesDir, ticketsDir } = await targets();
+    await mkdir(ticketsDir, { recursive: true });
+    await writeFile(join(ticketsDir, "T-001-01.md"), "hand-authored\n", "utf8");
+
+    const plan = {
+      stories: [],
+      tickets: [ticket({ id: "T-001-01", purpose: "aligns the cut with P9 end to end" })],
+    } as unknown as WorkPlan;
+
+    let caught: unknown;
+    await materialize(plan, { storiesDir, ticketsDir }, CHARTER).catch((e) => {
+      caught = e;
+    });
+    expect(caught).toBeInstanceOf(IdCollisionError);
   });
 });
