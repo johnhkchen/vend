@@ -134,10 +134,14 @@ describe("propose→decompose chain (offline) — signal → epic → tickets, t
   test("epic → tickets: a cleared WorkPlan materializes stories + tickets to the board", async () => {
     const root = await seedRoot(["E-001"]);
     try {
-      const res = await materialize(CANNED_PLAN, {
-        storiesDir: join(root, "docs", "active", "stories"),
-        ticketsDir: join(root, "docs", "active", "tickets"),
-      });
+      const res = await materialize(
+        CANNED_PLAN,
+        {
+          storiesDir: join(root, "docs", "active", "stories"),
+          ticketsDir: join(root, "docs", "active", "tickets"),
+        },
+        CHARTER,
+      );
       expect(res.storyFiles).toEqual([join(root, "docs", "active", "stories", "S-900.md")]);
       expect(res.ticketFiles).toEqual([join(root, "docs", "active", "tickets", "T-900-01.md")]);
 

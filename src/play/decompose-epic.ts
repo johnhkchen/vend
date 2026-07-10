@@ -185,10 +185,16 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
   }
 
   try {
-    const { storyFiles, ticketFiles } = await materialize(finalPlan, {
-      storiesDir: join(root, "docs", "active", "stories"),
-      ticketsDir: join(root, "docs", "active", "tickets"),
-    });
+    // The charter is the same string `gates` fed ClearContext — materialize snapshots it once
+    // per cut so every written body carries its codes' cut-time text (T-067-01-02).
+    const { storyFiles, ticketFiles } = await materialize(
+      finalPlan,
+      {
+        storiesDir: join(root, "docs", "active", "stories"),
+        ticketsDir: join(root, "docs", "active", "tickets"),
+      },
+      ctx.inputs.charter,
+    );
     const validated = await lisaValidate(root);
     return {
       ok: validated.ok,

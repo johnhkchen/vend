@@ -120,8 +120,8 @@ function decomposeShapedPlay(dirs: { storiesDir: string; ticketsDir: string }): 
     render: (i) => `decompose (fixture): ${i.epic}`,
     parse: (text) => JSON.parse(text) as WorkPlan,
     gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
-    effect: async (plan) => {
-      const { storyFiles, ticketFiles } = await materialize(plan, dirs);
+    effect: async (plan, ctx) => {
+      const { storyFiles, ticketFiles } = await materialize(plan, dirs, ctx.inputs.charter);
       return { ok: true, detail: "materialized (fixture)", artifacts: [...storyFiles, ...ticketFiles] };
     },
     budget: BIG_BUDGET,

@@ -27,10 +27,20 @@
 // `new Date(ms)` is total, argless `new Date()` is not), so the golden tests pin exact bytes.
 // An ABSENT contract field renders nothing — the completeness gate (T-066-01-02), not this
 // writer, owns refusing shells; fabricating a placeholder here would launder one.
+//
+// T-067-01-02: cut artifacts carry their charter grounding. Both renderers take a
+// `CharterSnapshot` (code → one-line text, T-067-01-01) and render every cited code as
+// `code — carried text` — the `_Advances:_` line from the array, prose citations (purpose /
+// doneSignal, the five story sections) via a snapshot-GATED rewrite that leaves non-charter
+// tokens and already-glossed codes untouched. `materialize` gains the charter parameter and
+// resolves it exactly ONCE per cut (snapshot-at-cut, E-067). A code the snapshot misses
+// degrades to the bare code — never a fabricated gloss; refusing that cut is the write
+// guard's job (T-067-01-03), not the renderer's.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
+import { snapshotCharterCodes, type CharterSnapshot } from "./charter-snapshot.ts";
 import { detectCollisions } from "./id-guard.ts";
 import { listIdsIn } from "./project-context.ts";
 
@@ -125,14 +135,45 @@ function flowArray(items: readonly string[]): string {
   return `[${items.join(", ")}]`;
 }
 
+/** The code shape charter-snapshot parses (`[A-Z]{1,3}\d+`), met here in RUNNING PROSE. The
+ *  `(?! —)` lookahead skips a code already carrying a gloss — the model's own `P4 — <its
+ *  words>` is not bare — and the rewrite's own output starts `code — `, so the transform is
+ *  idempotent. */
+const PROSE_CODE = /\b([A-Z]{1,3}\d+)\b(?! —)/g;
+
+/** Rewrite each cited code in prose to `code — carried text`, GATED on the snapshot: only a
+ *  code the charter actually defines is expanded; anything else (`E1` in "forward-E1", a
+ *  K-code cited against the vend charter) passes through verbatim, so the transform can
+ *  never corrupt prose it does not understand. */
+function resolveCodesInProse(text: string, snapshot: CharterSnapshot): string {
+  return text.replace(PROSE_CODE, (bare, code: string) => {
+    const title = snapshot.get(code);
+    return title === undefined ? bare : `${code} — ${title}`;
+  });
+}
+
+/** The `_Advances:_` line — the single owner of that format. Each code renders as
+ *  `code — carried text` (code kept for traceability); entries join on `; ` because the
+ *  carried texts are prose. A snapshot miss degrades to the BARE code — this renderer stays
+ *  total; turning that absence into a named refusal is the write guard (T-067-01-03). */
+function advancesLine(advances: readonly string[], snapshot: CharterSnapshot): string {
+  const entries = advances.map((code) => {
+    const title = snapshot.get(code);
+    return title === undefined ? code : `${code} — ${title}`;
+  });
+  return `_Advances: ${entries.join("; ")}_`;
+}
+
 /**
  * Render one TicketDraft → a lisa-valid ticket file. PURE. Frontmatter carries the
  * eight lisa fields with enum members mapped to aliases; the body is generated from
  * the value triplet — `purpose` becomes the Context, `doneSignal` the single
  * Acceptance Criterion, `advances` a noted line (so the materialized file is honest
- * about why the unit exists, not just structurally valid).
+ * about why the unit exists, not just structurally valid). Every cited charter code
+ * in the body carries its cut-time one-liner via `snapshot` (T-067-01-02); the
+ * frontmatter is code-free and byte-identical to the pre-snapshot shape.
  */
-export function renderTicketFile(t: TicketDraft): RenderedFile {
+export function renderTicketFile(t: TicketDraft, snapshot: CharterSnapshot): RenderedFile {
   const fm = [
     "---",
     `id: ${t.id}`,
@@ -149,13 +190,13 @@ export function renderTicketFile(t: TicketDraft): RenderedFile {
     "",
     "## Context",
     "",
-    t.purpose,
+    resolveCodesInProse(t.purpose, snapshot),
     "",
-    `_Advances: ${t.advances.join(", ")}_`,
+    advancesLine(t.advances, snapshot),
     "",
     "## Acceptance Criteria",
     "",
-    `- [ ] ${t.doneSignal}`,
+    `- [ ] ${resolveCodesInProse(t.doneSignal, snapshot)}`,
     "",
   ].join("\n");
   return { name: `${t.id}.md`, body: `${fm}\n${body}` };
@@ -200,11 +241,15 @@ function dagBlock(s: StoryDraft, storyTickets: readonly TicketDraft[]): string {
  * (an absent field renders nothing — the completeness gate owns refusal), the derived
  * {@link dagBlock}, and the provenance footer — the play that cut it, the ticket count,
  * and `cutDate` (`YYYY-MM-DD`, supplied by the impure caller so this stays clock-free).
+ * Section prose resolves its cited charter codes through `snapshot` exactly as the
+ * ticket body does (T-067-01-02); the DAG block and footer carry no codes by
+ * construction and are untouched.
  */
 export function renderStoryFile(
   s: StoryDraft,
   storyTickets: readonly TicketDraft[],
   cutDate: string,
+  snapshot: CharterSnapshot,
 ): RenderedFile {
   const fm = [
     "---",
@@ -220,12 +265,12 @@ export function renderStoryFile(
   const chunks: string[] = [];
   for (const [field, label] of PRE_DAG_SECTIONS) {
     const value = s[field];
-    if (value != null) chunks.push(`**${label}:** ${value}`);
+    if (value != null) chunks.push(`**${label}:** ${resolveCodesInProse(value, snapshot)}`);
   }
   let dag = `## DAG\n\n${dagBlock(s, storyTickets)}`;
-  if (s.waveRationale != null) dag += `\n\nWave rationale: ${s.waveRationale}`;
+  if (s.waveRationale != null) dag += `\n\nWave rationale: ${resolveCodesInProse(s.waveRationale, snapshot)}`;
   chunks.push(dag);
-  if (s.outOfSlice != null) chunks.push(`**Out of this slice:** ${s.outOfSlice}`);
+  if (s.outOfSlice != null) chunks.push(`**Out of this slice:** ${resolveCodesInProse(s.outOfSlice, snapshot)}`);
   chunks.push(
     `---\n_Materialized by Vend's \`decompose-epic\` play — ${s.tickets.length} ticket(s), ${cutDate}._`,
   );
@@ -244,8 +289,17 @@ export function renderStoryFile(
  * every write, so a refused plan materializes nothing — "no partial materialization"
  * (P7) is structural, not a cleanup. A fresh/disjoint board gathers `[]` and writes
  * normally.
+ *
+ * `charter` is the SAME string the runner feeds the gates' `ClearContext` — resolved here
+ * into a {@link CharterSnapshot} exactly once per cut (after the guard: no point resolving
+ * a refused plan; T-067-01-03's resolvability check slots between that build and the first
+ * write) and threaded into both renderers.
  */
-export async function materialize(plan: WorkPlan, targets: MaterializeTargets): Promise<MaterializeResult> {
+export async function materialize(
+  plan: WorkPlan,
+  targets: MaterializeTargets,
+  charter: string,
+): Promise<MaterializeResult> {
   const existing = [
     ...(await listIdsIn(targets.storiesDir)),
     ...(await listIdsIn(targets.ticketsDir)),
@@ -257,14 +311,16 @@ export async function materialize(plan: WorkPlan, targets: MaterializeTargets): 
   await mkdir(targets.storiesDir, { recursive: true });
   await mkdir(targets.ticketsDir, { recursive: true });
 
-  // One clock read per run (the pure renderer takes the date as data); the story's tickets
-  // are the plan's drafts filtered by the story's own membership list, in plan order.
+  // One clock read per run (the pure renderer takes the date as data), and ONE charter
+  // resolution per run (snapshot-at-cut); the story's tickets are the plan's drafts
+  // filtered by the story's own membership list, in plan order.
   const cutDate = new Date().toISOString().slice(0, 10);
+  const snapshot = snapshotCharterCodes(charter);
 
   const storyFiles: string[] = [];
   for (const s of plan.stories) {
     const storyTickets = plan.tickets.filter((t) => s.tickets.includes(t.id));
-    const { name, body } = renderStoryFile(s, storyTickets, cutDate);
+    const { name, body } = renderStoryFile(s, storyTickets, cutDate, snapshot);
     const path = join(targets.storiesDir, name);
     await writeFile(path, body, "utf8");
     storyFiles.push(path);
@@ -272,7 +328,7 @@ export async function materialize(plan: WorkPlan, targets: MaterializeTargets): 
 
   const ticketFiles: string[] = [];
   for (const t of plan.tickets) {
-    const { name, body } = renderTicketFile(t);
+    const { name, body } = renderTicketFile(t, snapshot);
     const path = join(targets.ticketsDir, name);
     await writeFile(path, body, "utf8");
     ticketFiles.push(path);
