@@ -53,7 +53,7 @@ import {
 } from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
 import { assembleInputs, listIdsIn, type DecomposeInputs } from "./project-context.ts";
-import { materialize, IdCollisionError } from "./materialize.ts";
+import { materialize, BareCodeError, IdCollisionError } from "./materialize.ts";
 
 /** The play name — the registry key and the value stamped on every run-log record. */
 export const PLAY = "decompose-epic";
@@ -133,6 +133,9 @@ export function epicIdOf(epic: string, epicPath: string): string {
  *    BEFORE any write; we catch it and RELABEL the outcome to `id-collision` as DATA (the
  *    house "returned data, not exception" rule the `EffectResult.outcome` field exists for),
  *    so the cast loop logs it without a throw crossing the orchestration boundary.
+ *  - `materialize`'s second pre-write guard (T-067-01-03) throws `BareCodeError` when a
+ *    rendered body would carry a bare policed code the charter cannot resolve — caught and
+ *    relabeled to `bare-code` the same way, still before any write (zero partial output).
  *  - `lisaValidate` never throws; a validate FAILURE leaves the run `success` but reports
  *    `ok:false` (⇒ `materialized:false`), exactly as the welded runner did (it relabeled
  *    ONLY on collision).
@@ -204,6 +207,10 @@ const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>
   } catch (e) {
     if (e instanceof IdCollisionError) {
       return { ok: false, outcome: "id-collision", detail: `id-collision — reused board id(s): ${e.collisions.join(", ")}` };
+    }
+    if (e instanceof BareCodeError) {
+      const where = e.hits.map((h) => `${h.file}: ${h.codes.join(", ")}`).join("; ");
+      return { ok: false, outcome: "bare-code", detail: `bare-code — charter cannot resolve cited code(s): ${where}` };
     }
     throw e;
   }
