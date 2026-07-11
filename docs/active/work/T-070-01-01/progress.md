@@ -2,8 +2,8 @@
 
 ## Status
 
-Implementation is complete through focused tests and typecheck.
-The full repository gate and final Review artifact remain.
+Implementation and all verification are complete.
+Only the final Review artifact/commit remains.
 
 ## Completed phases
 
@@ -203,13 +203,47 @@ The plan described arrays as malformed object candidates; no separate array test
 the partial/wrong-typed fixtures already pin atomic validation and the helper's named-string checks
 necessarily reject arrays. This does not reduce acceptance coverage.
 
+## Implementation commit
+
+- `2340765` — `feat(log): add seat-defaulted run marker (T-070-01-01)`
+
+The commit contains only `src/log/run-log.ts`, `src/log/run-log.test.ts`, and this progress artifact.
+Unrelated Lisa/board state was not staged.
+
+## Full repository gate
+
+```text
+bun run check
+BAML generation: success (14 generated files, no retained diff)
+TypeScript no-emit check: success
+Bun tests: 1621 pass / 1 skip / 0 fail
+4893 expect() calls
+1622 tests across 110 files
+```
+
+The one skip is the existing release acceptance integration that requires local `dist/` artifacts.
+It is unrelated to this schema ticket.
+
+The gate ran after the disjoint T-070-01-02 implementation commit was present on the shared branch,
+so it also proves structural compatibility between that ticket's effect report and this ledger type.
+
+## Final scope audit
+
+Confirmed:
+
+- `RUN_LOG_SCHEMA_VERSION` remains 1;
+- `RUN_OUTCOMES` is unchanged and still includes `unknown-seat` for compatibility;
+- no import was added to run-log;
+- no cast, materialize, effect, BAML, seat-registry, story, epic, or ticket file was changed by this work;
+- absent-marker bytes are directly pinned by a literal test;
+- all ticket-owned code/tests/artifacts are committed through Implement;
+- unrelated working-tree files remain unstaged and untouched by these commits.
+
 ## Remaining work
 
-1. Stage and commit ticket-owned implementation/test/progress files only.
-2. Run full `bun run check` against the shared current worktree.
-3. Audit final scope and commit state.
-4. Write `review.md` with acceptance, coverage, and concerns.
-5. Commit the final review artifact if the gate remains green.
+1. Write `review.md` with acceptance, coverage, and open concerns.
+2. Commit the Review/progress handoff artifacts.
+3. Stop without changing ticket phase/status.
 
 ## Current concerns
 
