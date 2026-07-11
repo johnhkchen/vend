@@ -39,7 +39,8 @@ export const DEFAULT_PROJECT = "(default)";
  * a literal union a `switch` can check exhaustively. Each maps to a state the other
  * modules already produce: `timed-out` ← seam's `ClaudeTimeoutError`;
  * `budget-exhausted` ← budget's `check` returning `exhausted`; `gate-failed` ← a
- * gate verdict; `id-collision` ← `materialize`'s cross-board guard refusing a plan
+ * gate verdict; `unknown-seat` ← `materialize`'s routing-seat guard refusing an unknown
+ * Lisa executor seat BEFORE any file write; `id-collision` ← `materialize`'s cross-board guard refusing a plan
  * whose ids already live on the board (T-004-02); `missing-capability` ← a declared
  * play's required MCP server absent from the project registry, refused BEFORE dispense
  * (E-032, T-032-02 — an IA-9 amber refusal, nothing cast/materialized); `graph-invalid`
@@ -52,7 +53,7 @@ export const DEFAULT_PROJECT = "(default)";
  * than crashing the wave; a throw is not a crash); `success` ← none tripped. The runner
  * classifies; the log records.
  */
-export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "id-collision", "missing-capability", "graph-invalid", "bare-code", "errored"] as const;
+export const RUN_OUTCOMES = ["success", "gate-failed", "timed-out", "budget-exhausted", "unknown-seat", "id-collision", "missing-capability", "graph-invalid", "bare-code", "errored"] as const;
 
 /** The schema version stamped on every record. An append-only ledger is forever;
  *  this one integer is the cheapest insurance against an unversioned migration. */

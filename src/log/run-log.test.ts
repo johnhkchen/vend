@@ -141,6 +141,10 @@ describe("buildRunRecord — validation throws RangeError at the boundary", () =
 });
 
 describe("buildRunRecord — every outcome is accepted, record is frozen", () => {
+  test("includes the unknown-seat materialization andon", () => {
+    expect(RUN_OUTCOMES).toContain("unknown-seat");
+  });
+
   test.each([...RUN_OUTCOMES])("accepts outcome %s", (outcome) => {
     const rec = buildRunRecord(baseInput({ outcome }));
     expect(rec.outcome).toBe(outcome);

@@ -26,7 +26,6 @@
 // (memory 20232); a plain `bun` process — which the CLI/press are — runs both calls fine,
 // which is also why no bun-test file value-imports this module.
 
-import { join } from "node:path";
 import { b } from "../../baml_client/sync_client.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 import { extractPromptText } from "../baml/decompose-bridge.ts";
@@ -36,24 +35,20 @@ import { clear } from "../gate/gates.ts";
 import {
   registry,
   type AnyPlay,
-  type CastContext,
   type Card,
-  type EffectResult,
   type Play,
 } from "../engine/play.ts";
 import { castPlay } from "../engine/cast.ts";
 import {
-  blockEntryTicketsAfter,
   DECOMPOSE_MAX_TURNS,
   DECOMPOSE_TOOLS,
-  epicIdFromDoc,
-  graphIntegrityViolations,
-  renumberPlanToEpic,
   stripNonGoalAdvances,
 } from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
-import { assembleInputs, listIdsIn, type DecomposeInputs } from "./project-context.ts";
-import { materialize, BareCodeError, IdCollisionError } from "./materialize.ts";
+import { assembleInputs, contextSourcesForRun, type DecomposeInputs } from "./project-context.ts";
+import { decomposeEffect } from "./decompose-effect.ts";
+
+export { lisaValidate, type ValidateResult } from "./decompose-effect.ts";
 
 /** The play name — the registry key and the value stamped on every run-log record. */
 export const PLAY = "decompose-epic";
@@ -87,32 +82,9 @@ export interface RunOptions {
    *  ENTRY tickets are born depending on, so queuing behind a live loop is race-free. Threaded to
    *  `assembleInputs`; the effect validates against the board + applies. Absent ⇒ a bare mint. */
   readonly after?: readonly string[];
-}
-
-/** The result of spawning `lisa validate` (the final structural poka-yoke). */
-export interface ValidateResult {
-  readonly ok: boolean;
-  readonly output: string;
-}
-
-/**
- * Spawn `lisa validate --path <root>` — the final structural poka-yoke run after the files
- * are written. IMPURE verb. Tolerates `lisa` being absent (returns `ok: false` with the
- * reason rather than crashing the run record), so a missing binary degrades to a logged
- * validate-failure, not an unhandled throw.
- */
-export async function lisaValidate(projectRoot: string): Promise<ValidateResult> {
-  try {
-    const proc = Bun.spawn(["lisa", "validate", "--path", projectRoot], { stdout: "pipe", stderr: "pipe" });
-    const [out, err, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { ok: code === 0, output: `${out}${err}`.trim() };
-  } catch (e) {
-    return { ok: false, output: `lisa validate could not run: ${e instanceof Error ? e.message : String(e)}` };
-  }
+  /** Lisa executor-routing seat to stamp on every ticket minted by this run (`--agent`). Raw
+   *  strings reach materialize's canonical write guard so unknown values become a named andon. */
+  readonly agent?: string;
 }
 
 /** Pull a lisa id out of the epic's frontmatter (`id: E-001`), else the file basename. The
@@ -123,98 +95,6 @@ export function epicIdOf(epic: string, epicPath: string): string {
   const base = epicPath.split("/").pop() ?? epicPath;
   return base.replace(/\.md$/, "") || epicPath;
 }
-
-/**
- * The play's EFFECT — land the cleared plan in the world. The one async, impure member of
- * the contract. A faithful re-encoding of the welded runner's materialize/validate/relabel
- * block (T-007-03 D4):
- *
- *  - `materialize` runs its cross-board collision guard FIRST and throws `IdCollisionError`
- *    BEFORE any write; we catch it and RELABEL the outcome to `id-collision` as DATA (the
- *    house "returned data, not exception" rule the `EffectResult.outcome` field exists for),
- *    so the cast loop logs it without a throw crossing the orchestration boundary.
- *  - `materialize`'s second pre-write guard (T-067-01-03) throws `BareCodeError` when a
- *    rendered body would carry a bare policed code the charter cannot resolve — caught and
- *    relabeled to `bare-code` the same way, still before any write (zero partial output).
- *  - `lisaValidate` never throws; a validate FAILURE leaves the run `success` but reports
- *    `ok:false` (⇒ `materialized:false`), exactly as the welded runner did (it relabeled
- *    ONLY on collision).
- *  - any OTHER throw (a genuine fs failure) propagates — not a clean outcome, mirroring the
- *    runner's `else throw e`.
- */
-const decomposeEffect = async (plan: WorkPlan, ctx: CastContext<DecomposeInputs>): Promise<EffectResult> => {
-  const root = ctx.projectRoot;
-
-  // Canonicalize ids, then PROVE the board before writing (E-061 retro #8). The model emits ids
-  // (its prompt shows the old flat `T-002-01` form), but vend OWNS the board's identifiers: derive
-  // the epic from the epic doc and renumber every story/ticket onto the nested `S-<epic>-<NN>` /
-  // `T-<epic>-<NN>-<MM>` convention the graph model requires, remapping all cross-refs. Then run
-  // vend's OWN `buildGraph` over the would-be board fragment; on any violation, refuse with a
-  // relabeled `graph-invalid` andon BEFORE the first write (no partial materialization), so the play
-  // can never land a board `bun run check` would reject — the exact failure of the flat E-061 mint
-  // that passed `lisa validate` but failed the strict gate. A doc with no parseable `id:` skips both
-  // (degrade, not regress); gates already cleared the plan's value/allocation/bounds/structural.
-  const epicId = epicIdFromDoc(ctx.inputs.epic);
-  let finalPlan = epicId ? renumberPlanToEpic(plan, epicId) : plan;
-  if (epicId) {
-    const violations = graphIntegrityViolations(finalPlan, epicId);
-    if (violations.length > 0) {
-      return {
-        ok: false,
-        outcome: "graph-invalid",
-        detail: `graph-invalid — the plan would not materialize to a valid board:\n- ${violations.join("\n- ")}`,
-      };
-    }
-  }
-
-  // Born-blocked mint (`--after`, field fix #3): once the INTERNAL net has proven the plan's own
-  // graph, block the epic's ENTRY tickets on the requested existing board ticket(s) so queuing
-  // behind a live loop is race-free. The targets live OUTSIDE the plan fragment (other epics'
-  // tickets), so (a) they are validated here against the LIVE board — a dangling `--after` would
-  // write a graph-red board the fragment-only net cannot see, refused as `graph-invalid` before any
-  // write — and (b) the edge is added AFTER the net, which would otherwise flag the external ref.
-  const after = ctx.inputs.after ?? [];
-  if (after.length > 0) {
-    const boardTickets = new Set(await listIdsIn(join(root, "docs", "active", "tickets")));
-    const missing = [...new Set(after)].filter((id) => !boardTickets.has(id));
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        outcome: "graph-invalid",
-        detail: `--after names ticket(s) not on the board: ${missing.join(", ")} — nothing materialized`,
-      };
-    }
-    finalPlan = blockEntryTicketsAfter(finalPlan, after);
-  }
-
-  try {
-    // The charter is the same string `gates` fed ClearContext — materialize snapshots it once
-    // per cut so every written body carries its codes' cut-time text (T-067-01-02).
-    const { storyFiles, ticketFiles } = await materialize(
-      finalPlan,
-      {
-        storiesDir: join(root, "docs", "active", "stories"),
-        ticketsDir: join(root, "docs", "active", "tickets"),
-      },
-      ctx.inputs.charter,
-    );
-    const validated = await lisaValidate(root);
-    return {
-      ok: validated.ok,
-      detail: validated.ok ? "lisa validate ✓" : `lisa validate ✗\n${validated.output}`,
-      artifacts: [...storyFiles, ...ticketFiles],
-    };
-  } catch (e) {
-    if (e instanceof IdCollisionError) {
-      return { ok: false, outcome: "id-collision", detail: `id-collision — reused board id(s): ${e.collisions.join(", ")}` };
-    }
-    if (e instanceof BareCodeError) {
-      const where = e.hits.map((h) => `${h.file}: ${h.codes.join(", ")}`).join("; ");
-      return { ok: false, outcome: "bare-code", detail: `bare-code — charter cannot resolve cited code(s): ${where}` };
-    }
-    throw e;
-  }
-};
 
 /**
  * DecomposeEpic as a {@link Play} — the six variation points the cast loop plugs into its
@@ -302,7 +182,12 @@ registry.register(decomposeEpicPlay);
  */
 export async function assembleAndCast(play: AnyPlay, opts: RunOptions): Promise<RunSummary> {
   const root = opts.projectRoot ?? process.cwd();
-  const inputs = await assembleInputs({ epicPath: opts.epicPath, projectRoot: root, after: opts.after });
+  const inputs = await assembleInputs(contextSourcesForRun({
+    epicPath: opts.epicPath,
+    projectRoot: root,
+    after: opts.after,
+    agent: opts.agent,
+  }));
   return castPlay(play, inputs, opts.budget, {
     subject: epicIdOf(inputs.epic, opts.epicPath),
     projectRoot: root,

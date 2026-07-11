@@ -35,6 +35,26 @@ export interface ContextSources {
   readonly agent?: string;
 }
 
+/** The direct decompose run values that become {@link ContextSources}. Kept separate from the
+ * BAML-bearing run module so this adapter remains pure and addon-free under test. */
+export interface RunContextSourceOptions {
+  readonly epicPath: string;
+  readonly projectRoot: string;
+  readonly after?: readonly string[];
+  readonly agent?: string;
+}
+
+/** Map direct-run values onto the input assembly boundary. Optional fields are spread only when
+ * supplied so a bare run retains the legacy object shape (no own `after` / `agent` key). PURE. */
+export function contextSourcesForRun(opts: RunContextSourceOptions): ContextSources {
+  return {
+    epicPath: opts.epicPath,
+    projectRoot: opts.projectRoot,
+    ...(opts.after !== undefined ? { after: opts.after } : {}),
+    ...(opts.agent !== undefined ? { agent: opts.agent } : {}),
+  };
+}
+
 /** The three rendered strings handed to `b.request.DecomposeEpic`, plus the optional born-blocked
  *  edge targets. `render`/`gates` read only the three strings; the effect reads `after`. */
 export interface DecomposeInputs {
