@@ -3,6 +3,11 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.3.0 — 2026-07-10
+
+- Stories come off `decompose-epic` as real contracts — scope, acceptance, honest boundary, why-these-tickets, out-of-slice — instead of ten-line shells, and a gate stops a shell story before anything lands on your board.
+- Tickets and stories are now self-contained on charter grounding: every cited P/N code carries its one-line meaning inline (e.g. "P4 — Autonomy by default, not supervision"), so a cut artifact still makes sense to whoever picks it up, whenever. A cut whose charter can't explain a cited code is refused before a single file is written.
+
 ## 0.2.3 — 2026-07-01
 
 - `vend user-guide` (also `guide` / `setup-guide`) prints a one-screen orientation on driving vend with lisa — so an agent landing in a fresh repo knows where to start.
