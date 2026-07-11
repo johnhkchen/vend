@@ -558,6 +558,56 @@ describe("reducedGrounding marker — round-trip, absence, one-way, malformed, l
   });
 });
 
+describe("overEnvelope marker — round-trip, byte compatibility, one-way, malformed, legacy (T-068-02-01 AC)", () => {
+  test("overEnvelope: true round-trips through build → serialize → revive (survives the read boundary)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "oe1", overEnvelope: true }));
+    expect(rec.overEnvelope).toBe(true);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.overEnvelope).toBe(true);
+  });
+
+  test("an absent overEnvelope is OMITTED from the record (byte-for-byte back-compat)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "oe2" }));
+    expect("overEnvelope" in rec).toBe(false);
+    expect(rec.overEnvelope).toBeUndefined();
+    expect(serializeRunRecord(rec).includes("overEnvelope")).toBe(false);
+  });
+
+  test("overEnvelope: false is one-way and serializes byte-identically to an absent marker", () => {
+    const absent = buildRunRecord(baseInput({ runId: "oe3" }));
+    const explicitFalse = buildRunRecord(baseInput({ runId: "oe3", overEnvelope: false }));
+    expect("overEnvelope" in explicitFalse).toBe(false);
+    expect(explicitFalse.overEnvelope).toBeUndefined();
+    expect(serializeRunRecord(explicitFalse)).toBe(serializeRunRecord(absent));
+  });
+
+  test("a non-boolean overEnvelope is coerced to absent on build (legal, not a caller error)", () => {
+    const rec = buildRunRecord(baseInput({ runId: "oe4", overEnvelope: "yes" as unknown as boolean }));
+    expect("overEnvelope" in rec).toBe(false);
+  });
+
+  test("a malformed overEnvelope is dropped on revive, the record stays valid", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "oe5" })))),
+      overEnvelope: "yes",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.overEnvelope).toBeUndefined();
+    expect(rec!.runId).toBe("oe5");
+  });
+
+  test("a pre-E-068 line (no overEnvelope field) parses, with overEnvelope === undefined", () => {
+    const legacyLine =
+      '{"v":1,"runId":"L4","play":"decompose-epic","epic":"E-067","model":"claude-cli-default",' +
+      '"outcome":"success","usage":{"input_tokens":1,"output_tokens":2,' +
+      '"cache_read_input_tokens":3,"cache_creation_input_tokens":4},"costUsd":0.1,"gateResults":[],' +
+      '"startedAt":"2026-06-18T20:49:24.679Z","endedAt":"2026-06-18T20:50:40.749Z"}';
+    const { records, skipped } = readRuns(legacyLine);
+    expect(skipped).toBe(0);
+    expect(records[0]!.overEnvelope).toBeUndefined();
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(

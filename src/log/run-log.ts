@@ -148,6 +148,12 @@ export interface RunRecordInput {
    *  signal that makes a degraded clear COUNTABLE (a degraded run = a record carrying this marker)
    *  rather than invisible. */
   readonly reducedGrounding?: boolean;
+  /** One-way warning marker (T-068-02-01): `true` ⇒ this cast cleared its gates but spent over
+   *  its token envelope. Absent ⇒ no over-envelope warning was recorded. Only `true` is meaningful,
+   *  so `false`/absent are identical and `false` is never written — keeping an unmarked record
+   *  byte-identical to a pre-E-068 one. The marker makes a cleared overshoot countable without
+   *  turning the run log into the classifier that decides whether the run may materialize. */
+  readonly overEnvelope?: boolean;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -193,6 +199,11 @@ export interface RunRecord {
    *  {@link reviveRecord} preserves it across the read boundary, so a degraded clear stays
    *  countable after a ledger round-trip. */
   readonly reducedGrounding?: true;
+  /** Present ONLY when `true` (T-068-02-01) — this cleared cast spent over its token envelope.
+   *  A ONE-WAY warning like {@link RunRecord.reducedGrounding}: `false` is never written, so an
+   *  unmarked record stays byte-identical to a pre-E-068 one. {@link reviveRecord} preserves it
+   *  across the read boundary so a cleared overshoot remains countable. */
+  readonly overEnvelope?: true;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -284,6 +295,14 @@ function normalizeReducedGrounding(v: boolean | undefined): true | undefined {
   return v === true ? true : undefined;
 }
 
+/** Normalize the over-envelope marker (T-068-02-01): a ONE-WAY warning — only `true` is
+ *  meaningful (this cast cleared after spending over its token envelope). Anything else (`false`,
+ *  absent, or a non-boolean) ⇒ `undefined`, so the field is omitted and an unmarked record stays
+ *  byte-identical to a pre-E-068 one. The caller classifies; run-log only preserves the fact. */
+function normalizeOverEnvelope(v: boolean | undefined): true | undefined {
+  return v === true ? true : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -316,6 +335,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const intervenedAttested = normalizeIntervenedAttested(input.intervenedAttested);
   const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
   const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
+  const overEnvelope = normalizeOverEnvelope(input.overEnvelope);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -333,6 +353,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
+    ...(overEnvelope ? { overEnvelope } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -445,6 +466,11 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // the read boundary preserves a degraded clear's countability across the ledger round-trip.
   const reducedGrounding = normalizeReducedGrounding(typeof r.reducedGrounding === "boolean" ? r.reducedGrounding : undefined);
 
+  // The over-envelope warning (T-068-02-01) follows the same one-way read contract: only literal
+  // `true` survives. False, absence (all pre-E-068 records), and malformed values are omitted, so
+  // an optional warning can never make an otherwise useful historical record unreadable.
+  const overEnvelope = normalizeOverEnvelope(typeof r.overEnvelope === "boolean" ? r.overEnvelope : undefined);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -461,6 +487,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
+    ...(overEnvelope ? { overEnvelope } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });
