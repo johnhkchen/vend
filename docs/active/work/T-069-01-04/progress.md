@@ -37,9 +37,8 @@
 
 ## Remaining implementation steps
 
-1. Commit the implementation unit and phase artifacts.
-2. Perform final Review and write `review.md`.
-3. Commit the review handoff.
+1. Perform final Review and write `review.md`.
+2. Commit the review handoff.
 
 ## Worktree note
 
@@ -77,3 +76,8 @@ bun test src/play/decompose-effect.test.ts src/play/agent-seat.test.ts \
 - The story remains unstamped: met.
 - Unknown `gpt` returns `ok:false`, `outcome:"unknown-seat"`: met.
 - Unknown seat creates neither output directory and invokes no validator: met.
+
+## Commits
+
+- `6ee4bef feat(play): relabel unknown decompose agent seats (T-069-01-04)` — implementation,
+  tests, and Research through Implement artifacts.
