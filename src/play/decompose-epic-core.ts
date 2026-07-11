@@ -93,15 +93,18 @@ export interface ClassifyInput {
   readonly timedOut: boolean;
   /** The token check after the seam returned; null when timed out. */
   readonly budgetOutcome: BudgetOutcome | null;
-  /** The gate verdict; null when the run never reached gating (timeout/exhausted). */
+  /** The gate verdict; null when the run never reached or deliberately skipped gating. */
   readonly gateResult: GateResult | null;
 }
 
-/** The pure decision: the terminal outcome, whether to materialize, the log rows. */
+/** The pure decision: the terminal outcome, whether to materialize, the log rows, and any
+ *  one-way warning the effect shell must surface and persist. */
 export interface Verdict {
   readonly outcome: RunOutcome;
   readonly materialize: boolean;
   readonly gateLog: readonly LogGate[];
+  /** Present only when a token-exhausted cast explicitly cleared its gates and may materialize. */
+  readonly overEnvelope?: true;
 }
 
 /**
@@ -117,19 +120,22 @@ export function gateRowsFor(g: GateResult | null): readonly LogGate[] {
 }
 
 /**
- * Decide the run's outcome. PURE. First-match priority (Design D2): a TIMEOUT or a
- * BUDGET exhaustion outranks the gate verdict — a run that breached its budget
- * contract (P7) stops the line even if the plan would have cleared. Materialize ONLY
- * on `success` (cleared, in-budget, returned).
+ * Decide the run's outcome. PURE. First-match priority (T-068-02-02): TIMEOUT always discards;
+ * an explicit gate STOP always discards (P3); a token-exhausted run materializes as `success`
+ * ONLY when its gates explicitly CLEAR, carrying the one-way `overEnvelope` warning that keeps
+ * the P7 contract breach countable. Exhaustion without a clear remains censored and discarded.
  */
 export function classify(i: ClassifyInput): Verdict {
   const gateLog = gateRowsFor(i.gateResult);
   if (i.timedOut) return { outcome: "timed-out", materialize: false, gateLog };
-  if (i.budgetOutcome?.status === "exhausted") {
-    return { outcome: "budget-exhausted", materialize: false, gateLog };
-  }
   if (i.gateResult !== null && isStop(i.gateResult)) {
     return { outcome: "gate-failed", materialize: false, gateLog };
+  }
+  if (i.budgetOutcome?.status === "exhausted") {
+    if (i.gateResult !== null) {
+      return { outcome: "success", materialize: true, gateLog, overEnvelope: true };
+    }
+    return { outcome: "budget-exhausted", materialize: false, gateLog };
   }
   return { outcome: "success", materialize: true, gateLog };
 }

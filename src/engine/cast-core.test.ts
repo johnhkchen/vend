@@ -36,19 +36,39 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
     const v = classify({ timedOut: true, budgetOutcome: null, gateVerdict: null });
     expect(v.outcome).toBe("timed-out");
     expect(v.materialize).toBe(false);
+    expect(v.overEnvelope).toBeUndefined();
     expect(v.gateLog).toEqual([]);
   });
 
-  test("budget exhaustion beats a CLEAR verdict (P7: contract breach stops the line)", () => {
+  test("budget exhaustion + explicit CLEAR → success + materialize with an over-envelope warning", () => {
     const v = classify({ timedOut: false, budgetOutcome: exhausted, gateVerdict: cleared });
+    expect(v.outcome).toBe("success");
+    expect(v.materialize).toBe(true);
+    expect(v.overEnvelope).toBe(true);
+    expect(v.gateLog).toEqual([]);
+  });
+
+  test("a gate STOP still fails and discards when the budget is also exhausted", () => {
+    const v = classify({ timedOut: false, budgetOutcome: exhausted, gateVerdict: stopped });
+    expect(v.outcome).toBe("gate-failed");
+    expect(v.materialize).toBe(false);
+    expect(v.overEnvelope).toBeUndefined();
+    expect(v.gateLog).toEqual([{ gate: "value", passed: false, detail: "<plan>: plan has no tickets" }]);
+  });
+
+  test("budget exhaustion without an explicit gate CLEAR remains censored and does not materialize", () => {
+    const v = classify({ timedOut: false, budgetOutcome: exhausted, gateVerdict: null });
     expect(v.outcome).toBe("budget-exhausted");
     expect(v.materialize).toBe(false);
+    expect(v.overEnvelope).toBeUndefined();
+    expect(v.gateLog).toEqual([]);
   });
 
   test("a gate STOP (in budget) → gate-failed, no materialize, one failed gate row", () => {
     const v = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: stopped });
     expect(v.outcome).toBe("gate-failed");
     expect(v.materialize).toBe(false);
+    expect(v.overEnvelope).toBeUndefined();
     expect(v.gateLog).toEqual([{ gate: "value", passed: false, detail: "<plan>: plan has no tickets" }]);
   });
 
@@ -56,6 +76,7 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
     const v = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: cleared });
     expect(v.outcome).toBe("success");
     expect(v.materialize).toBe(true);
+    expect(v.overEnvelope).toBeUndefined();
     expect(v.gateLog).toEqual([]);
   });
 
@@ -63,6 +84,7 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
     const v = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: clearedNamed });
     expect(v.outcome).toBe("success");
     expect(v.materialize).toBe(true);
+    expect(v.overEnvelope).toBeUndefined();
     expect(v.gateLog).toEqual([
       { gate: "value", passed: true },
       { gate: "allocation", passed: true },
