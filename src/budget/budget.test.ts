@@ -3,6 +3,7 @@ import {
   BUDGET_EXHAUSTED,
   type Budget,
   check,
+  COST_WEIGHTS,
   countTokens,
   TIMEOUT_HEADROOM,
   timeoutMsFor,
@@ -43,6 +44,37 @@ describe("countTokens", () => {
 
   test("coerces non-finite fields to 0", () => {
     expect(countTokens({ input_tokens: NaN, output_tokens: 10 })).toBe(10);
+  });
+});
+
+describe("COST_WEIGHTS", () => {
+  test("pins the confirmed cost-weight vector (guards against parity drift)", () => {
+    // The confirmed ratios, not the {~0.1/1.25/~5} starting guesses — silent drift back to
+    // parity (all 1.0) or to wrong ratios fails the gate.
+    expect(COST_WEIGHTS).toEqual({
+      input: 1.0,
+      cache_read: 0.1,
+      cache_creation: 1.25,
+      output: 5.0,
+    });
+  });
+
+  test("input is the numeraire (1.0) — every other weight is a ratio to it", () => {
+    expect(COST_WEIGHTS.input).toBe(1.0);
+  });
+
+  test("the load-bearing price relationships hold", () => {
+    // output is 5× input (the lineup-wide 1:5 ratio)
+    expect(COST_WEIGHTS.output).toBe(5 * COST_WEIGHTS.input);
+    // cached context is CHEAP — the whole reason for the reweight (~0.1× a fresh input token)
+    expect(COST_WEIGHTS.cache_read).toBeLessThan(COST_WEIGHTS.input);
+    expect(COST_WEIGHTS.cache_read).toBeCloseTo(0.1 * COST_WEIGHTS.input);
+    // a cache write costs just above a fresh input token
+    expect(COST_WEIGHTS.cache_creation).toBeGreaterThan(COST_WEIGHTS.input);
+  });
+
+  test("is a frozen, shared read-only singleton", () => {
+    expect(Object.isFrozen(COST_WEIGHTS)).toBe(true);
   });
 });
 

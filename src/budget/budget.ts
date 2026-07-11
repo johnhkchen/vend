@@ -109,6 +109,48 @@ export function timeoutMsFor(budget: Budget): number {
 }
 
 /**
+ * Cost weight for one token bucket, RELATIVE to a fresh input token (the numeraire, 1.0).
+ * Keys are the {@link Usage} sub-count stems; a consumer maps stem → field
+ * (`cache_read` → `cache_read_input_tokens`) at the call site.
+ */
+export interface CostWeights {
+  readonly input: number;
+  readonly cache_read: number;
+  readonly cache_creation: number;
+  readonly output: number;
+}
+
+/**
+ * Canonical cost-weight vector — every token bucket priced RELATIVE to a fresh input token
+ * (the numeraire, 1.0). The single source every cost-weighted count reads (the cost-weighted
+ * `countTokens`, run-log's `totalTokens` mirror, the parity→cost re-denominated ceilings).
+ * Cache reads dominate a grown board's token sum but cost ~a tenth of a fresh input token, so
+ * summing the four buckets at PARITY makes a bigger board read as a runaway; weighting by cost
+ * makes the meter measure cost (E-068).
+ *
+ * PRICING BASIS (confirmed against current Claude pricing at implement time; executor = Opus 4.8):
+ *   input          $5.00 /MTok  → 1.0   (numeraire)
+ *   output         $25.00/MTok  → 5.0   (5× input — holds lineup-wide: Opus 4.8 $5/$25,
+ *                                        Sonnet 5 $3/$15, Haiku 4.5 $1/$5, Fable 5 $10/$50)
+ *   cache_read     $0.50 /MTok  → 0.1   (fixed API-wide 0.1× base-input read multiplier)
+ *   cache_creation $6.25 /MTok  → 1.25  (fixed 1.25× base-input write multiplier at the default
+ *                                        5-min ephemeral TTL; the ledger's single cache_creation
+ *                                        bucket does not distinguish TTL, so the default-TTL
+ *                                        multiplier is the canonical weight)
+ *
+ * MODEL-INVARIANT: expressed as ratios to input, and the whole current lineup shares the 1:5
+ * input:output ratio and the fixed cache multipliers, so an executor swap does not move this
+ * vector. If a future model ever breaks that pattern, it is a new ticket with data behind it,
+ * not speculative per-model scaffolding now.
+ */
+export const COST_WEIGHTS: CostWeights = Object.freeze({
+  input: 1.0,
+  cache_read: 0.1,
+  cache_creation: 1.25,
+  output: 5.0,
+});
+
+/**
  * The single definition of "spent": the sum of all four token sub-counts. A hard
  * contract must not undercount — every token in any bucket (incl. cache traffic)
  * is a token the run moved through the model. Exported so the runner/log share one
