@@ -12,23 +12,24 @@ TypeScript on **Bun**. Playbooks are typed code-as-config (a TS module that decl
 
 ```bash
 bun install        # install dependencies
-bun run build      # typecheck + bundle
-bun test           # run tests
-bun run lint       # lint + format check
+bun run check      # THE gate: BAML codegen + typecheck + full test suite — must be green before any commit
+bun test           # tests only
+bun run build      # typecheck
 ```
 
-*(Commands are the intended conventions; they become live once the project is scaffolded in the first epic.)*
-
-
+Bun is pinned ≥ 1.3.13 (`.github/release-target.env`); do not upgrade it — 1.3.14 segfaults under the BAML native addon.
 
 ### Directory Conventions
 
 ```
-docs/active/tickets/    # Ticket files (markdown with YAML frontmatter)
+docs/active/epic/       # Epic cards (markdown with YAML frontmatter)
 docs/active/stories/    # Story files (same frontmatter pattern)
+docs/active/tickets/    # Ticket files (same frontmatter pattern)
 docs/active/work/       # Work artifacts, one subdirectory per ticket ID
 ```
 
 ---
 
-The RDSPI workflow definition is in docs/knowledge/rdspi-workflow.md and is injected into agent context by lisa automatically.
+The RDSPI workflow definition is in docs/knowledge/rdspi-workflow.md and is injected into agent context by lisa automatically. Read your ticket's story (the `story:` frontmatter, under `docs/active/stories/`) before research — it carries the contract: scope, acceptance, honest boundary, out-of-slice.
+
+`AGENTS.md` is this file's counterpart for Codex workers (self-contained — it inlines what lisa injects). When editing shared content here, mirror it there.
