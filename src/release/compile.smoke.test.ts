@@ -60,7 +60,7 @@ describe("compiled vend binary — self-contained from an empty dir (T-062-02)",
     expect(r.exitCode).toBe(0);
     const printed = r.stdout.toString().trim();
     expect(printed).toBe(VERSION);
-    expect(printed).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(printed).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
     expect(printed).not.toBe("0.0.0");
   });
 

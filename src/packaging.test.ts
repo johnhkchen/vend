@@ -12,7 +12,7 @@ const pkg = JSON.parse(await Bun.file(join(root, "package.json")).text());
 test("version is a real semver, not the 0.0.0 placeholder", () => {
   expect(typeof pkg.version).toBe("string");
   expect(pkg.version).not.toBe("0.0.0");
-  expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
+  expect(pkg.version).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
 });
 
 test("the `private` marker is absent — the package is publishable", () => {

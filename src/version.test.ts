@@ -30,7 +30,7 @@ const VERSION_MODULE = join(import.meta.dir, "version.ts");
 describe("VERSION embed (T-061-02)", () => {
   test("equals the manifest version — a real semver, not the 0.0.0 placeholder", () => {
     expect(VERSION).toBe(pkg.version);
-    expect(VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
     expect(VERSION).not.toBe("0.0.0");
   });
 });
