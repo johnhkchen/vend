@@ -3,6 +3,12 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.1 — 2026-07-11
+
+- The budget meter now measures true cost: cached context is no longer counted as full-price tokens, so `vend chain` on a board that has grown stops tripping false budget-exhausted stops — big boards clear on default budgets (release candidate; try your previously-failing chains).
+- A run that finishes its work and passes its gates but overshoots the envelope now lands with a warning on its record instead of being thrown away.
+- `vend doctor` flags orphan epics — an epic card left with zero stories/tickets by a failed decompose no longer hides in a green board.
+
 ## 0.3.0 — 2026-07-10
 
 - Stories come off `decompose-epic` as real contracts — scope, acceptance, honest boundary, why-these-tickets, out-of-slice — instead of ten-line shells, and a gate stops a shell story before anything lands on your board.
