@@ -4,9 +4,9 @@
 
 Research, Design, Structure, Plan, and implementation are complete.
 
-Focused tests and TypeScript checking are green.
+Focused tests, TypeScript checking, and the full repository gate are green.
 
-The implementation commit and full repository gate remain before Review.
+The implementation is committed. Review is the only remaining phase.
 
 ## Research completed
 
@@ -190,10 +190,43 @@ behavior from accidentally authorizing an exhausted cast.
 No runner or recalibration test was added because those effects and integration proof belong to
 T-068-02-03.
 
+## Implementation commit
+
+Committed the two mirrored cores, their tests, and this progress artifact:
+
+```text
+6f7b6c7 feat(cast): warn and materialize cleared overshoots (T-068-02-02)
+```
+
+The staged path review contained only the five planned files.
+
+Unrelated Lisa and concurrent-ticket worktree changes were not staged.
+
+## Full repository gate
+
+Ran:
+
+```text
+bun run check
+```
+
+Result:
+
+```text
+BAML generation: pass
+TypeScript: pass
+1599 pass
+1 skip
+0 fail
+4779 expect() calls
+1600 tests across 108 files
+```
+
+The single skip is the existing release acceptance test requiring local `dist/` artifacts.
+
+No generated BAML client diff remained after the gate.
+
 ## Remaining
 
-1. Inspect the path-limited implementation diff.
-2. Commit production changes, tests, and this progress artifact.
-3. Run `bun run check`.
-4. Write `review.md` with final evidence and successor concerns.
-5. Commit the Review artifact without changing ticket frontmatter.
+1. Write `review.md` with final evidence and successor concerns.
+2. Commit the Review artifact without changing ticket frontmatter.
