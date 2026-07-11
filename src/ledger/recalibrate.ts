@@ -213,18 +213,19 @@ export const MEASUREMENT_HEADROOM = 2;
  *  next heavy run finish. Cold-start (`source: "prior"`) is always under-calibrated regardless. */
 export const CENSORED_WIDEN_RATE = 1 / 3;
 
-/** Rational-band FLOOR on the funding guard's TOKEN dimension (E-053). Below this we don't care —
- *  every cast is funded at least this many tokens, so a too-tight p90 (a well-calibrated play funds
- *  at its bare p90 with no headroom — correct per E-050, but ~10% of runs exceed it) never starves a
- *  real cast on a tail draw (the `vend chain` propose that budget-exhausted at 176k against a 170k
- *  envelope). Finite positive int (P7). Overridable per call via {@link FundingOptions.floorTokens}. */
-export const FUNDING_FLOOR_TOKENS = 350_000;
+/** Rational-band FLOOR on the funding guard's TOKEN cost dimension (E-053/E-068). Below this we
+ *  don't care — every cast is funded at least this many fresh-input-token-equivalent cost units, so
+ *  a too-tight p90 never starves a real cast on a tail draw. The old ~170–176k parity-counted
+ *  propose class recomputes to ~83k cost units; 175k preserves roughly 2× room for it under the
+ *  price-true meter. Finite positive int (P7). Overridable via {@link FundingOptions.floorTokens}. */
+export const FUNDING_FLOOR_TOKENS = 175_000;
 
-/** Rational-band CEILING on the funding guard's TOKEN dimension (E-053). The hard P7 wall: no cast is
- *  ever funded beyond this — runaway self-funding (E-051's decompose ran to ~733k under
- *  `maxCensoredActual × headroom`, unbounded by anything but the observed tail) is rejected here.
- *  Finite positive int, `> FUNDING_FLOOR_TOKENS` (P7). Overridable via {@link FundingOptions.ceilingTokens}. */
-export const FUNDING_CEILING_TOKENS = 700_000;
+/** Rational-band CEILING on the funding guard's TOKEN cost dimension (E-053/E-068). The hard P7
+ *  wall: no cast is ever funded beyond this. The old ~700–733k parity-counted decompose runaway
+ *  class recomputes to ~328–345k cost units in the recorded bucket data, so 350k rejects further
+ *  headroom-driven self-funding at its true-cost magnitude. Finite positive int,
+ *  `> FUNDING_FLOOR_TOKENS` (P7). Overridable via {@link FundingOptions.ceilingTokens}. */
+export const FUNDING_CEILING_TOKENS = 350_000;
 
 /** Knobs for {@link fundingEnvelope}; all default to the module constants. */
 export interface FundingOptions {

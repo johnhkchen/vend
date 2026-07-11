@@ -12,7 +12,7 @@ import { fundedStepDefault, resolveStepBudgets } from "./chain-propose-decompose
 import { allocate, canAfford } from "../budget/wallet.ts";
 import { fitNext } from "../engine/spend-core.ts";
 
-// T-053-02: confirm the rational funding band [350k, 700k] (T-053-01) makes the budget rational
+// T-053-02/T-068-01-04: confirm the rational funding band [175k, 350k] cost units makes the budget rational
 // END-TO-END — through the real cast-funding path (`fundedStepDefault` / `resolveStepBudgets`, the rung
 // a bare `vend chain` step RUNS under) AND that the price/authorization path stays UNBANDED (the
 // macro-wallet AUTHORIZES on the honest p90 sum, never the band — GUARD ≠ PRICE, IA-8 / P7).
@@ -54,19 +54,19 @@ const PROPOSE_PRIOR: Budget = { timeMs: 1_800_000, tokens: 150_000 };
 const DECOMPOSE_PRIOR: Budget = { timeMs: 7_200_000, tokens: 120_000 };
 
 // The real numbers the epic exists for:
-const PROPOSE_P90 = 169_873; // the well-calibrated propose envelope that budget-exhausted on a tail draw
-const PROPOSE_EXHAUSTED_ACTUAL = 176_101; // the 3.6% tail draw that halted the `vend chain` at the 170k guard
-const DECOMPOSE_CENSORED = 366_500; // an E-051 censored actual; × MEASUREMENT_HEADROOM(2) = 733_000 self-fund
+const PROPOSE_P90 = 82_954; // upper recorded propose class after parity -> cost re-denomination
+const PROPOSE_EXHAUSTED_ACTUAL = 86_000; // representative 3.6% cost-unit tail above that price
+const DECOMPOSE_CENSORED = 328_141; // recorded heavy cost actual; × headroom(2) exceeds the 350k wall
 
 /** 10 ascending successes, 0 censored ⇒ `source: "measured"`; the 9th value (nearest-rank p90 at
- *  idx = ceil(0.9·10)−1 = 8) is exactly PROPOSE_P90, so the priced envelope is the bare ~170k p90. */
+ *  idx = ceil(0.9·10)−1 = 8) is exactly PROPOSE_P90, so the priced envelope is the bare ~83k cost p90. */
 const proposeRecords = (): RunRecord[] => {
   const tokens = [1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, PROPOSE_P90, 200_000];
   return tokens.map((t) => recordOf({ play: "propose-epic", tokens: t }));
 };
 
 /** 2 successes (< cold-start threshold ⇒ `source: "prior"`) + 1 censored run logging DECOMPOSE_CENSORED
- *  — the under-calibrated shape whose funding computes ~733k (capped by the 700k ceiling). */
+ *  — the under-calibrated shape whose funding computes ~656k cost (capped by the 350k ceiling). */
 const decomposeRecords = (): RunRecord[] => [
   recordOf({ play: "decompose-epic", tokens: 60_000 }),
   recordOf({ play: "decompose-epic", tokens: 60_000 }),
@@ -75,20 +75,20 @@ const decomposeRecords = (): RunRecord[] => [
 
 describe("T-053-02 — rational band, end-to-end through the cast-funding path", () => {
   describe("AC#1 — the floor fixes the `vend chain` halt", () => {
-    test("well-calibrated propose p90 ~170k funds at the 350k floor through fundedStepDefault", () => {
+    test("well-calibrated propose p90 ~83k cost funds at the 175k floor through fundedStepDefault", () => {
       const records = proposeRecords();
 
       // The PRICE is the bare measured p90 — too tight: a tail draw exceeds it (the halt).
       const priced = recalibrate("propose-epic", records, "standard", PROPOSE_PRIOR);
       expect(priced.source).toBe("measured");
       expect(priced.envelope.tokens).toBe(PROPOSE_P90);
-      expect(PROPOSE_EXHAUSTED_ACTUAL).toBeGreaterThan(priced.envelope.tokens); // 176k > the 170k guard
+      expect(PROPOSE_EXHAUSTED_ACTUAL).toBeGreaterThan(priced.envelope.tokens); // cost-unit tail > price
 
       // The FUNDING (default band, the real cast path) floors it so the tail draw never starves the cast.
       const funded = fundedStepDefault(records, "propose-epic", PROPOSE_PRIOR);
-      expect(funded.tokens).toBe(FUNDING_FLOOR_TOKENS); // 350k
-      expect(funded.tokens).toBeGreaterThanOrEqual(350_000);
-      expect(PROPOSE_EXHAUSTED_ACTUAL).toBeLessThan(funded.tokens); // 176k now FITS — the halt cannot recur
+      expect(funded.tokens).toBe(FUNDING_FLOOR_TOKENS); // 175k cost
+      expect(funded.tokens).toBeGreaterThanOrEqual(FUNDING_FLOOR_TOKENS);
+      expect(PROPOSE_EXHAUSTED_ACTUAL).toBeLessThan(funded.tokens); // cost-unit tail now FITS
       expect(funded.timeMs).toBe(priced.envelope.timeMs); // wall-clock untouched (tokens-only band)
     });
 
@@ -104,15 +104,15 @@ describe("T-053-02 — rational band, end-to-end through the cast-funding path",
   });
 
   describe("AC#2 — the ceiling caps the runaway", () => {
-    test("under-calibrated decompose funding ~733k is capped at exactly the 700k ceiling", () => {
+    test("under-calibrated decompose headroom is capped at exactly the 350k cost ceiling", () => {
       const records = decomposeRecords();
 
       const priced = recalibrate("decompose-epic", records, "standard", DECOMPOSE_PRIOR);
       expect(priced.source).toBe("prior"); // 2 successes < cold-start threshold
 
-      // Funding would compute max(120k, 366_500 × 2 = 733_000) = 733_000 → capped at the hard P7 wall.
+      // Funding computes max(120k, 328_141 × 2 = 656_282) → capped at the hard P7 wall.
       const funded = fundedStepDefault(records, "decompose-epic", DECOMPOSE_PRIOR);
-      expect(funded.tokens).toBe(FUNDING_CEILING_TOKENS); // 700k, not 733k
+      expect(funded.tokens).toBe(FUNDING_CEILING_TOKENS); // 350k, not 656k
       expect(funded.tokens).toBeLessThan(DECOMPOSE_CENSORED * MEASUREMENT_HEADROOM); // strictly capped
     });
   });
@@ -123,22 +123,22 @@ describe("T-053-02 — rational band, end-to-end through the cast-funding path",
     const decomposeResult = recalibrate("decompose-epic", decomposeRecords(), "standard", DECOMPOSE_PRIOR);
     const price = sumPrice(proposeResult.envelope, decomposeResult.envelope);
 
-    const BANDED_FUNDING_SUM = FUNDING_FLOOR_TOKENS + FUNDING_CEILING_TOKENS; // 1_050_000 — NOT the gate base
+    const BANDED_FUNDING_SUM = FUNDING_FLOOR_TOKENS + FUNDING_CEILING_TOKENS; // 525k — NOT the gate base
     const ampleTime = Number.MAX_SAFE_INTEGER; // keep time out of the way so only tokens decide canAfford
 
     test("the authorization PRICE is the unbanded p90 sum, never the banded funding sum", () => {
-      expect(price.tokens).toBe(PROPOSE_P90 + DECOMPOSE_PRIOR.tokens); // 289_873 — the honest p90 sum
+      expect(price.tokens).toBe(PROPOSE_P90 + DECOMPOSE_PRIOR.tokens); // 202_954 — the honest p90 sum
       expect(price.tokens).toBeLessThan(BANDED_FUNDING_SUM); // the band never leaked into the gate base
     });
 
     test("a wallet sized BETWEEN price and banded funding still affords (gates on price)", () => {
-      const wallet = allocate({ timeMs: ampleTime, tokens: 300_000 }); // 289_873 < 300k < 1_050_000
+      const wallet = allocate({ timeMs: ampleTime, tokens: 250_000 }); // 202_954 < 250k < 525k
       expect(canAfford(wallet, price)).toBe(true);
       expect(fitNext(wallet, ["signal"], () => price)).toBe("signal"); // authorized — banded funding would refuse
     });
 
-    test("a wallet BELOW price is refused (gates on the real price magnitude, not the 350k floor)", () => {
-      const wallet = allocate({ timeMs: ampleTime, tokens: 250_000 }); // 250k < 289_873
+    test("a wallet BELOW price is refused (gates on the real price magnitude, not the 175k floor)", () => {
+      const wallet = allocate({ timeMs: ampleTime, tokens: 200_000 }); // 200k < 202_954
       expect(canAfford(wallet, price)).toBe(false);
       expect(fitNext(wallet, ["signal"], () => price)).toBeNull();
     });

@@ -428,7 +428,7 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
     expect(result.source).toBe("prior");
     expect(result.envelope.tokens).toBe(120_000); // the price is the prior, untouched
 
-    const { envelope, widened } = fundingEnvelope("p", records, result);
+    const { envelope, widened } = fundingEnvelope("p", records, result, WIDE_BAND);
     expect(widened).toBe(true);
     expect(envelope.tokens).toBe(264_866 * MEASUREMENT_HEADROOM); // clears the observed wall
     expect(envelope.tokens).toBeGreaterThanOrEqual(265_000); // room to finish and RECORD
@@ -528,17 +528,16 @@ describe("fundingEnvelope — measurement-funding guard (T-050-01)", () => {
   });
 });
 
-// ── T-053-01: rational funding band (clamp the TOKEN guard to [floor, ceiling]) ──────────────
+// ── T-053-01/T-068-01-04: rational funding band in cost units ───────────────────────────────
 // The E-053 band is the OUTERMOST bound on fundingEnvelope's TOKEN output, after the E-050 headroom
-// max(). The floor kills the guillotine-on-a-tail (a well-calibrated p90 ~170k that budget-exhausts on
-// a 3.6% overrun); the ceiling caps runaway self-funding (E-051's decompose to ~733k). Tokens only —
+// max(). T-068 re-denominates its old [350k, 700k] parity bounds to [175k, 350k] cost units. The floor
+// kills the guillotine-on-a-tail; the ceiling caps runaway self-funding at its true-cost magnitude. Tokens only —
 // wall-clock keeps its E-038 headroom. Price / percentile / label are untouched (guard ≠ price, IA-8).
 // Real recalibrate(...) output feeds fundingEnvelope, exactly as production wires it; pure fixtures.
 
 describe("fundingEnvelope — rational band (T-053-01)", () => {
-  test("below-floor, measured-clean ⇒ funded at the 350k floor, not widened (the propose dogfood)", () => {
-    // A well-calibrated play: 5 small successes, 0 censored ⇒ source "measured", p90 ≪ 350k. This is
-    // the `vend chain` propose that funds at its bare p90 (~170k) and budget-exhausts on a tail draw.
+  test("below-floor, measured-clean ⇒ funded at the 175k cost floor, not widened", () => {
+    // A well-calibrated play: 5 small successes, 0 censored ⇒ source "measured", p90 ≪ 175k.
     const records = Array.from({ length: 5 }, (_, i) => recordOf({ tokens: 1000 * (i + 1) }));
     const result = recalibrate("p", records, "standard", PRIOR);
     expect(result.source).toBe("measured");
@@ -550,29 +549,29 @@ describe("fundingEnvelope — rational band (T-053-01)", () => {
     expect(envelope.timeMs).toBe(result.envelope.timeMs); // wall-clock untouched
   });
 
-  test("above-ceiling, self-fund ⇒ capped at the 700k ceiling (the E-051 decompose runaway)", () => {
-    // Cold-start prior + a censored run logging ~400k ⇒ funded at 400k × headroom(2) = 800k > ceiling.
+  test("above-ceiling, self-fund ⇒ capped at the 350k cost ceiling (the P7 runaway wall)", () => {
+    // Cold-start prior + a censored run logging 200k cost ⇒ 200k × headroom(2) = 400k > ceiling.
     const records = [
       recordOf({ tokens: 1000 }),
       recordOf({ tokens: 1000 }), // 2 successes < cold-start threshold ⇒ source "prior"
-      recordOf({ tokens: 400_000, outcome: "budget-exhausted" }), // logged lower bound, right-censored
+      recordOf({ tokens: 200_000, outcome: "budget-exhausted" }), // logged lower bound, right-censored
     ];
     const result = recalibrate("p", records, "standard", PRIOR);
     expect(result.source).toBe("prior");
 
     const { envelope, widened } = fundingEnvelope("p", records, result);
-    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // 800k runaway capped at the hard P7 wall
+    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // 400k runaway capped at the hard P7 wall
     expect(widened).toBe(true); // headroom DID lift it above price — the band only caps the magnitude
   });
 
-  test("in-band ⇒ funded value unchanged (e.g. measured p90 ≈ 450k passes through)", () => {
-    const records = Array.from({ length: 5 }, () => recordOf({ tokens: 450_000 }));
+  test("in-band ⇒ funded value unchanged (e.g. measured p90 225k passes through)", () => {
+    const records = Array.from({ length: 5 }, () => recordOf({ tokens: 225_000 }));
     const result = recalibrate("p", records, "standard", PRIOR);
     expect(result.source).toBe("measured");
-    expect(result.envelope.tokens).toBe(450_000);
+    expect(result.envelope.tokens).toBe(225_000);
 
     const { envelope, widened } = fundingEnvelope("p", records, result);
-    expect(envelope.tokens).toBe(450_000); // strictly inside [350k, 700k] ⇒ neither bound binds
+    expect(envelope.tokens).toBe(225_000); // strictly inside [175k, 350k] ⇒ neither bound binds
     expect(widened).toBe(false);
   });
 
@@ -580,7 +579,7 @@ describe("fundingEnvelope — rational band (T-053-01)", () => {
     const records = [
       recordOf({ tokens: 1000 }),
       recordOf({ tokens: 1000 }),
-      recordOf({ tokens: 400_000, outcome: "budget-exhausted" }),
+      recordOf({ tokens: 200_000, outcome: "budget-exhausted" }),
     ];
     const result = recalibrate("p", records, "standard", PRIOR);
     const envelopeSnapshot = { ...result.envelope };
@@ -597,11 +596,11 @@ describe("fundingEnvelope — rational band (T-053-01)", () => {
     const records = [
       recordOf({ tokens: 100 }),
       recordOf({ tokens: 100 }), // cold-start ⇒ source "prior"
-      recordOf({ tokens: 400_000, durationMs: 60_000, outcome: "budget-exhausted" }),
+      recordOf({ tokens: 200_000, durationMs: 60_000, outcome: "budget-exhausted" }),
     ];
     const result = recalibrate("p", records, "standard", prior);
     const { envelope } = fundingEnvelope("p", records, result);
-    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // 400k × 2 = 800k, capped to 700k
+    expect(envelope.tokens).toBe(FUNDING_CEILING_TOKENS); // 200k × 2 = 400k, capped to 350k
     expect(envelope.timeMs).toBe(1_000_000); // time: max(1_000_000, 120_000) = 1_000_000, never banded
   });
 
@@ -630,8 +629,8 @@ describe("fundingEnvelope — rational band (T-053-01)", () => {
       expect(c).toBeGreaterThan(0);
     }
     expect(FUNDING_FLOOR_TOKENS).toBeLessThan(FUNDING_CEILING_TOKENS);
-    expect(FUNDING_FLOOR_TOKENS).toBe(350_000);
-    expect(FUNDING_CEILING_TOKENS).toBe(700_000);
+    expect(FUNDING_FLOOR_TOKENS).toBe(175_000);
+    expect(FUNDING_CEILING_TOKENS).toBe(350_000);
   });
 });
 

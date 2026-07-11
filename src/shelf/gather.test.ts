@@ -122,10 +122,18 @@ describe("deriveReadiness / isDoneStatus — leading status word", () => {
 
 describe("budgetForTier", () => {
   test("budget ∝ value, round-trips through formatBudget", () => {
-    expect(formatBudget(budgetForTier("keystone"))).toBe("2h/80k");
-    expect(formatBudget(budgetForTier("high"))).toBe("2h/50k");
-    expect(formatBudget(budgetForTier("standard"))).toBe("1h/25k");
-    expect(formatBudget(budgetForTier("leaf"))).toBe("15m/8k");
+    expect(formatBudget(budgetForTier("keystone"))).toBe("2h/40k");
+    expect(formatBudget(budgetForTier("high"))).toBe("2h/25k");
+    expect(formatBudget(budgetForTier("standard"))).toBe("1h/13k");
+    expect(formatBudget(budgetForTier("leaf"))).toBe("15m/4k");
+  });
+  test("pins all four cost-unit hand priors", () => {
+    expect({
+      keystone: TIER_BUDGET.keystone.tokens,
+      high: TIER_BUDGET.high.tokens,
+      standard: TIER_BUDGET.standard.tokens,
+      leaf: TIER_BUDGET.leaf.tokens,
+    }).toEqual({ keystone: 40_000, high: 25_000, standard: 12_500, leaf: 4_000 });
   });
   test("keystone is fatter than leaf on both axes", () => {
     expect(TIER_BUDGET.keystone.tokens).toBeGreaterThan(TIER_BUDGET.leaf.tokens);
@@ -155,7 +163,7 @@ describe("signalsToActions", () => {
       title: "ci-cd-structural-backstop",
       tier: "high",
       readiness: "ready",
-      budget: { timeMs: 7_200_000, tokens: 50_000 },
+      budget: { timeMs: 7_200_000, tokens: 25_000 },
     });
   });
 

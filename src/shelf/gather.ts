@@ -43,14 +43,16 @@ export const MENU_CACHE_FILE = ".vend/menu.json";
  * fat, leaf thin. demand.md's envelopes are human prose (`≈2h`, `mins`), so the tier
  * IS the budget signal; these are the default envelopes `vend <sel>` opens with,
  * overridable via `--budget` (T-003-04). Calibration-pending — set from the run log's
- * measured fat tails once enough runs exist (demand.md). Renders human-scale through
- * {@link formatBudget} (`2h/80k`, `15m/8k`).
+ * measured fat tails once enough runs exist (demand.md). TOKEN values are cost units
+ * (fresh-input-token equivalents): E-068 re-denominates the old parity priors by the
+ * representative ~0.5 conversion observed in the run-log classes. Renders human-scale through
+ * {@link formatBudget} (`2h/40k`, `15m/4k`).
  */
 export const TIER_BUDGET: Record<ValueTier, Budget> = {
-  keystone: { timeMs: 7_200_000, tokens: 80_000 }, // 2h / 80k
-  high: { timeMs: 7_200_000, tokens: 50_000 }, //     2h / 50k
-  standard: { timeMs: 3_600_000, tokens: 25_000 }, // 1h / 25k
-  leaf: { timeMs: 900_000, tokens: 8_000 }, //        15m / 8k
+  keystone: { timeMs: 7_200_000, tokens: 40_000 }, // 2h / 40k cost
+  high: { timeMs: 7_200_000, tokens: 25_000 }, //     2h / 25k cost
+  standard: { timeMs: 3_600_000, tokens: 12_500 }, // 1h / 12.5k cost
+  leaf: { timeMs: 900_000, tokens: 4_000 }, //        15m / 4k cost
 };
 
 /** A signal row parsed from a demand.md table, before readiness/budget policy. */

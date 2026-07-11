@@ -112,7 +112,7 @@ describe("fundedStepDefault — measurement-funded default rung (T-050-02)", () 
     expect(recalibrate("decompose-epic", records, "standard", DECOMPOSE_PRIOR).envelope.tokens).toBe(120_000);
 
     // NEW path: funded ≥ the observed 264_866 × headroom — room to finish and RECORD a success.
-    const funded = fundedStepDefault(records, "decompose-epic", DECOMPOSE_PRIOR);
+    const funded = fundedStepDefault(records, "decompose-epic", DECOMPOSE_PRIOR, CHAIN_DEFAULT_TIER, WIDE_BAND);
     expect(funded.tokens).toBe(264_866 * MEASUREMENT_HEADROOM);
     expect(funded.tokens).toBeGreaterThanOrEqual(265_000);
   });
