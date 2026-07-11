@@ -395,8 +395,9 @@ export function renderStoryFile(
 
 /**
  * Write a cleared WorkPlan to disk. The single IMPURE verb — composes the pure render
- * pair with `mkdir -p` + `writeFile`. Not unit-tested (its logic is the tested render
- * pair). Only called on a CLEAR verdict; the runner never reaches here on a STOP.
+ * pair with `mkdir -p` + `writeFile`. Fixture-tested through this public boundary while
+ * pure rendering judgments remain pinned separately. Only called on a CLEAR verdict;
+ * the runner never reaches here on a STOP.
  *
  * THREE pre-write guards, input before identity before content, all refusing BEFORE the first
  * `mkdir`/`writeFile` so a refused plan materializes nothing — "no partial
