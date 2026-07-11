@@ -1,12 +1,21 @@
-import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type {
+  DraftPhase,
+  DraftPriority,
+  DraftStatus,
+  DraftType,
+  WorkPlan,
+} from "../../baml_client/index.ts";
 import { castPlay } from "./cast.ts";
 import { reviveRecord, totalTokens } from "../log/run-log.ts";
 import type { Play } from "./play.ts";
 import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
+import { decomposeEffect } from "../play/decompose-effect.ts";
+import type { DecomposeInputs } from "../play/project-context.ts";
 
 // Integration proof for the executor seam (T-035-01, AC#3): a STUB executor injected through
 // `castPlay` casts a play end to end — onMessage fires, a ResultMessage flows back, and the
@@ -111,6 +120,68 @@ function boardPlanPlay(): Play<{ epic: string }, BoardPlanFixture> {
   };
 }
 
+const SEAT_CHARTER = "- **P4 — Autonomy by default, not supervision.** Work proceeds against gates.\n";
+
+/** A complete addon-free decompose plan: every story contract field and ticket field the real
+ *  materializer consumes is present, while generated BAML symbols remain type-only. */
+const SEAT_PLAN: WorkPlan = {
+  stories: [{
+    id: "S-070-99",
+    title: "default-an-unknown-seat",
+    type: "Task" as DraftType,
+    status: "Open" as DraftStatus,
+    priority: "High" as DraftPriority,
+    tickets: ["T-070-99-01"],
+    scope: "Preserve a cleared board when a requested routing seat is unknown (P4).",
+    storyAcceptance: "The full board lands with honest requested-versus-default provenance.",
+    honestBoundary: "Fixture-proven and token-free; no live executor is used.",
+    waveRationale: "One ticket owns the complete cast-boundary proof.",
+    outOfSlice: "Adding seats or changing Lisa dispatch.",
+  }],
+  tickets: [{
+    id: "T-070-99-01",
+    story: "S-070-99",
+    title: "record-the-default",
+    type: "Task" as DraftType,
+    status: "Open" as DraftStatus,
+    priority: "High" as DraftPriority,
+    phase: "Ready" as DraftPhase,
+    depends_on: [],
+    purpose: "Keep autonomous materialization available under a safe default (P4).",
+    advances: ["P4"],
+    doneSignal: "The default-byte ticket lands and its run record names the fallback.",
+  }],
+};
+
+/** A BAML-free decompose-shaped play that drives the REAL effect/materializer. Lisa validation is
+ *  injected as a successful fixture, so the only executor is castPlay's token-free stub. */
+function seatDefaultPlay(): Play<DecomposeInputs, WorkPlan> {
+  return {
+    name: "seat-default-fixture",
+    summary: "materialize a complete fixture plan through the decompose effect",
+    render: (inputs) => `decompose fixture: ${inputs.epic}`,
+    parse: (text) => JSON.parse(text) as WorkPlan,
+    gates: () => ({ status: "clear", cleared: ["fixture-contract"] }),
+    effect: (plan, ctx) => decomposeEffect(plan, ctx, async () => ({ ok: true, output: "" })),
+    budget: BIG_BUDGET,
+    card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
+  };
+}
+
+/** Capture process-global cast output for one awaited action and always restore the writer. */
+async function captureStdout<T>(action: () => Promise<T>): Promise<{ result: T; stdout: string }> {
+  const chunks: string[] = [];
+  const write = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  try {
+    return { result: await action(), stdout: chunks.join("") };
+  } finally {
+    write.mockRestore();
+  }
+}
+
 test("castPlay: a stub executor injected through castPlay casts a play end to end", async () => {
   const root = await tmp();
   const seen: StreamMessage[] = [];
@@ -189,6 +260,73 @@ test("castPlay: a gates-cleared token overshoot writes story/ticket files and lo
   const revived = reviveRecord(rec);
   expect(revived?.overEnvelope).toBe(true);
   expect(totalTokens(revived!)).toBeGreaterThan(revived!.envelope!.tokens);
+});
+
+test("castPlay: an unknown requested seat materializes the default-byte board, records it, and warns (T-070-01-03 AC)", async () => {
+  const baselineRoot = await tmp();
+  const degradedRoot = await tmp();
+  const baselineLog = join(baselineRoot, "runs.jsonl");
+  const degradedLog = join(degradedRoot, "runs.jsonl");
+  const resultText = JSON.stringify(SEAT_PLAN);
+  const baselineInputs: DecomposeInputs = {
+    epic: "E-070 fixture",
+    charter: SEAT_CHARTER,
+    project: "fixture project",
+  };
+
+  const baseline = await castPlay(seatDefaultPlay(), baselineInputs, BIG_BUDGET, {
+    subject: "E-070",
+    projectRoot: baselineRoot,
+    transcriptDir: baselineRoot,
+    runLogPath: baselineLog,
+    executor: stubExecutor([], resultText),
+  });
+  const degraded = await captureStdout(() => castPlay(
+    seatDefaultPlay(),
+    { ...baselineInputs, agent: "kodex" },
+    BIG_BUDGET,
+    {
+      subject: "E-070",
+      projectRoot: degradedRoot,
+      transcriptDir: degradedRoot,
+      runLogPath: degradedLog,
+      executor: stubExecutor([], resultText),
+    },
+  ));
+
+  expect(baseline.outcome).toBe("success");
+  expect(baseline.materialized).toBe(true);
+  expect(degraded.result.outcome).toBe("success");
+  expect(degraded.result.materialized).toBe(true);
+
+  const storyDir = join("docs", "active", "stories");
+  const ticketDir = join("docs", "active", "tickets");
+  expect(await readdir(join(baselineRoot, storyDir))).toEqual(["S-070-99.md"]);
+  expect(await readdir(join(baselineRoot, ticketDir))).toEqual(["T-070-99-01.md"]);
+  expect(await readdir(join(degradedRoot, storyDir))).toEqual(["S-070-99.md"]);
+  expect(await readdir(join(degradedRoot, ticketDir))).toEqual(["T-070-99-01.md"]);
+
+  const baselineStory = await readFile(join(baselineRoot, storyDir, "S-070-99.md"), "utf8");
+  const degradedStory = await readFile(join(degradedRoot, storyDir, "S-070-99.md"), "utf8");
+  const baselineTicket = await readFile(join(baselineRoot, ticketDir, "T-070-99-01.md"), "utf8");
+  const degradedTicket = await readFile(join(degradedRoot, ticketDir, "T-070-99-01.md"), "utf8");
+  expect(degradedStory).toBe(baselineStory);
+  expect(degradedTicket).toBe(baselineTicket);
+  expect(degradedTicket).not.toContain("\nagent:");
+
+  const baselineRecord = JSON.parse((await readFile(baselineLog, "utf8")).trim());
+  expect("seatDefaulted" in baselineRecord).toBe(false);
+  const degradedRecord = JSON.parse((await readFile(degradedLog, "utf8")).trim());
+  expect(degradedRecord.outcome).toBe("success");
+  expect(degradedRecord.seatDefaulted).toEqual({
+    requested: "kodex",
+    applied: "claude",
+    reason: "unknown-seat",
+  });
+  expect(reviveRecord(degradedRecord)?.seatDefaulted).toEqual(degradedRecord.seatDefaulted);
+  expect(degraded.stdout).toContain(
+    "· seat defaulted — requested 'kodex'; using 'claude' (unknown-seat; proceeding, recorded)\n",
+  );
 });
 
 test("castPlay: a cast WITHOUT codebase-memory-mcp writes the reduced-grounding marker into runs.jsonl (T-060-01-02 AC)", async () => {

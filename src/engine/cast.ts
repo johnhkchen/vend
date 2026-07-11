@@ -27,7 +27,7 @@ import type { Executor } from "../executor/executor.ts";
 import { executorFor } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
-import type { CastContext, GateVerdict, Play } from "./play.ts";
+import type { CastContext, GateVerdict, Play, SeatDefaulted } from "./play.ts";
 import { classify, makeStreamSink, resolveLoggedModel, resolveMaxTurns, resolveTools, resolveTurnsUsed, toolFlags } from "./cast-core.ts";
 import { readProjectMcpServers } from "./mcp-registry.ts";
 
@@ -253,10 +253,14 @@ export async function castPlay<I, O>(
   // clean outcome, mirroring the seam's non-timeout handling above.
   let materialized = false;
   let produced: string | undefined;
+  let seatDefaulted: SeatDefaulted | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
     const eff = await play.effect(output, ctx);
     materialized = eff.ok;
+    // Preserve the effect's authoritative routing disposition. The generic cast loop does not
+    // inspect play-specific inputs or re-run seat policy; it only surfaces and records the report.
+    seatDefaulted = eff.seatDefaulted;
     // Surface the produced reference ONLY when the effect actually landed — a chain threads it
     // into the next play (T-011-01); a failed (e.g. id-collision) effect surfaces nothing.
     produced = eff.ok ? eff.produced : undefined;
@@ -264,6 +268,16 @@ export async function castPlay<I, O>(
     process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
   } else if (verdict.outcome !== "success") {
     process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateVerdict, budgetOutcome)}\n`);
+  }
+
+  // The honest seat-default signal (T-070-01-03): an unknown requested routing seat did not
+  // discard the cleared board. Name requested versus applied at cast time and make clear that the
+  // successful degradation continues into the durable record below.
+  if (seatDefaulted !== undefined) {
+    process.stdout.write(
+      `· seat defaulted — requested '${seatDefaulted.requested}'; using '${seatDefaulted.applied}' ` +
+        `(${seatDefaulted.reason}; proceeding, recorded)\n`,
+    );
   }
 
   // The live Settle warning (T-068-02-03): presence comes ONLY from the pure classifier; the
@@ -327,6 +341,9 @@ export async function castPlay<I, O>(
       // One authoritative warning fact (T-068-02-03): forward the classifier marker rather than
       // re-deriving it from meter/gate state. Unmarked casts omit the key (one-way record contract).
       ...(verdict.overEnvelope ? { overEnvelope: true } : {}),
+      // The effect's authoritative routing disposition (T-070-01-03). Forward the exact report;
+      // absence omits the key so ordinary and historical records retain their existing shape.
+      ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
