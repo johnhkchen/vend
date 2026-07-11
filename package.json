@@ -6,7 +6,7 @@
     "vend": "./src/cli.ts"
   },
   "engines": {
-    "bun": ">=1.3.9"
+    "bun": ">=1.3.13"
   },
   "scripts": {
     "check:test": "bun test",
@@ -29,7 +29,7 @@
     "release:publish": "bun run src/release/publish.ts"
   },
   "dependencies": {
-    "@boundaryml/baml": "^0.222.0",
+    "@boundaryml/baml": "^0.223.0",
     "envinfo": "^7.21.0"
   },
   "devDependencies": {

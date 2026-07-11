@@ -18,7 +18,7 @@ jobs:
     # Apple Silicon; macos-13 is x86_64. The binary must be built on arm64 to match.
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Load pinned release target
         # The literal reference to the SSOT pin — this is what makes the target

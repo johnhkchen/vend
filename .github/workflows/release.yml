@@ -27,7 +27,7 @@ jobs:
     # step below asserts it (runs-on cannot interpolate $GITHUB_ENV).
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Load pinned release target
         # The literal reference to the SSOT pin — what makes this CI "reference the pin".
