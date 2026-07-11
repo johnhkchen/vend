@@ -541,13 +541,44 @@ export function wallClockMs(r: RunRecord): number | null {
 }
 
 /**
- * Derived total tokens for a record: the sum of the four usage sub-counts. PURE. This
- * is the same definition as budget's `countTokens` (the single notion of "spent"); it
- * is inlined here rather than imported to preserve run-log's zero-coupling invariant.
+ * Cost-weight vector for the four token buckets, priced RELATIVE to a fresh input token
+ * (the numeraire, 1.0). A DELIBERATE INLINE MIRROR of budget.ts's exported `COST_WEIGHTS`
+ * (T-068-01-01) — duplicated, NOT imported, to preserve run-log's zero-coupling invariant
+ * (this module imports NOTHING from `src/budget/`; see the header note and {@link totalTokens}).
+ * The two copies are kept in lockstep by matching unit tests on both sides — a silent drift back
+ * to parity, or to wrong ratios, fails a guard; if budget's vector ever changes, this mirror
+ * changes with it. PRICING BASIS (confirmed against current Claude pricing, executor = Opus 4.8):
+ * input $5/MTok → 1.0 (numeraire), output $25/MTok → 5.0 (lineup-wide 1:5 input:output),
+ * cache_read $0.50/MTok → 0.1 (fixed 0.1× base-input read multiplier), cache_creation
+ * $6.25/MTok → 1.25 (fixed 1.25× base-input write multiplier at the default TTL). Private (an
+ * implementation detail of the derivation, like {@link num}); frozen (immutable shared singleton).
+ */
+const COST_WEIGHTS = Object.freeze({
+  input: 1.0,
+  cache_read: 0.1,
+  cache_creation: 1.25,
+  output: 5.0,
+});
+
+/**
+ * Derived total COST-WEIGHTED tokens for a record: each usage bucket weighted by its cost
+ * relative to a fresh input token ({@link COST_WEIGHTS}), NOT a parity sum. PURE. This is the same
+ * definition as budget's cost-weighted `countTokens` (the single notion of "spent"); it is inlined
+ * here rather than imported to preserve run-log's zero-coupling invariant (run-log ⊥ budget). Cache
+ * reads dominate a grown board's raw token sum but cost ~a tenth of a fresh input token, so
+ * weighting by cost makes the meter measure cost, not cached context (E-068). May return a
+ * fractional value (the weights are fractional); consumers `Math.ceil` / divide as needed — there
+ * is no integer contract on this derivation. `usage` is already normalized (every sub-count finite),
+ * so no re-coercion is needed here.
  */
 export function totalTokens(r: RunRecord): number {
   const u = r.usage;
-  return u.input_tokens + u.output_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens;
+  return (
+    u.input_tokens * COST_WEIGHTS.input +
+    u.output_tokens * COST_WEIGHTS.output +
+    u.cache_read_input_tokens * COST_WEIGHTS.cache_read +
+    u.cache_creation_input_tokens * COST_WEIGHTS.cache_creation
+  );
 }
 
 /**

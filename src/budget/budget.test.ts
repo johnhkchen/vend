@@ -17,7 +17,8 @@ import { allocate, canAfford } from "./wallet.ts";
 const budget = (timeMs: number, tokens: number): Budget => ({ timeMs, tokens });
 
 describe("countTokens", () => {
-  test("sums all four sub-counts", () => {
+  test("cost-weights all four sub-counts", () => {
+    // 100·1.0 + 50·5.0 + 1000·0.1 + 20·1.25 = 100 + 250 + 100 + 25 = 475
     expect(
       countTokens({
         input_tokens: 100,
@@ -25,11 +26,12 @@ describe("countTokens", () => {
         cache_read_input_tokens: 1000,
         cache_creation_input_tokens: 20,
       }),
-    ).toBe(1170);
+    ).toBe(475);
   });
 
   test("treats missing fields as 0", () => {
-    expect(countTokens({ input_tokens: 100, output_tokens: 50 })).toBe(150);
+    // 100·1.0 + 50·5.0 = 350
+    expect(countTokens({ input_tokens: 100, output_tokens: 50 })).toBe(350);
   });
 
   test("empty usage is 0", () => {
@@ -37,13 +39,56 @@ describe("countTokens", () => {
   });
 
   test("counts cache-only usage (the decision vs input+output-only)", () => {
+    // 800·0.1 + 200·1.25 = 80 + 250 = 330 — cache reads counted at a tenth, writes at 1.25×
     expect(
       countTokens({ cache_read_input_tokens: 800, cache_creation_input_tokens: 200 }),
-    ).toBe(1000);
+    ).toBe(330);
   });
 
   test("coerces non-finite fields to 0", () => {
-    expect(countTokens({ input_tokens: NaN, output_tokens: 10 })).toBe(10);
+    // NaN input → 0; 10·5.0 output = 50
+    expect(countTokens({ input_tokens: NaN, output_tokens: 10 })).toBe(50);
+  });
+});
+
+describe("countTokens — cost weighting (E-068: measure cost, not cached context)", () => {
+  // boilerplate-demo's recorded failed E-008 decompose (E-068 field report):
+  // input=14, output=23,965, cache_read=443,711 are the cited figures; cache_creation is derived
+  // so the four buckets close the recorded 525,180 parity total exactly (14+23965+443711+57490).
+  const E008_BUCKETS = {
+    input_tokens: 14,
+    output_tokens: 23_965,
+    cache_read_input_tokens: 443_711,
+    cache_creation_input_tokens: 57_490,
+  } as const;
+
+  test("cache reads count at a tenth — the AC's literal example (≈100 not 1000)", () => {
+    expect(countTokens({ cache_read_input_tokens: 1000 })).toBe(100);
+  });
+
+  test("each bucket is actually weighted (guards against a silent revert to parity)", () => {
+    // output is 5× — a parity sum would return 1000, not 5000.
+    expect(countTokens({ output_tokens: 1000 })).toBe(5000);
+    // cache_creation is 1.25×.
+    expect(countTokens({ cache_creation_input_tokens: 1000 })).toBe(1250);
+  });
+
+  test("E-008 recomputes from its recorded buckets to a cost figure below a sane ceiling", () => {
+    // The old parity sum (baseline the meter used to enforce) — documents the regression.
+    const parity =
+      E008_BUCKETS.input_tokens +
+      E008_BUCKETS.output_tokens +
+      E008_BUCKETS.cache_read_input_tokens +
+      E008_BUCKETS.cache_creation_input_tokens;
+    expect(parity).toBe(525_180);
+
+    // Cost-weighted: 14 + 119,825 + 44,371.1 + 71,862.5 = 236,072.6 → round 236,073.
+    const cost = countTokens(E008_BUCKETS);
+    expect(cost).toBe(236_073);
+
+    // The whole point: a large haircut off the 525,180 parity units, into a sane range.
+    expect(cost).toBeLessThan(525_180 * 0.5);
+    expect(cost).toBeLessThan(400_000); // fits under E-008's largest attempted ceiling
   });
 });
 
@@ -116,17 +161,19 @@ describe("timeoutMsFor", () => {
 
 describe("check — ok branch", () => {
   test("spent below ceiling is ok with remaining", () => {
-    const out = check(budget(1, 1000), { input_tokens: 600, output_tokens: 100 });
+    // 600·1.0 + 100·5.0 = 1100 cost units
+    const out = check(budget(1, 1500), { input_tokens: 600, output_tokens: 100 });
     expect(out.status).toBe("ok");
     if (out.status === "ok") {
-      expect(out.spent).toBe(700);
-      expect(out.ceiling).toBe(1000);
-      expect(out.remaining).toBe(300);
+      expect(out.spent).toBe(1100);
+      expect(out.ceiling).toBe(1500);
+      expect(out.remaining).toBe(400);
     }
   });
 
   test("spent exactly at ceiling is ok (boundary), remaining 0", () => {
-    const out = check(budget(1, 700), { input_tokens: 600, output_tokens: 100 });
+    // 600·1.0 + 100·5.0 = 1100 — ceiling set to exactly that
+    const out = check(budget(1, 1100), { input_tokens: 600, output_tokens: 100 });
     expect(out.status).toBe("ok");
     if (out.status === "ok") {
       expect(out.remaining).toBe(0);
@@ -136,13 +183,14 @@ describe("check — ok branch", () => {
 
 describe("check — exhausted branch", () => {
   test("spent over ceiling is a typed, named andon carrying the overage", () => {
+    // 600·1.0 + 100·5.0 = 1100 cost units, over a 500 ceiling
     const out = check(budget(1, 500), { input_tokens: 600, output_tokens: 100 });
     expect(out.status).toBe("exhausted");
     if (out.status === "exhausted") {
       expect(out.code).toBe(BUDGET_EXHAUSTED);
-      expect(out.spent).toBe(700);
+      expect(out.spent).toBe(1100);
       expect(out.ceiling).toBe(500);
-      expect(out.overage).toBe(200);
+      expect(out.overage).toBe(600);
     }
   });
 

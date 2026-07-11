@@ -13,8 +13,10 @@ import {
   type RunRecordInput,
   serializeRunRecord,
   totalTokens,
+  type UsageInput,
   wallClockMs,
 } from "./run-log.ts";
+import { recalibrate } from "../ledger/recalibrate.ts";
 
 // T-001-04 countable-run-log: the two PURE functions (buildRunRecord,
 // serializeRunRecord) covered to the branch with fabricated inputs — no fs, no
@@ -609,7 +611,91 @@ describe("derivations — wallClockMs and totalTokens", () => {
     expect(wallClockMs(bad!)).toBeNull();
   });
 
-  test("totalTokens sums all four usage buckets", () => {
-    expect(totalTokens(rec)).toBe(100 + 50 + 1000 + 20);
+  test("totalTokens COST-WEIGHTS the four usage buckets (not a parity sum)", () => {
+    // input·1.0 + output·5.0 + cache_read·0.1 + cache_creation·1.25
+    expect(totalTokens(rec)).toBe(100 * 1.0 + 50 * 5.0 + 1000 * 0.1 + 20 * 1.25); // = 475
+    // and it is NOT the old parity sum — the whole point of the reweight
+    expect(totalTokens(rec)).not.toBe(100 + 50 + 1000 + 20);
+  });
+});
+
+// ── T-068-01-03: totalTokens is cost-weighted, mirroring budget's COST_WEIGHTS ──────
+describe("totalTokens — cost-weighted, inline mirror of budget's COST_WEIGHTS (T-068-01-03 AC)", () => {
+  // The confirmed vector (T-068-01-01), pinned here to match budget.test.ts's COST_WEIGHTS
+  // guard. This is the drift tripwire: run-log's inline copy and budget's exported copy MUST
+  // agree, and neither may drift back to parity (all 1.0). If budget's vector changes, this and
+  // budget.test.ts's guard both change — they are kept in lockstep by test, not by a shared symbol.
+  const W = { input: 1.0, cache_read: 0.1, cache_creation: 1.25, output: 5.0 };
+
+  /** totalTokens over a record carrying exactly `usage`. */
+  const tt = (usage: UsageInput): number => totalTokens(buildRunRecord(baseInput({ usage })));
+
+  test("each single bucket is weighted by its ratio (pins the vector, guards vs parity drift)", () => {
+    // input is the numeraire — parity and cost agree here (weight 1.0)
+    expect(tt({ input_tokens: 1000 })).toBe(1000 * W.input);
+    // cache reads are CHEAP — 1000 read tokens cost ~100, not 1000 (mirrors budget's
+    // countTokens({cache_read:1000}) ≈ 100). This is the reweight's whole reason.
+    expect(tt({ cache_read_input_tokens: 1000 })).toBe(1000 * W.cache_read); // 100
+    // a cache write costs just above a fresh input token
+    expect(tt({ cache_creation_input_tokens: 1000 })).toBe(1000 * W.cache_creation); // 1250
+    // output is 5× input
+    expect(tt({ output_tokens: 1000 })).toBe(1000 * W.output); // 5000
+  });
+
+  test("a cache-dominated fixture record recomputes from parity units to a saner cost figure", () => {
+    // boilerplate-demo's recorded failed E-008 decompose buckets (the epic's exhibit):
+    // cache_read dominates (~84.5% of the parity sum) but costs ~0.1× a fresh input token.
+    const usage = {
+      input_tokens: 14,
+      output_tokens: 23_965,
+      cache_read_input_tokens: 443_711,
+      cache_creation_input_tokens: 57_490,
+    };
+    const parity = 14 + 23_965 + 443_711 + 57_490; // = 525,180 old units
+    const cost = 14 * W.input + 23_965 * W.output + 443_711 * W.cache_read + 57_490 * W.cache_creation;
+
+    const rec = buildRunRecord(baseInput({ usage }));
+    expect(totalTokens(rec)).toBeCloseTo(cost); // ≈ 236,072.6
+    // the reweight makes the cache-dominated record measure ~real cost — well under parity
+    expect(totalTokens(rec)).toBeLessThan(parity);
+    // and cheap cached context is no longer counted at parity: the shortfall is real
+    expect(parity - totalTokens(rec)).toBeGreaterThan(250_000);
+  });
+});
+
+// ── T-068-01-03: the cost reweight flows through the Ledger's recalibration for free ──
+// A read-only import of the REAL `recalibrate` (reading a module is not modifying it — no file
+// overlap with T-068-01-04, which edits recalibrate.ts's FUNDING constants). `recalibrate`'s token
+// dimension is `positiveInt(percentile(successes.map(totalTokens).sort, p))`, so once `totalTokens`
+// is cost-weighted its p90 envelope is cost-denominated over the EXISTING records — no re-run. This
+// uses `recalibrate()` (the RAW, unclamped percentile), NOT `fundingEnvelope()`, so it is
+// independent of the FUNDING_FLOOR/CEILING band (T-068-01-04) and of `countTokens` (T-068-01-02).
+describe("cost reweight flows through recalibrate — cost-denominated p90, no history re-run (T-068-01-03 AC)", () => {
+  const W = { input: 1.0, cache_read: 0.1, cache_creation: 1.25, output: 5.0 };
+  const usage = { input_tokens: 14, output_tokens: 23_965, cache_read_input_tokens: 443_711, cache_creation_input_tokens: 57_490 };
+  const parity = 14 + 23_965 + 443_711 + 57_490; // 525,180 old parity units
+  const cost = 14 * W.input + 23_965 * W.output + 443_711 * W.cache_read + 57_490 * W.cache_creation; // 236,072.6
+
+  // Five historical SUCCESS records for one play, all cache-dominated — the shape a grown board logs.
+  const { records } = readRuns(
+    ledgerOf(
+      ...[1, 2, 3, 4, 5].map((i) =>
+        baseInput({ runId: `e008-${i}`, play: "decompose-epic", outcome: "success", usage }),
+      ),
+    ),
+  );
+
+  test("recalibrate reads the existing records and returns a COST-denominated p90 token envelope", () => {
+    // A generous prior so cold-start never fires and the prior never dominates the token bound.
+    const prior = { timeMs: 600_000, tokens: 1_000_000_000 };
+    const result = recalibrate("decompose-epic", records, "standard", prior);
+
+    // measured (5 successes ≥ cold-start min) — the envelope is derived from the logged buckets,
+    // no history was re-executed to produce it.
+    expect(result.source).toBe("measured");
+    // the token envelope is the cost-weighted p90 (positiveInt = Math.ceil), NOT the parity p90.
+    expect(result.envelope.tokens).toBe(Math.ceil(cost)); // 236,073
+    // the reweight shrinks the envelope well below what a parity sum would have bound.
+    expect(result.envelope.tokens).toBeLessThan(parity); // 525,180
   });
 });

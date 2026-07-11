@@ -63,13 +63,14 @@ describe("auditWalkAway — outcome mix and andon rate", () => {
 
 describe("auditWalkAway — cost vs envelope", () => {
   test("median actual/allocated ratio over envelope-carrying successes", () => {
-    // tokens actual 200 each; envelopes 400 and 800 → ratios 0.5 and 0.25 → median 0.375.
+    // tokens actual are now COST-WEIGHTED (T-068-01-03): 100·1 input + 100·5 output = 600 each;
+    // envelopes 400 and 800 → ratios 1.5 and 0.75 → median 1.125.
     const r = auditWalkAway([
       rec({ envelope: { timeMs: 1000, tokens: 400 } }),
       rec({ envelope: { timeMs: 1000, tokens: 800 } }),
     ]);
     expect(r.cost.n).toBe(2);
-    expect(r.cost.tokens).toBeCloseTo(0.375, 5);
+    expect(r.cost.tokens).toBeCloseTo(1.125, 5);
     // wall-clock is 5 min = 300000 ms vs 1000 ms envelope → ratio 300 each → median 300.
     expect(r.cost.timeMs).toBeCloseTo(300, 5);
   });

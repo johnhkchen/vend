@@ -151,17 +151,23 @@ export const COST_WEIGHTS: CostWeights = Object.freeze({
 });
 
 /**
- * The single definition of "spent": the sum of all four token sub-counts. A hard
- * contract must not undercount — every token in any bucket (incl. cache traffic)
- * is a token the run moved through the model. Exported so the runner/log share one
- * source of truth for the number.
+ * The single definition of "spent": the run's COST, expressed in fresh-input-token-equivalents.
+ * Each of the four buckets is weighted by {@link COST_WEIGHTS} (input 1.0, cache_read 0.1,
+ * cache_creation 1.25, output 5.0) and summed, then rounded to an integer. This is NOT a raw
+ * throughput count: cache reads dominate a grown board's token sum but cost ~a tenth of a fresh
+ * input token, so summing at parity made a bigger board read as a runaway. Weighting by cost
+ * makes the P7 hard contract enforce a number that tracks dollars, not turns × cached-context
+ * (E-068). Exported so the runner/log share one source of truth for the number (run-log's
+ * `totalTokens` mirrors this same weighting). `Math.round` keeps the result an integer so every
+ * downstream balance and ledger figure stays whole; the canonical `cache_read` case is exact
+ * (1000 → 100.0 → 100).
  */
 export function countTokens(usage: Usage): number {
-  return (
-    num(usage.input_tokens) +
-    num(usage.output_tokens) +
-    num(usage.cache_read_input_tokens) +
-    num(usage.cache_creation_input_tokens)
+  return Math.round(
+    num(usage.input_tokens) * COST_WEIGHTS.input +
+      num(usage.output_tokens) * COST_WEIGHTS.output +
+      num(usage.cache_read_input_tokens) * COST_WEIGHTS.cache_read +
+      num(usage.cache_creation_input_tokens) * COST_WEIGHTS.cache_creation,
   );
 }
 

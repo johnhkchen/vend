@@ -110,7 +110,8 @@ describe("debit — Usage actual", () => {
       w,
       usage({ input_tokens: 600, output_tokens: 100, cache_read_input_tokens: 300 }),
     );
-    expect(out.wallet.remaining).toEqual({ timeMs: 30_000, tokens: 99_000 });
+    // cost-weighted countTokens: 600·1.0 + 100·5.0 + 300·0.1 = 1130 (E-068), so 100k − 1130.
+    expect(out.wallet.remaining).toEqual({ timeMs: 30_000, tokens: 98_870 });
     expect(out.overshoot).toEqual({ timeMs: 0, tokens: 0 });
   });
 
@@ -220,8 +221,9 @@ describe("debitWave — fold a concurrent wave (E-048: tokens SUM, wall-clock MA
       macro(9_000, 20_000),
       usage({ input_tokens: 1_000, output_tokens: 500 }),
     ]);
-    // tokens: 20k + 1_500 = 21_500 summed; time: MAX(9k, 0) = 9k (Usage has no time).
-    expect(out.wallet.remaining).toEqual({ timeMs: 21_000, tokens: 78_500 });
+    // cost-weighted countTokens: 1_000·1.0 + 500·5.0 = 3_500 (E-068); tokens: 20k + 3_500 =
+    // 23_500 summed; time: MAX(9k, 0) = 9k (Usage has no time).
+    expect(out.wallet.remaining).toEqual({ timeMs: 21_000, tokens: 76_500 });
     expect(out.overshoot).toEqual({ timeMs: 0, tokens: 0 });
   });
 
