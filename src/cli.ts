@@ -20,8 +20,8 @@ import { VERSION } from "./version.ts";
 
 /** Usage banner, printed on any parse error. */
 export const USAGE =
-  "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened] [--after <ticket>]\n" +
-  "       vend chain <signal> [--budget <ms>,<tokens>] [--after <ticket>]\n" +
+  "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened] [--after <ticket>] [--agent <seat>]\n" +
+  "       vend chain <signal> [--budget <ms>,<tokens>] [--after <ticket>] [--agent <seat>]\n" +
   "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
   '       vend annotate <node-id> "<feedback>" [--seat <designer|dev>]\n' +
   "       vend survey [--budget <ms>,<tokens>]\n" +
@@ -66,8 +66,18 @@ export type ParsedCommand =
        *  epic's entry tickets are born depending on. Spread only when given, so a bare run keeps
        *  its shape. (Meaningful for `decompose-epic`; other plays ignore it.) */
       readonly after?: readonly string[];
+      /** Raw Lisa executor-routing seat (`--agent`) stamped on tickets by the decompose effect.
+       *  Materialize owns seat validation; this is unrelated to the present-layer `--seat`. */
+      readonly agent?: string;
     }
-  | { readonly cmd: "chain"; readonly signal: string; readonly budget?: Budget; readonly after?: readonly string[] }
+  | {
+      readonly cmd: "chain";
+      readonly signal: string;
+      readonly budget?: Budget;
+      readonly after?: readonly string[];
+      /** Raw Lisa executor-routing seat (`--agent`) for tickets minted by the decompose step. */
+      readonly agent?: string;
+    }
   | { readonly cmd: "expand"; readonly fragment: string; readonly budget?: Budget }
   | {
       readonly cmd: "annotate";
@@ -369,6 +379,7 @@ function parseChainArgs(argv: readonly string[]): ParsedCommand {
   let budgetVal: string | undefined;
   let sawBudgetFlag = false;
   const after: string[] = [];
+  let agent: string | undefined;
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i] as string;
     if (a === "--budget") {
@@ -380,6 +391,10 @@ function parseChainArgs(argv: readonly string[]): ParsedCommand {
       const val = argv[++i];
       if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --after <ticket>" };
       after.push(...splitAfter(val));
+    } else if (a === "--agent") {
+      const val = argv[++i];
+      if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --agent <seat>" };
+      agent = val;
     } else {
       positional.push(a);
     }
@@ -405,6 +420,7 @@ function parseChainArgs(argv: readonly string[]): ParsedCommand {
     signal,
     ...(budget ? { budget } : {}),
     ...(dedupAfter.length ? { after: dedupAfter } : {}),
+    ...(agent !== undefined ? { agent } : {}),
   };
 }
 
@@ -586,11 +602,17 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
   // `--after <ticket>` (field fix #3, repeatable/comma-separated): born-blocked mint edge targets,
   // collected order-independently. A dangling value (`--after --budget`) is a usage error.
   const after: string[] = [];
+  let agent: string | undefined;
   for (let i = 3; i < argv.length; i++) {
-    if (argv[i] !== "--after") continue;
-    const val = argv[i + 1];
-    if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --after <ticket>" };
-    after.push(...splitAfter(val));
+    if (argv[i] === "--after") {
+      const val = argv[++i];
+      if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --after <ticket>" };
+      after.push(...splitAfter(val));
+    } else if (argv[i] === "--agent") {
+      const val = argv[++i];
+      if (val === undefined || val.startsWith("--")) return { cmd: "usage", error: "missing --agent <seat>" };
+      agent = val;
+    }
   }
   const dedupAfter = [...new Set(after)];
   return {
@@ -601,6 +623,7 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
     ...(skipGates ? { skipGates: true } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
     ...(dedupAfter.length ? { after: dedupAfter } : {}),
+    ...(agent !== undefined ? { agent } : {}),
   };
 }
 
@@ -714,7 +737,12 @@ if (import.meta.main) {
     // logged (two run-log records). A ProposeEpic gate STOP halts BEFORE DecomposeEpic — surfaced
     // as `halted`. Lazy import keeps the chain (and its BAML addon) off the pure-parse path.
     const { castProposeDecomposeChain } = await import("./play/chain-propose-decompose.ts");
-    const result = await castProposeDecomposeChain({ signal: parsed.signal, budget: parsed.budget, after: parsed.after });
+    const result = await castProposeDecomposeChain({
+      signal: parsed.signal,
+      budget: parsed.budget,
+      after: parsed.after,
+      agent: parsed.agent,
+    });
     for (const s of result.steps) {
       process.stdout.write(`run ${s.runId}: ${s.outcome} (materialized: ${s.materialized})\n`);
     }
@@ -951,6 +979,7 @@ if (import.meta.main) {
     skipGates: parsed.skipGates,
     intervened: parsed.intervened,
     after: parsed.after,
+    agent: parsed.agent,
   });
   if (res.kind === "no-play") {
     process.stderr.write(`${res.error.message}\n`);

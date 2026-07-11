@@ -136,6 +136,13 @@ describe("parseArgs", () => {
       budget: { timeMs: 100, tokens: 200 },
     });
   });
+  test("chain --agent carries the Lisa routing seat", () => {
+    expect(parseArgs(["chain", "sig", "--agent", "codex"])).toEqual({
+      cmd: "chain",
+      signal: "sig",
+      agent: "codex",
+    });
+  });
   test("chain with no signal → usage", () => {
     expect(parseArgs(["chain"])).toEqual({ cmd: "usage", error: "missing <signal>" });
     expect(parseArgs(["chain", "--budget", "1,2"])).toEqual({ cmd: "usage", error: "missing <signal>" });
@@ -180,6 +187,31 @@ describe("parseArgs", () => {
       budget: { timeMs: 1, tokens: 2 },
       after: ["T-011-03-02"],
     });
+  });
+  test("run decompose-epic --agent carries the Lisa routing seat alongside --budget", () => {
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--agent", "codex"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "e.md",
+      budget: { timeMs: 1, tokens: 2 },
+      agent: "codex",
+    });
+  });
+  test("dangling --agent is a usage error on both board-writing gestures", () => {
+    expect(parseArgs(["chain", "sig", "--agent"])).toEqual({ cmd: "usage", error: "missing --agent <seat>" });
+    expect(parseArgs(["chain", "sig", "--agent", "--budget", "1,2"])).toEqual({
+      cmd: "usage",
+      error: "missing --agent <seat>",
+    });
+    expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--agent"])).toEqual({
+      cmd: "usage",
+      error: "missing --agent <seat>",
+    });
+  });
+  test("usage advertises --agent on run and chain", () => {
+    const lines = USAGE.split("\n");
+    expect(lines.find((line) => line.includes("vend run <play>"))).toContain("[--agent <seat>]");
+    expect(lines.find((line) => line.includes("vend chain <signal>"))).toContain("[--agent <seat>]");
   });
   test("run --after with no value → usage", () => {
     expect(parseArgs(["run", "decompose-epic", "e.md", "--budget", "1,2", "--after"])).toEqual({
