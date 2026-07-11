@@ -7,8 +7,8 @@
 //
 // PURITY (house pattern): `buildProjectSnapshot` is PURE — given the gathered parts it
 // formats a stable, deterministic string, so its shape is test-pinned. `assembleInputs`
-// is the IMPURE verb (reads the epic + charter files, walks src/, lists ids) and is not
-// unit-tested — its logic is the pure formatter plus thin fs reads.
+// is the IMPURE verb (reads the epic + charter files, walks src/, lists ids); its optional
+// effect-input transport is fixture-tested over the pure formatter plus thin fs reads.
 
 import { readFile, readdir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
@@ -30,6 +30,9 @@ export interface ContextSources {
    *  tickets should be born depending on, so queuing behind a live loop is race-free (field fix #3).
    *  Pass-through to {@link DecomposeInputs}; the effect validates + applies. Absent ⇒ unchanged. */
   readonly after?: readonly string[];
+  /** Lisa executor-routing seat to stamp on every ticket minted by this gesture (`--agent`).
+   *  Pass-through to {@link DecomposeInputs}; the effect validates + applies. Absent ⇒ unchanged. */
+  readonly agent?: string;
 }
 
 /** The three rendered strings handed to `b.request.DecomposeEpic`, plus the optional born-blocked
@@ -41,6 +44,9 @@ export interface DecomposeInputs {
   /** Existing board ticket id(s) to block the minted epic's entry tickets on (`--after`, field fix
    *  #3); absent/empty ⇒ no born-blocked edge, byte-identical to a bare mint. */
   readonly after?: readonly string[];
+  /** Lisa executor-routing seat for every ticket minted by the effect (`--agent`); render/gates
+   *  ignore it. Absent ⇒ no routing metadata, byte-identical to a bare mint. */
+  readonly agent?: string;
 }
 
 /** The raw parts of a project snapshot, gathered impurely and formatted purely. */
@@ -184,7 +190,13 @@ export async function assembleInputs(src: ContextSources): Promise<DecomposeInpu
   ]);
 
   const project = buildProjectSnapshot({ root, srcFiles, stories, tickets });
-  // Pass `--after` targets through verbatim (the effect validates them against the live board and
-  // applies the born-blocked edges); spread only when supplied so a bare mint keeps its shape.
-  return { epic, charter, project, ...(src.after && src.after.length ? { after: src.after } : {}) };
+  // Pass optional effect inputs through verbatim; spread only when supplied so a bare mint keeps
+  // its exact object shape. The effect validates each against live board/write-side contracts.
+  return {
+    epic,
+    charter,
+    project,
+    ...(src.after && src.after.length ? { after: src.after } : {}),
+    ...(src.agent !== undefined ? { agent: src.agent } : {}),
+  };
 }
