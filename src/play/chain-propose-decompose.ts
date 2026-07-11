@@ -61,6 +61,10 @@ export interface ChainProposeDecomposeOptions {
    *  race-free. Threaded into the decompose step's inputs; the effect validates + applies. Only the
    *  DECOMPOSE step consumes it — the propose step mints the card, which carries no dependency. */
   readonly after?: readonly string[];
+  /** Lisa executor-routing seat to stamp on every ticket minted by this gesture (`--agent`).
+   *  Threaded into the decompose step's inputs; the effect validates + applies. Only the DECOMPOSE
+   *  step consumes it — the propose step mints the card, which carries no ticket routing. */
+  readonly agent?: string;
 }
 
 /**
@@ -152,7 +156,8 @@ export async function castProposeDecomposeChain(
         intervened: opts.intervened,
         transcriptDir: opts.transcriptDir,
       }),
-      adapt: async (upstream) => assembleInputs({ epicPath: upstream as string, projectRoot: root, after: opts.after }),
+      adapt: async (upstream) =>
+        assembleInputs({ epicPath: upstream as string, projectRoot: root, after: opts.after, agent: opts.agent }),
     },
   ];
 

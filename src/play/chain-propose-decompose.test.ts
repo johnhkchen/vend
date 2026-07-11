@@ -14,6 +14,7 @@ import type {
   WorkPlan,
 } from "../../baml_client/index.ts";
 import type { CastContext } from "../engine/play.ts";
+import type { ChainProposeDecomposeOptions } from "./chain-propose-decompose.ts";
 import { CHARTER_PATH, assembleInputs } from "./project-context.ts";
 import { materialize } from "./materialize.ts";
 import { EPIC_DIR, proposeEpicEffect, type ProposeEpicInputs } from "./propose-effect.ts";
@@ -27,8 +28,9 @@ import { EPIC_DIR, proposeEpicEffect, type ProposeEpicInputs } from "./propose-e
 //   (1) ProposeEpic's effect produces the minted epic PATH (the chain's thread handle);
 //   (2) feeding that exact path into DecomposeEpic's `assembleInputs` reads back the EXACT minted
 //       epic (the thread is faithful);
-//   (3) a cleared WorkPlan materializes into stories/tickets (epic → tickets);
-//   (4) the run-log subject derivation maps the minted path → the minted epic id.
+//   (3) the chain's optional agent reaches those assembled inputs, while omission stays absent;
+//   (4) a cleared WorkPlan materializes into stories/tickets (epic → tickets);
+//   (5) the run-log subject derivation maps the minted path → the minted epic id.
 // The live signal-in/tickets-out cast is the human sweep verification (AC#4).
 
 // A complete, clearing EpicCard — the shape `b.parse` yields (built directly, no model call). Its
@@ -130,6 +132,31 @@ describe("propose→decompose chain (offline) — signal → epic → tickets, t
       expect(decomposeInputs.epic).toContain(FULL_CARD.intent);
       // and the charter the bounds gate greps came through as the REAL one.
       expect(decomposeInputs.charter).toBe(CHARTER);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the chain agent option threads only into the assembled decompose inputs", async () => {
+    const root = await seedRoot([]);
+    const epicPath = join(root, "route-at-mint.md");
+    const epic = "# Route ticket work at mint\n";
+    await writeFile(epicPath, epic, "utf8");
+
+    try {
+      const withAgent: ChainProposeDecomposeOptions = { signal: "route this work", agent: "codex" };
+      // Mirrors castProposeDecomposeChain's step-2 adapter without value-importing its
+      // native-addon-bearing module.
+      const routed = await assembleInputs({ epicPath, projectRoot: root, agent: withAgent.agent });
+      expect(routed.agent).toBe("codex");
+      expect(Object.hasOwn(routed, "agent")).toBeTrue();
+      expect(routed.epic).toBe(epic);
+
+      const withoutAgent: ChainProposeDecomposeOptions = { signal: "route this work" };
+      const bare = await assembleInputs({ epicPath, projectRoot: root, agent: withoutAgent.agent });
+      expect(bare.agent).toBeUndefined();
+      expect(Object.hasOwn(bare, "agent")).toBeFalse();
+      expect(bare).toEqual({ epic, charter: CHARTER, project: routed.project });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
