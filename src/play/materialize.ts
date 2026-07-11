@@ -15,8 +15,8 @@
 // is the single IMPURE verb — now read-then-write: it first GATHERS the board ids
 // (listIdsIn) and runs the pure cross-board collision guard (detectCollisions,
 // T-004-01), refusing with a typed `IdCollisionError` BEFORE any mkdir/writeFile, then
-// does mkdir -p + writeFile. The verb itself is untested here exactly as
-// `appendRunLog`/`dispense` are; its guard is covered by a real-fs fixture test
+// does mkdir -p + writeFile. The verb itself is fixture-tested through its public
+// boundary; its guards are covered by real-fs tests
 // (materialize.test.ts) and its pure judgment by id-guard.test.ts.
 //
 // T-066-01-03: `renderStoryFile` writes the story CONTRACT body — the five parsed sections
@@ -48,10 +48,16 @@
 // throw precedes every mkdir/write (the IdCollisionError bar), so a refused cut leaves
 // zero partial output — the honey-kitchen #1 complaint (strip N-codes) has nothing left
 // to strip, structurally (P3).
+//
+// T-069-01-02 adds the seat write guard. A supplied Lisa executor-routing seat is checked
+// once against the canonical pure oracle before any board read or write. A known seat is
+// stamped uniformly onto every ticket immediately after `priority:`; absence adds no line,
+// so the pre-change ticket bytes remain exact.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
+import { findUnknownSeat, KNOWN_SEATS } from "./agent-seat.ts";
 import { snapshotCharterCodes, type CharterSnapshot } from "./charter-snapshot.ts";
 import { detectCollisions } from "./id-guard.ts";
 import { listIdsIn } from "./project-context.ts";
@@ -102,6 +108,18 @@ export interface MaterializeTargets {
 export interface MaterializeResult {
   readonly storyFiles: string[];
   readonly ticketFiles: string[];
+}
+
+/** A supplied Lisa routing seat was outside the canonical write contract. */
+export class UnknownSeatError extends Error {
+  readonly seat: string;
+  constructor(seat: string) {
+    super(
+      `materialize: refusing to write — unknown agent seat ${JSON.stringify(seat)}; known seats: ${KNOWN_SEATS.join(", ")}`,
+    );
+    this.name = "UnknownSeatError";
+    this.seat = seat;
+  }
 }
 
 /**
@@ -262,9 +280,14 @@ export function findBareCodes(
  * Acceptance Criterion, `advances` a noted line (so the materialized file is honest
  * about why the unit exists, not just structurally valid). Every cited charter code
  * in the body carries its cut-time one-liner via `snapshot` (T-067-01-02); the
- * frontmatter is code-free and byte-identical to the pre-snapshot shape.
+ * frontmatter is code-free. A supplied `agent` renders immediately after `priority:`;
+ * absence contributes zero bytes and retains the pre-seat full-file shape.
  */
-export function renderTicketFile(t: TicketDraft, snapshot: CharterSnapshot): RenderedFile {
+export function renderTicketFile(
+  t: TicketDraft,
+  snapshot: CharterSnapshot,
+  agent?: string,
+): RenderedFile {
   const fm = [
     "---",
     `id: ${t.id}`,
@@ -273,6 +296,7 @@ export function renderTicketFile(t: TicketDraft, snapshot: CharterSnapshot): Ren
     `type: ${alias(TYPE_ALIAS, t.type, "type")}`,
     `status: ${alias(STATUS_ALIAS, t.status, "status")}`,
     `priority: ${alias(PRIORITY_ALIAS, t.priority, "priority")}`,
+    ...(agent !== undefined ? [`agent: ${agent}`] : []),
     `phase: ${alias(PHASE_ALIAS, t.phase, "phase")}`,
     `depends_on: ${flowArray(t.depends_on)}`,
     "---",
@@ -374,14 +398,16 @@ export function renderStoryFile(
  * pair with `mkdir -p` + `writeFile`. Not unit-tested (its logic is the tested render
  * pair). Only called on a CLEAR verdict; the runner never reaches here on a STOP.
  *
- * TWO pre-write guards, identity before content, both refusing BEFORE the first
+ * THREE pre-write guards, input before identity before content, all refusing BEFORE the first
  * `mkdir`/`writeFile` so a refused plan materializes nothing — "no partial
  * materialization" (P7) is structural, not a cleanup:
  *
- *  1. Cross-board collision guard (T-004-02): gather the ids already living under the
+ *  1. Unknown-seat guard (T-069-01-02): validate supplied routing metadata against the
+ *     canonical seat contract before even reading the board; refuse with {@link UnknownSeatError}.
+ *  2. Cross-board collision guard (T-004-02): gather the ids already living under the
  *     target dirs, run the pure `detectCollisions`; a re-minted id refuses with
  *     {@link IdCollisionError}.
- *  2. Bare-code write guard (T-067-01-03): render EVERY file into memory, run the pure
+ *  3. Bare-code write guard (T-067-01-03): render EVERY file into memory, run the pure
  *     {@link findBareCodes} over the would-be bodies; a bare policed code refuses with
  *     {@link BareCodeError}. Rendering precedes writing entirely, so the guard judges
  *     the exact bytes that would land.
@@ -394,7 +420,13 @@ export async function materialize(
   plan: WorkPlan,
   targets: MaterializeTargets,
   charter: string,
+  agent?: string,
 ): Promise<MaterializeResult> {
+  if (agent !== undefined) {
+    const unknown = findUnknownSeat(agent);
+    if (unknown !== null) throw new UnknownSeatError(unknown);
+  }
+
   const existing = [
     ...(await listIdsIn(targets.storiesDir)),
     ...(await listIdsIn(targets.ticketsDir)),
@@ -413,7 +445,7 @@ export async function materialize(
     const storyTickets = plan.tickets.filter((t) => s.tickets.includes(t.id));
     return renderStoryFile(s, storyTickets, cutDate, snapshot);
   });
-  const tickets = plan.tickets.map((t) => renderTicketFile(t, snapshot));
+  const tickets = plan.tickets.map((t) => renderTicketFile(t, snapshot, agent));
 
   const bare = findBareCodes([...stories, ...tickets], snapshot);
   if (bare.length > 0) throw new BareCodeError(bare);

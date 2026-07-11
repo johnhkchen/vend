@@ -23,6 +23,7 @@ import {
   renderTicketFile,
   STATUS_ALIAS,
   TYPE_ALIAS,
+  UnknownSeatError,
   type RenderedFile,
 } from "./materialize.ts";
 
@@ -121,13 +122,40 @@ describe("renderTicketFile — member→alias + lisa frontmatter", () => {
     // every cited code now carries the one-liner the charter gave it at cut, code kept for
     // traceability. If this golden ever needs editing again, the ticket surface moved — a
     // deliberate decision, not a drive-by.
-    expect(renderTicketFile(ticket(), SNAPSHOT).body).toBe(`---
+    const body = renderTicketFile(ticket(), SNAPSHOT).body;
+    expect(body).not.toContain("\nagent:");
+    expect(body).toBe(`---
 id: T-009-01
 story: S-009
 title: scaffold-the-module
 type: task
 status: open
 priority: high
+phase: ready
+depends_on: []
+---
+
+## Context
+
+Stand up the module skeleton the rest of the story builds on
+
+_Advances: P1 — Author once, run forever_
+
+## Acceptance Criteria
+
+- [ ] bun run check is green on an empty module export
+`);
+  });
+
+  test("agent golden — codex renders immediately after priority on the only changed line", () => {
+    expect(renderTicketFile(ticket(), SNAPSHOT, "codex").body).toBe(`---
+id: T-009-01
+story: S-009
+title: scaffold-the-module
+type: task
+status: open
+priority: high
+agent: codex
 phase: ready
 depends_on: []
 ---
@@ -493,6 +521,39 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     expect(await readFile(join(ticketsDir, "T-009-01.md"), "utf8")).toContain(
       "_Advances: P1 — Author once, run forever_",
     );
+  });
+
+  test("known seat → stamps every ticket immediately after priority and never stamps the story", async () => {
+    const { storiesDir, ticketsDir } = await targets();
+    const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01", "T-009-02"] });
+
+    await materialize(plan, { storiesDir, ticketsDir }, CHARTER, "codex");
+
+    expect((await readdir(ticketsDir)).sort()).toEqual(["T-009-01.md", "T-009-02.md"]);
+    for (const name of ["T-009-01.md", "T-009-02.md"]) {
+      const body = await readFile(join(ticketsDir, name), "utf8");
+      expect(body).toContain("priority: high\nagent: codex\nphase: ready");
+      expect(body.match(/^agent: codex$/gm)).toHaveLength(1);
+    }
+    expect(await readFile(join(storiesDir, "S-009.md"), "utf8")).not.toContain("\nagent:");
+  });
+
+  test("unknown seat → UnknownSeatError before any target directory or file is created", async () => {
+    const { storiesDir, ticketsDir } = await targets();
+    const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01"] });
+
+    let caught: unknown;
+    await materialize(plan, { storiesDir, ticketsDir }, CHARTER, "gpt").catch((e) => {
+      caught = e;
+    });
+
+    expect(caught).toBeInstanceOf(UnknownSeatError);
+    expect((caught as UnknownSeatError).name).toBe("UnknownSeatError");
+    expect((caught as UnknownSeatError).seat).toBe("gpt");
+    expect((caught as UnknownSeatError).message).toContain('unknown agent seat "gpt"');
+    expect((caught as UnknownSeatError).message).toContain("known seats: claude, codex");
+    expect(await readdir(storiesDir).catch(() => "ENOENT")).toBe("ENOENT");
+    expect(await readdir(ticketsDir).catch(() => "ENOENT")).toBe("ENOENT");
   });
 
   // T-067-01-03 write guard, impure half: the refusal is proven ON DISK — a plan whose
