@@ -244,16 +244,16 @@ Exact-path staging will be used for the implementation commit.
 
 ## Commit state
 
-Implementation commit pending immediately after this progress artifact.
+Implementation committed:
 
-The commit will include only the two source/test files and this ticket’s pre-review artifacts.
+- `c96d6f7` — `feat(cast): materialize warned overshoots (T-068-02-03)`.
 
-The review artifact and final progress commit reference will follow in the handoff commit.
+Exact-path staging included only the two source/test files and this ticket’s pre-review artifacts.
+
+The review artifact and this commit-reference update will be included in the handoff commit.
 
 ## Remaining work
 
-1. exact-path implementation commit;
-2. update this file with the implementation commit hash;
-3. write `review.md`;
-4. exact-path review handoff commit;
-5. stop without editing ticket phase/status.
+1. write `review.md`;
+2. exact-path review handoff commit;
+3. stop without editing ticket phase/status.
