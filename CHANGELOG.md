@@ -3,6 +3,11 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.2 — 2026-07-11
+
+- Route work to a seat at mint time: `vend chain "<signal>" --agent codex` (also on `vend run decompose-epic`) stamps `agent: codex` into every ticket the cast writes — no more hand-editing frontmatter to allocate usage across agents.
+- A typo'd or invalid seat no longer costs you the generation: the board lands on the default seat with an honest `seat-defaulted` note on the run record, instead of the whole decompose being refused.
+
 ## 0.4.0-rc.1 — 2026-07-11
 
 - The budget meter now measures true cost: cached context is no longer counted as full-price tokens, so `vend chain` on a board that has grown stops tripping false budget-exhausted stops — big boards clear on default budgets (release candidate; try your previously-failing chains).
