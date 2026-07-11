@@ -856,8 +856,10 @@ if (import.meta.main) {
   if (parsed.cmd === "doctor") {
     // The preflight gate (T-042-03), WORKSPACE-AWARE (T-062-02-02): doctor reports on "the
     // prerequisites for what you'd do HERE". In a build project that is the vend-specific deps
-    // (lisa & claude on PATH, the BAML native addon loadable, the active executor's config) probed
-    // by `probeDoctor`. In a STANDALONE kitchen workspace (the EmDash+Astro seed `vend init
+    // (lisa & claude on PATH, the BAML native addon loadable, the active executor's config) plus
+    // canonical-board hygiene. The dependency and board probes stay separate because the former
+    // also guards every cast; an orphan must make `vend doctor` red without blocking work that can
+    // repair the board. In a STANDALONE kitchen workspace (the EmDash+Astro seed `vend init
     // --template kitchen` lays — no lisa marker) those build-engine deps are not what matters; the
     // app's are — bun, the Astro/Cloudflare storefront config, the EmDash Dish seed — probed by
     // `probeKitchen`. We dispatch on the cwd signature (`isKitchenWorkspace`); a readdir failure
@@ -871,9 +873,18 @@ if (import.meta.main) {
     const { isKitchenWorkspace, probeKitchen } = await import("./kitchen/kitchen-doctor.ts");
     const cwd = process.cwd();
     const entries = await readdir(cwd).catch(() => [] as string[]);
-    const checks = isKitchenWorkspace(entries)
-      ? await probeKitchen(cwd)
-      : await (await import("./doctor/doctor-probe.ts")).probeDoctor();
+    let checks;
+    if (isKitchenWorkspace(entries)) {
+      checks = await probeKitchen(cwd);
+    } else {
+      const { probeDoctor } = await import("./doctor/doctor-probe.ts");
+      const { probeBoardHygiene } = await import("./doctor/board-hygiene-probe.ts");
+      const [dependencyChecks, boardChecks] = await Promise.all([
+        probeDoctor(),
+        probeBoardHygiene(),
+      ]);
+      checks = [...dependencyChecks, ...boardChecks];
+    }
     const report = renderDoctorReport(checks);
     process.stdout.write(`${report.report}\n`);
     process.exit(report.exitCode);
