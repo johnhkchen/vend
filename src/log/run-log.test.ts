@@ -612,6 +612,77 @@ describe("overEnvelope marker — round-trip, byte compatibility, one-way, malfo
   });
 });
 
+describe("seatDefaulted marker — structured round-trip, byte compatibility, malformed, legacy (T-070-01-01 AC)", () => {
+  const marker = {
+    requested: "kodex",
+    applied: "claude",
+    reason: "unknown-seat",
+  } as const;
+
+  const preE070Line =
+    '{"v":1,"runId":"sd2","play":"decompose-epic","epic":"E-001","model":"claude-opus-4-8",' +
+    '"outcome":"success","usage":{"input_tokens":1200,"output_tokens":800,' +
+    '"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"costUsd":0.42,' +
+    '"gateResults":[{"gate":"typecheck","passed":true}],' +
+    '"startedAt":"2026-06-18T12:00:00.000Z","endedAt":"2026-06-18T12:05:00.000Z"}\n';
+
+  test("requested raw seat, applied default, and reason serialize/revive byte-stably", () => {
+    const rec = buildRunRecord(baseInput({ runId: "sd1", seatDefaulted: marker }));
+    expect(rec.seatDefaulted).toEqual(marker);
+
+    const line = serializeRunRecord(rec);
+    const revived = reviveRecord(JSON.parse(line));
+    expect(revived).not.toBeNull();
+    expect(revived!.seatDefaulted).toEqual(marker);
+    expect(serializeRunRecord(revived!)).toBe(line);
+  });
+
+  test("an absent marker emits a byte-identical pre-E-070 record", () => {
+    const rec = buildRunRecord(baseInput({ runId: "sd2" }));
+    expect("seatDefaulted" in rec).toBe(false);
+    expect(serializeRunRecord(rec).includes("seatDefaulted")).toBe(false);
+    expect(serializeRunRecord(rec)).toBe(preE070Line);
+  });
+
+  test("a pre-E-070 line revives without a marker", () => {
+    const { records, skipped } = readRuns(preE070Line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect("seatDefaulted" in records[0]!).toBe(false);
+  });
+
+  test("a partial marker is omitted atomically on build", () => {
+    const rec = buildRunRecord(
+      baseInput({
+        runId: "sd3",
+        seatDefaulted: { requested: "kodex", applied: "claude" },
+      } as never),
+    );
+    expect("seatDefaulted" in rec).toBe(false);
+    expect(serializeRunRecord(rec).includes("seatDefaulted")).toBe(false);
+  });
+
+  test("a valid marker is canonically copied without extra nested fields", () => {
+    const rec = buildRunRecord(
+      baseInput({
+        runId: "sd4",
+        seatDefaulted: { ...marker, diagnostic: "do-not-persist" },
+      } as never),
+    );
+    expect(rec.seatDefaulted).toEqual(marker);
+  });
+
+  test("malformed marker metadata is dropped on revive without losing the record", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "sd5" })))),
+      seatDefaulted: { requested: "kodex", applied: 42, reason: "unknown-seat" },
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.runId).toBe("sd5");
+    expect("seatDefaulted" in rec!).toBe(false);
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(

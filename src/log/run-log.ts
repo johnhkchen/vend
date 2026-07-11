@@ -103,6 +103,18 @@ export interface GateResult {
   readonly detail?: string;
 }
 
+/** Durable details for a routing-seat request that degraded to the default seat (T-070-01-01).
+ *  Declared locally so the append-only ledger records the caller's disposition without importing
+ *  executor policy or the known-seat registry. */
+export interface SeatDefaulted {
+  /** Raw seat requested by the caller. */
+  readonly requested: string;
+  /** Default seat actually applied. */
+  readonly applied: string;
+  /** Stable explanation for why the request degraded to the default. */
+  readonly reason: string;
+}
+
 /** What the runner hands {@link buildRunRecord} / {@link appendRunLog} (pre-normalization). */
 export interface RunRecordInput {
   readonly runId: string;
@@ -155,6 +167,12 @@ export interface RunRecordInput {
    *  byte-identical to a pre-E-068 one. The marker makes a cleared overshoot countable without
    *  turning the run log into the classifier that decides whether the run may materialize. */
   readonly overEnvelope?: boolean;
+  /** One-way degradation marker (T-070-01-01): present only when a requested routing seat was
+   *  replaced by the default. All three facts are required so the fallback remains honest and
+   *  countable: the raw request, the default actually applied, and why. Absent ⇒ no seat fallback
+   *  was recorded / historical unknown. The field is omitted entirely when absent or malformed,
+   *  keeping an ordinary record byte-identical to a pre-E-070 one. */
+  readonly seatDefaulted?: SeatDefaulted;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -205,6 +223,11 @@ export interface RunRecord {
    *  unmarked record stays byte-identical to a pre-E-068 one. {@link reviveRecord} preserves it
    *  across the read boundary so a cleared overshoot remains countable. */
   readonly overEnvelope?: true;
+  /** Present ONLY as a complete marker (T-070-01-01) when a routing-seat request degraded to the
+   *  default. Absence is the one-way negative state, so an ordinary record stays byte-identical to
+   *  a pre-E-070 one. {@link reviveRecord} preserves valid marker details and drops malformed
+   *  optional metadata without discarding the otherwise useful record. */
+  readonly seatDefaulted?: SeatDefaulted;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -233,6 +256,11 @@ function assertOutcome(o: string): asserts o is RunOutcome {
   if (!(RUN_OUTCOMES as readonly string[]).includes(o)) {
     throw new RangeError(`run-log outcome must be one of ${RUN_OUTCOMES.join(" | ")}, got ${JSON.stringify(o)}`);
   }
+}
+
+/** True for a non-empty string — shared by required record fields and structured optional data. */
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0;
 }
 
 /** Normalize usage: each sub-count coerced to a finite number, absent ⇒ 0. */
@@ -304,6 +332,26 @@ function normalizeOverEnvelope(v: boolean | undefined): true | undefined {
   return v === true ? true : undefined;
 }
 
+/** Normalize the seat-defaulted marker (T-070-01-01): all three strings are atomic. A partial or
+ *  malformed optional marker is omitted rather than admitted or allowed to invalidate the record.
+ *  Rebuilding the object selects only schema fields and gives marked JSON deterministic key order.
+ *  Values remain verbatim: the log preserves the raw request and does not apply seat policy. */
+function normalizeSeatDefaulted(value: SeatDefaulted | undefined): SeatDefaulted | undefined {
+  if (
+    !value ||
+    !isNonEmptyString(value.requested) ||
+    !isNonEmptyString(value.applied) ||
+    !isNonEmptyString(value.reason)
+  ) {
+    return undefined;
+  }
+  return {
+    requested: value.requested,
+    applied: value.applied,
+    reason: value.reason,
+  };
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -337,6 +385,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
   const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
   const overEnvelope = normalizeOverEnvelope(input.overEnvelope);
+  const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -355,6 +404,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
+    ...(seatDefaulted ? { seatDefaulted } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -386,11 +436,6 @@ export function serializeRunRecord(record: RunRecord): string {
 export interface ReadResult {
   readonly records: readonly RunRecord[];
   readonly skipped: number;
-}
-
-/** True for a non-empty string — the id/timestamp fields a valid record must carry. */
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.length > 0;
 }
 
 /**
@@ -472,6 +517,16 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // an optional warning can never make an otherwise useful historical record unreadable.
   const overEnvelope = normalizeOverEnvelope(typeof r.overEnvelope === "boolean" ? r.overEnvelope : undefined);
 
+  // Seat fallback details (T-070-01-01) are optional but atomic: only a non-null object with all
+  // three non-empty strings survives. Historical absence and malformed metadata are omitted, so
+  // this degradation marker can never make an otherwise useful append-only record unreadable.
+  const rawSeatDefaulted = r.seatDefaulted;
+  const seatDefaulted = normalizeSeatDefaulted(
+    typeof rawSeatDefaulted === "object" && rawSeatDefaulted !== null
+      ? (rawSeatDefaulted as SeatDefaulted)
+      : undefined,
+  );
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -489,6 +544,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
+    ...(seatDefaulted ? { seatDefaulted } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });
