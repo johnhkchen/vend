@@ -103,6 +103,9 @@ export interface RunSummary {
   readonly outcome: RunOutcome;
   /** Did the effect land (the play-generic analogue of the welded runner's `materialized`). */
   readonly materialized: boolean;
+  /** One-way settlement warning: present only when a token-exhausted cast explicitly cleared
+   *  its gates and was therefore allowed to materialize (T-068-02-03). */
+  readonly overEnvelope?: true;
   /**
    * The artifact reference this cast produced (lifted off `EffectResult.produced`), surfaced so
    * a chain (T-011-01) can thread it into the next play's input. Present ONLY on a materialized
@@ -225,20 +228,19 @@ export async function castPlay<I, O>(
   // The context both gates and effect receive — assembled once.
   const ctx: CastContext<I> = { inputs, projectRoot: root };
 
-  // After the seam: meter tokens, then (if in budget) parse + gate via the play. With the
-  // `--no-gates` run mode (T-014-02) the gate call is skipped — `gateVerdict` stays null, which
-  // `classify` reads as "no stop", so the output materializes ungated (the E2 probe's control
-  // arm). The gated path is unchanged when the flag is absent.
+  // After the seam: meter tokens, then parse + gate every returned result — including a detect-
+  // after token overshoot. The gates must see that already-paid-for output so `classify` can retain
+  // it ONLY on an explicit CLEAR and attach the over-envelope warning (T-068-02-03); a STOP still
+  // discards it. With `--no-gates` the gate call is skipped and `gateVerdict` stays null, so an
+  // exhausted ungated result remains budget-exhausted while the in-budget E2 control still lands.
   let budgetOutcome: BudgetOutcome | null = null;
   let gateVerdict: GateVerdict | null = null;
   let output: O | null = null;
   if (!timedOut && result) {
     budgetOutcome = check(budget, (result.usage ?? {}) as Usage);
-    if (budgetOutcome.status === "ok") {
-      output = play.parse(result.result ?? "");
-      if (opts.skipGates) process.stdout.write("· gates skipped (--no-gates)\n");
-      gateVerdict = opts.skipGates ? null : play.gates(output, ctx);
-    }
+    output = play.parse(result.result ?? "");
+    if (opts.skipGates) process.stdout.write("· gates skipped (--no-gates)\n");
+    gateVerdict = opts.skipGates ? null : play.gates(output, ctx);
   }
 
   const verdict = classify({ timedOut, budgetOutcome, gateVerdict });
@@ -262,6 +264,15 @@ export async function castPlay<I, O>(
     process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
   } else if (verdict.outcome !== "success") {
     process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateVerdict, budgetOutcome)}\n`);
+  }
+
+  // The live Settle warning (T-068-02-03): presence comes ONLY from the pure classifier; the
+  // exhausted outcome contributes factual meter detail, not a second warning decision.
+  if (verdict.overEnvelope && budgetOutcome?.status === "exhausted") {
+    process.stdout.write(
+      `· settle warning: over-envelope — spent ${budgetOutcome.spent}/${budgetOutcome.ceiling} tokens ` +
+        `(over by ${budgetOutcome.overage}); gates cleared, output retained\n`,
+    );
   }
 
   // Resolve the logged model id DOWNSTREAM of dispense, so the real id the stream reported
@@ -313,6 +324,9 @@ export async function castPlay<I, O>(
       // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
       // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
       ...(reducedGrounding ? { reducedGrounding: true } : {}),
+      // One authoritative warning fact (T-068-02-03): forward the classifier marker rather than
+      // re-deriving it from meter/gate state. Unmarked casts omit the key (one-way record contract).
+      ...(verdict.overEnvelope ? { overEnvelope: true } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
@@ -329,7 +343,14 @@ export async function castPlay<I, O>(
   // authorization (P7).
   const wallMs = Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
   const usage = (result?.usage ?? {}) as Usage;
-  return { runId, outcome, materialized, produced, actuals: { usage, wallMs } };
+  return {
+    runId,
+    outcome,
+    materialized,
+    ...(verdict.overEnvelope ? { overEnvelope: true } : {}),
+    produced,
+    actuals: { usage, wallMs },
+  };
 }
 
 /** A short andon suffix for stdout — names the gate/budget reason when there is one. Pure;

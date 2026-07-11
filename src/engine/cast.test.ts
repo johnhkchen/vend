@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { castPlay } from "./cast.ts";
-import { reviveRecord } from "../log/run-log.ts";
+import { reviveRecord, totalTokens } from "../log/run-log.ts";
 import type { Play } from "./play.ts";
 import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
@@ -60,7 +60,7 @@ const SAMPLE_STREAM: StreamMessage[] = [
 ];
 
 /** A stub Executor: streams the sample messages to onMessage in order, returns a success result. */
-function stubExecutor(seen: StreamMessage[]): Executor {
+function stubExecutor(seen: StreamMessage[], resultText = "hello from stub"): Executor {
   return {
     id: "stub",
     async dispense(opts: DispenseOptions): Promise<ResultMessage> {
@@ -71,12 +71,43 @@ function stubExecutor(seen: StreamMessage[]): Executor {
       return {
         type: "result",
         subtype: "success",
-        result: "hello from stub",
+        result: resultText,
         usage: { input_tokens: 7, output_tokens: 3 },
         total_cost_usd: 0.001,
         model: "stub-model-1",
       } as ResultMessage;
     },
+  };
+}
+
+interface BoardPlanFixture {
+  readonly story: { readonly id: string; readonly title: string };
+  readonly ticket: { readonly id: string; readonly story: string; readonly title: string };
+}
+
+/** A BAML-free, decompose-shaped fixture: a cleared parsed plan writes one story and one ticket.
+ *  The production materializer has its own tests; this isolates cast authorization + persistence. */
+function boardPlanPlay(): Play<{ epic: string }, BoardPlanFixture> {
+  return {
+    name: "board-plan-fixture",
+    summary: "materialize a canned story and ticket after its fixture gate clears",
+    render: (inputs) => `decompose fixture: ${inputs.epic}`,
+    parse: (text) => JSON.parse(text) as BoardPlanFixture,
+    gates: () => ({ status: "clear", cleared: ["fixture-contract"] }),
+    effect: async (plan, ctx) => {
+      const storiesDir = join(ctx.projectRoot, "docs", "active", "stories");
+      const ticketsDir = join(ctx.projectRoot, "docs", "active", "tickets");
+      await Promise.all([mkdir(storiesDir, { recursive: true }), mkdir(ticketsDir, { recursive: true })]);
+      const storyPath = join(storiesDir, `${plan.story.id}.md`);
+      const ticketPath = join(ticketsDir, `${plan.ticket.id}.md`);
+      await Promise.all([
+        writeFile(storyPath, `---\nid: ${plan.story.id}\n---\n\n# ${plan.story.title}\n`, "utf8"),
+        writeFile(ticketPath, `---\nid: ${plan.ticket.id}\nstory: ${plan.ticket.story}\n---\n\n# ${plan.ticket.title}\n`, "utf8"),
+      ]);
+      return { ok: true, detail: "wrote story + ticket (fixture)", artifacts: [storyPath, ticketPath] };
+    },
+    budget: BIG_BUDGET,
+    card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
   };
 }
 
@@ -113,6 +144,51 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.play).toBe("echo");
   expect(rec.outcome).toBe("success");
   expect(rec.model).toBe("stub-model-1");
+  expect(rec.overEnvelope).toBeUndefined();
+});
+
+test("castPlay: a gates-cleared token overshoot writes story/ticket files and logs a warned clear (T-068-02-03 AC)", async () => {
+  const root = await tmp();
+  const runLogPath = join(root, "runs.jsonl");
+  const plan: BoardPlanFixture = {
+    story: { id: "S-068-99", title: "warned clear fixture" },
+    ticket: { id: "T-068-99-01", story: "S-068-99", title: "materialize the overshoot" },
+  };
+
+  // The stub reports 7 input + 3 output tokens. Under the cost-weighted meter that is 22
+  // input-token-equivalents, deliberately above this fixture's 10-token ceiling.
+  const summary = await castPlay(boardPlanPlay(), { epic: "E-068" }, { timeMs: 60_000, tokens: 10 }, {
+    subject: "E-068",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    executor: stubExecutor([], JSON.stringify(plan)),
+  });
+
+  expect(summary.outcome).toBe("success");
+  expect(summary.outcome).not.toBe("budget-exhausted");
+  expect(summary.materialized).toBe(true);
+  expect(summary.overEnvelope).toBe(true);
+  expect(summary.actuals?.usage).toEqual({ input_tokens: 7, output_tokens: 3 });
+
+  const story = await readFile(join(root, "docs", "active", "stories", "S-068-99.md"), "utf8");
+  const ticket = await readFile(join(root, "docs", "active", "tickets", "T-068-99-01.md"), "utf8");
+  expect(story).toContain("id: S-068-99");
+  expect(story).toContain("warned clear fixture");
+  expect(ticket).toContain("id: T-068-99-01");
+  expect(ticket).toContain("story: S-068-99");
+
+  const lines = (await readFile(runLogPath, "utf8")).trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const rec = JSON.parse(lines[0]!);
+  expect(rec.outcome).toBe("success");
+  expect(rec.outcome).not.toBe("budget-exhausted");
+  expect(rec.overEnvelope).toBe(true);
+  expect(rec.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
+  expect(rec.envelope.tokens).toBe(10);
+  const revived = reviveRecord(rec);
+  expect(revived?.overEnvelope).toBe(true);
+  expect(totalTokens(revived!)).toBeGreaterThan(revived!.envelope!.tokens);
 });
 
 test("castPlay: a cast WITHOUT codebase-memory-mcp writes the reduced-grounding marker into runs.jsonl (T-060-01-02 AC)", async () => {
