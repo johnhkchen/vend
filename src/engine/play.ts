@@ -90,6 +90,18 @@ export interface CastContext<I> {
 // ── The effect result ───────────────────────────────────────────────────────────────
 
 /**
+ * A requested Lisa routing seat was unknown, so a board-writing effect safely omitted
+ * explicit routing and let Lisa apply its default seat. Returned as successful degradation
+ * data so the cast boundary can preserve requested-vs-actual provenance without turning a
+ * routing preference into a materialization refusal (T-070-01-02).
+ */
+export interface SeatDefaulted {
+  readonly requested: string;
+  readonly applied: "claude";
+  readonly reason: string;
+}
+
+/**
  * What a play's `effect` reports back to the cast loop after touching the world. `ok` is
  * whether the effect landed; `outcome` optionally RELABELS the run outcome (e.g. an
  * id-collision refusal → `"id-collision"`) so the loop logs it without the effect having
@@ -101,6 +113,8 @@ export interface EffectResult {
   readonly outcome?: RunOutcome;
   readonly detail?: string;
   readonly artifacts?: readonly string[];
+  /** Successful routing degradation, absent when no default was applied. */
+  readonly seatDefaulted?: SeatDefaulted;
   /**
    * The single canonical reference a downstream play threads on — the chain primitive
    * (T-011-01). DISTINCT from `artifacts` (ALL files written, for provenance): `produced` is

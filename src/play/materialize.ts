@@ -49,15 +49,17 @@
 // zero partial output — the honey-kitchen #1 complaint (strip N-codes) has nothing left
 // to strip, structurally (P3).
 //
-// T-069-01-02 adds the seat write guard. A supplied Lisa executor-routing seat is checked
-// once against the canonical pure oracle before any board read or write. A known seat is
-// stamped uniformly onto every ticket immediately after `priority:`; absence adds no line,
-// so the pre-change ticket bytes remain exact.
+// T-069-01-02 added the seat write guard; T-070-01-02 flips its unknown-seat disposition.
+// A supplied Lisa executor-routing seat is checked once against the canonical pure oracle.
+// A known seat is stamped uniformly onto every ticket immediately after `priority:`. An
+// unknown seat degrades to Lisa's default by omitting the key, preserving the pre-seat bytes,
+// and is returned as requested-vs-applied data rather than refusing a gates-cleared board.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
-import { findUnknownSeat, KNOWN_SEATS } from "./agent-seat.ts";
+import type { SeatDefaulted } from "../engine/play.ts";
+import { findUnknownSeat, type AgentSeat } from "./agent-seat.ts";
 import { snapshotCharterCodes, type CharterSnapshot } from "./charter-snapshot.ts";
 import { detectCollisions } from "./id-guard.ts";
 import { listIdsIn } from "./project-context.ts";
@@ -108,19 +110,11 @@ export interface MaterializeTargets {
 export interface MaterializeResult {
   readonly storyFiles: string[];
   readonly ticketFiles: string[];
+  readonly seatDefaulted?: SeatDefaulted;
 }
 
-/** A supplied Lisa routing seat was outside the canonical write contract. */
-export class UnknownSeatError extends Error {
-  readonly seat: string;
-  constructor(seat: string) {
-    super(
-      `materialize: refusing to write — unknown agent seat ${JSON.stringify(seat)}; known seats: ${KNOWN_SEATS.join(", ")}`,
-    );
-    this.name = "UnknownSeatError";
-    this.seat = seat;
-  }
-}
+/** Lisa's routing default when ticket frontmatter omits `agent:`. */
+const DEFAULT_AGENT_SEAT = "claude" as const satisfies AgentSeat;
 
 /**
  * Thrown by {@link materialize} when the plan's ids collide with ids already on the
@@ -399,16 +393,18 @@ export function renderStoryFile(
  * pure rendering judgments remain pinned separately. Only called on a CLEAR verdict;
  * the runner never reaches here on a STOP.
  *
- * THREE pre-write guards, input before identity before content, all refusing BEFORE the first
+ * TWO pre-write refusal guards, identity before content, both refusing BEFORE the first
  * `mkdir`/`writeFile` so a refused plan materializes nothing — "no partial
  * materialization" (P7) is structural, not a cleanup:
  *
- *  1. Unknown-seat guard (T-069-01-02): validate supplied routing metadata against the
- *     canonical seat contract before even reading the board; refuse with {@link UnknownSeatError}.
- *  2. Cross-board collision guard (T-004-02): gather the ids already living under the
+ * Before those guards, seat disposition (T-070-01-02) checks supplied routing metadata
+ * against the canonical seat contract. Unknown metadata is omitted from rendered tickets,
+ * safely selecting Lisa's default, and returned as a degradation report rather than refusing.
+ *
+ *  1. Cross-board collision guard (T-004-02): gather the ids already living under the
  *     target dirs, run the pure `detectCollisions`; a re-minted id refuses with
  *     {@link IdCollisionError}.
- *  3. Bare-code write guard (T-067-01-03): render EVERY file into memory, run the pure
+ *  2. Bare-code write guard (T-067-01-03): render EVERY file into memory, run the pure
  *     {@link findBareCodes} over the would-be bodies; a bare policed code refuses with
  *     {@link BareCodeError}. Rendering precedes writing entirely, so the guard judges
  *     the exact bytes that would land.
@@ -423,9 +419,18 @@ export async function materialize(
   charter: string,
   agent?: string,
 ): Promise<MaterializeResult> {
+  let effectiveAgent = agent;
+  let seatDefaulted: SeatDefaulted | undefined;
   if (agent !== undefined) {
     const unknown = findUnknownSeat(agent);
-    if (unknown !== null) throw new UnknownSeatError(unknown);
+    if (unknown !== null) {
+      effectiveAgent = undefined;
+      seatDefaulted = {
+        requested: unknown,
+        applied: DEFAULT_AGENT_SEAT,
+        reason: "unknown-seat",
+      };
+    }
   }
 
   const existing = [
@@ -446,7 +451,7 @@ export async function materialize(
     const storyTickets = plan.tickets.filter((t) => s.tickets.includes(t.id));
     return renderStoryFile(s, storyTickets, cutDate, snapshot);
   });
-  const tickets = plan.tickets.map((t) => renderTicketFile(t, snapshot, agent));
+  const tickets = plan.tickets.map((t) => renderTicketFile(t, snapshot, effectiveAgent));
 
   const bare = findBareCodes([...stories, ...tickets], snapshot);
   if (bare.length > 0) throw new BareCodeError(bare);
@@ -468,5 +473,9 @@ export async function materialize(
     ticketFiles.push(path);
   }
 
-  return { storyFiles, ticketFiles };
+  return {
+    storyFiles,
+    ticketFiles,
+    ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
+  };
 }

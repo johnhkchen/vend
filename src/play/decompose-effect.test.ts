@@ -83,6 +83,7 @@ describe("decomposeEffect — agent routing seat", () => {
 
     expect(result.ok).toBeTrue();
     expect(result.outcome).toBeUndefined();
+    expect(result.seatDefaulted).toBeUndefined();
     expect(validatedRoot).toBe(root);
 
     const ticket = await readFile(join(root, "docs", "active", "tickets", "T-901-01-01.md"), "utf8");
@@ -95,12 +96,12 @@ describe("decomposeEffect — agent routing seat", () => {
     expect(Object.hasOwn(bareSources, "agent")).toBeFalse();
   });
 
-  test("unknown seat is relabeled to unknown-seat before any file or directory is written", async () => {
+  test("unknown seat materializes the full default-byte board and reports the disposition", async () => {
     const { root, epicPath } = await tempProject();
     const inputs = await assembleInputs(contextSourcesForRun({
       epicPath,
       projectRoot: root,
-      agent: "gpt",
+      agent: "kodex",
     }));
 
     let validationCalls = 0;
@@ -109,11 +110,38 @@ describe("decomposeEffect — agent routing seat", () => {
       return { ok: true, output: "" };
     });
 
-    expect(result.ok).toBeFalse();
-    expect(result.outcome).toBe("unknown-seat");
-    expect(result.detail).toContain('unknown agent seat "gpt"');
-    expect(validationCalls).toBe(0);
-    expect(await readdir(join(root, "docs", "active", "stories")).catch(() => null)).toBeNull();
-    expect(await readdir(join(root, "docs", "active", "tickets")).catch(() => null)).toBeNull();
+    expect(result.ok).toBeTrue();
+    expect(result.outcome).toBeUndefined();
+    expect(result.seatDefaulted).toEqual({
+      requested: "kodex",
+      applied: "claude",
+      reason: "unknown-seat",
+    });
+    expect(validationCalls).toBe(1);
+    expect(result.artifacts).toHaveLength(2);
+    expect(await readdir(join(root, "docs", "active", "stories"))).toEqual(["S-901-01.md"]);
+    expect(await readdir(join(root, "docs", "active", "tickets"))).toEqual(["T-901-01-01.md"]);
+
+    const degradedStory = await readFile(join(root, "docs", "active", "stories", "S-901-01.md"), "utf8");
+    const degradedTicket = await readFile(join(root, "docs", "active", "tickets", "T-901-01-01.md"), "utf8");
+    expect(degradedTicket).not.toContain("\nagent:");
+
+    const baseline = await tempProject();
+    const baselineInputs = await assembleInputs(contextSourcesForRun({
+      epicPath: baseline.epicPath,
+      projectRoot: baseline.root,
+    }));
+    const baselineResult = await decomposeEffect(
+      PLAN,
+      { inputs: baselineInputs, projectRoot: baseline.root },
+      async () => ({ ok: true, output: "" }),
+    );
+    expect(baselineResult.seatDefaulted).toBeUndefined();
+    expect(degradedStory).toBe(
+      await readFile(join(baseline.root, "docs", "active", "stories", "S-901-01.md"), "utf8"),
+    );
+    expect(degradedTicket).toBe(
+      await readFile(join(baseline.root, "docs", "active", "tickets", "T-901-01-01.md"), "utf8"),
+    );
   });
 });

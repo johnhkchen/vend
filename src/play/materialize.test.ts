@@ -23,7 +23,6 @@ import {
   renderTicketFile,
   STATUS_ALIAS,
   TYPE_ALIAS,
-  UnknownSeatError,
   type RenderedFile,
 } from "./materialize.ts";
 
@@ -527,8 +526,9 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     const { storiesDir, ticketsDir } = await targets();
     const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01", "T-009-02"] });
 
-    await materialize(plan, { storiesDir, ticketsDir }, CHARTER, "codex");
+    const result = await materialize(plan, { storiesDir, ticketsDir }, CHARTER, "codex");
 
+    expect(result.seatDefaulted).toBeUndefined();
     expect((await readdir(ticketsDir)).sort()).toEqual(["T-009-01.md", "T-009-02.md"]);
     for (const name of ["T-009-01.md", "T-009-02.md"]) {
       const body = await readFile(join(ticketsDir, name), "utf8");
@@ -538,22 +538,40 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     expect(await readFile(join(storiesDir, "S-009.md"), "utf8")).not.toContain("\nagent:");
   });
 
-  test("unknown seat → UnknownSeatError before any target directory or file is created", async () => {
-    const { storiesDir, ticketsDir } = await targets();
-    const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01"] });
+  test("unknown seat → full byte-identical default mint with a seat-defaulted report", async () => {
+    const baseline = await targets();
+    const degraded = await targets();
+    const plan = workPlan({ storyIds: ["S-009"], ticketIds: ["T-009-01", "T-009-02"] });
 
-    let caught: unknown;
-    await materialize(plan, { storiesDir, ticketsDir }, CHARTER, "gpt").catch((e) => {
-      caught = e;
+    const baselineResult = await materialize(
+      plan,
+      { storiesDir: baseline.storiesDir, ticketsDir: baseline.ticketsDir },
+      CHARTER,
+    );
+    const degradedResult = await materialize(
+      plan,
+      { storiesDir: degraded.storiesDir, ticketsDir: degraded.ticketsDir },
+      CHARTER,
+      "kodex",
+    );
+
+    expect(baselineResult.seatDefaulted).toBeUndefined();
+    expect(degradedResult.seatDefaulted).toEqual({
+      requested: "kodex",
+      applied: "claude",
+      reason: "unknown-seat",
     });
+    expect((await readdir(degraded.storiesDir)).sort()).toEqual(["S-009.md"]);
+    expect((await readdir(degraded.ticketsDir)).sort()).toEqual(["T-009-01.md", "T-009-02.md"]);
 
-    expect(caught).toBeInstanceOf(UnknownSeatError);
-    expect((caught as UnknownSeatError).name).toBe("UnknownSeatError");
-    expect((caught as UnknownSeatError).seat).toBe("gpt");
-    expect((caught as UnknownSeatError).message).toContain('unknown agent seat "gpt"');
-    expect((caught as UnknownSeatError).message).toContain("known seats: claude, codex");
-    expect(await readdir(storiesDir).catch(() => "ENOENT")).toBe("ENOENT");
-    expect(await readdir(ticketsDir).catch(() => "ENOENT")).toBe("ENOENT");
+    expect(await readFile(join(degraded.storiesDir, "S-009.md"), "utf8")).toBe(
+      await readFile(join(baseline.storiesDir, "S-009.md"), "utf8"),
+    );
+    for (const name of ["T-009-01.md", "T-009-02.md"]) {
+      const degradedBody = await readFile(join(degraded.ticketsDir, name), "utf8");
+      expect(degradedBody).toBe(await readFile(join(baseline.ticketsDir, name), "utf8"));
+      expect(degradedBody).not.toContain("\nagent:");
+    }
   });
 
   // T-067-01-03 write guard, impure half: the refusal is proven ON DISK — a plan whose

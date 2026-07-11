@@ -16,7 +16,6 @@ import {
   materialize,
   BareCodeError,
   IdCollisionError,
-  UnknownSeatError,
 } from "./materialize.ts";
 
 /** The result of spawning `lisa validate` (the final structural poka-yoke). */
@@ -102,8 +101,9 @@ export async function decomposeEffect(
   try {
     // The charter is the same string `gates` fed ClearContext — materialize snapshots it once
     // per cut so every written body carries its codes' cut-time text. The optional routing seat
-    // is guarded by materialize before any board read or write.
-    const { storyFiles, ticketFiles } = await materialize(
+    // is resolved by materialize: known seats stamp; unknown seats omit the key and report the
+    // safe default disposition rather than discarding the cleared board.
+    const { storyFiles, ticketFiles, seatDefaulted } = await materialize(
       finalPlan,
       {
         storiesDir: join(root, "docs", "active", "stories"),
@@ -117,6 +117,7 @@ export async function decomposeEffect(
       ok: validated.ok,
       detail: validated.ok ? "lisa validate ✓" : `lisa validate ✗\n${validated.output}`,
       artifacts: [...storyFiles, ...ticketFiles],
+      ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
     };
   } catch (e) {
     if (e instanceof IdCollisionError) {
@@ -125,9 +126,6 @@ export async function decomposeEffect(
     if (e instanceof BareCodeError) {
       const where = e.hits.map((h) => `${h.file}: ${h.codes.join(", ")}`).join("; ");
       return { ok: false, outcome: "bare-code", detail: `bare-code — charter cannot resolve cited code(s): ${where}` };
-    }
-    if (e instanceof UnknownSeatError) {
-      return { ok: false, outcome: "unknown-seat", detail: `unknown-seat — unknown agent seat ${JSON.stringify(e.seat)}` };
     }
     throw e;
   }
