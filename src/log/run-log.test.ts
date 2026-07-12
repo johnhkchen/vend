@@ -683,6 +683,52 @@ describe("seatDefaulted marker — structured round-trip, byte compatibility, ma
   });
 });
 
+describe("seatOfExecution — raw round-trip, byte compatibility, malformed, legacy (T-071-01-01 AC)", () => {
+  const preE071Line =
+    '{"v":1,"runId":"se2","play":"decompose-epic","epic":"E-001","model":"claude-opus-4-8",' +
+    '"outcome":"success","usage":{"input_tokens":1200,"output_tokens":800,' +
+    '"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"costUsd":0.42,' +
+    '"gateResults":[{"gate":"typecheck","passed":true}],' +
+    '"startedAt":"2026-06-18T12:00:00.000Z","endedAt":"2026-06-18T12:05:00.000Z"}\n';
+
+  test("a supplied raw seat survives build and the readRuns round-trip verbatim without KNOWN_SEATS policing", () => {
+    const rawSeat = "future-lane/raw";
+    const built = buildRunRecord(baseInput({ runId: "se1", seatOfExecution: rawSeat }));
+    expect(built.seatOfExecution).toBe(rawSeat);
+
+    const line = serializeRunRecord(built);
+    const { records, skipped } = readRuns(line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.seatOfExecution).toBe(rawSeat);
+    expect(serializeRunRecord(records[0]!)).toBe(line);
+  });
+
+  test("an absent seat emits a byte-identical pre-E-071 record", () => {
+    const rec = buildRunRecord(baseInput({ runId: "se2" }));
+    expect("seatOfExecution" in rec).toBe(false);
+    expect(serializeRunRecord(rec).includes("seatOfExecution")).toBe(false);
+    expect(serializeRunRecord(rec)).toBe(preE071Line);
+  });
+
+  test("a pre-E-071 line survives readRuns with the seat omitted rather than defaulted", () => {
+    const { records, skipped } = readRuns(preE071Line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect("seatOfExecution" in records[0]!).toBe(false);
+  });
+
+  test("a malformed seat is dropped on revive without losing the record", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "se3" })))),
+      seatOfExecution: 42,
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.runId).toBe("se3");
+    expect("seatOfExecution" in rec!).toBe(false);
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(

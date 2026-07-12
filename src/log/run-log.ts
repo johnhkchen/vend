@@ -173,6 +173,11 @@ export interface RunRecordInput {
    *  was recorded / historical unknown. The field is omitted entirely when absent or malformed,
    *  keeping an ordinary record byte-identical to a pre-E-070 one. */
   readonly seatDefaulted?: SeatDefaulted;
+  /** Raw executor lane whose usage this run burned on (T-071-01-01). Absent means the
+   *  execution seat was not recorded / is historically unknown, so the field is omitted
+   *  entirely. The log preserves a supplied non-empty string verbatim and deliberately does
+   *  not police it against the routing layer's known-seat registry. */
+  readonly seatOfExecution?: string;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -228,6 +233,10 @@ export interface RunRecord {
    *  a pre-E-070 one. {@link reviveRecord} preserves valid marker details and drops malformed
    *  optional metadata without discarding the otherwise useful record. */
   readonly seatDefaulted?: SeatDefaulted;
+  /** Present ONLY when the caller supplied a structurally usable raw execution seat
+   *  (T-071-01-01). Absence remains unknown rather than being defaulted to a lane.
+   *  {@link reviveRecord} preserves the raw string without applying routing policy. */
+  readonly seatOfExecution?: string;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -352,6 +361,13 @@ function normalizeSeatDefaulted(value: SeatDefaulted | undefined): SeatDefaulted
   };
 }
 
+/** Normalize execution-seat provenance (T-071-01-01): a non-empty string is durable fact data
+ *  and survives verbatim; absence or a malformed runtime value is omitted. This is structural
+ *  validation only — the ledger intentionally does not import or consult KNOWN_SEATS. */
+function normalizeSeatOfExecution(value: unknown): string | undefined {
+  return isNonEmptyString(value) ? value : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -386,6 +402,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
   const overEnvelope = normalizeOverEnvelope(input.overEnvelope);
   const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
+  const seatOfExecution = normalizeSeatOfExecution(input.seatOfExecution);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -405,6 +422,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
     ...(seatDefaulted ? { seatDefaulted } : {}),
+    ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -527,6 +545,11 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
       : undefined,
   );
 
+  // Execution-seat provenance (T-071-01-01) is raw fact data, not routing policy. Preserve any
+  // non-empty string verbatim, including a value unknown to this version's routing registry;
+  // historical absence or malformed optional metadata is omitted without losing the record.
+  const seatOfExecution = normalizeSeatOfExecution(r.seatOfExecution);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -545,6 +568,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
     ...(seatDefaulted ? { seatDefaulted } : {}),
+    ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });
