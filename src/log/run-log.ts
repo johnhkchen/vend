@@ -115,6 +115,16 @@ export interface SeatDefaulted {
   readonly reason: string;
 }
 
+/** Durable details for a default routing seat inferred from recent lane heat (T-071-02-02).
+ *  Declared locally so the append-only ledger preserves the chosen seat and evidence without
+ *  importing routing policy, heat policy, or the known-seat registry. */
+export interface SeatInferred {
+  /** Raw routing seat chosen by inference. */
+  readonly seat: string;
+  /** Stable explanation of the heat evidence that led to the choice. */
+  readonly reason: string;
+}
+
 /** What the runner hands {@link buildRunRecord} / {@link appendRunLog} (pre-normalization). */
 export interface RunRecordInput {
   readonly runId: string;
@@ -173,6 +183,11 @@ export interface RunRecordInput {
    *  was recorded / historical unknown. The field is omitted entirely when absent or malformed,
    *  keeping an ordinary record byte-identical to a pre-E-070 one. */
   readonly seatDefaulted?: SeatDefaulted;
+  /** One-way inference marker (T-071-02-02): present only when recent lane heat selected a
+   *  default routing seat. Both the chosen seat and heat reason are required so the automatic
+   *  choice remains countable and auditable. Absent or malformed markers are omitted entirely,
+   *  keeping a non-inferred record byte-identical to a pre-feature one. */
+  readonly seatInferred?: SeatInferred;
   /** Raw executor lane whose usage this run burned on (T-071-01-01). Absent means the
    *  execution seat was not recorded / is historically unknown, so the field is omitted
    *  entirely. The log preserves a supplied non-empty string verbatim and deliberately does
@@ -233,6 +248,10 @@ export interface RunRecord {
    *  a pre-E-070 one. {@link reviveRecord} preserves valid marker details and drops malformed
    *  optional metadata without discarding the otherwise useful record. */
   readonly seatDefaulted?: SeatDefaulted;
+  /** Present ONLY as a complete marker (T-071-02-02) when lane heat inferred a default routing
+   *  seat. Absence is the one-way negative state. {@link reviveRecord} preserves valid chosen-seat
+   *  and reason details while dropping malformed optional metadata without losing the record. */
+  readonly seatInferred?: SeatInferred;
   /** Present ONLY when the caller supplied a structurally usable raw execution seat
    *  (T-071-01-01). Absence remains unknown rather than being defaulted to a lane.
    *  {@link reviveRecord} preserves the raw string without applying routing policy. */
@@ -361,6 +380,20 @@ function normalizeSeatDefaulted(value: SeatDefaulted | undefined): SeatDefaulted
   };
 }
 
+/** Normalize the seat-inferred marker (T-071-02-02): chosen seat and heat reason are atomic. A
+ *  partial or malformed optional marker is omitted rather than admitted or allowed to invalidate
+ *  the record. Rebuilding selects only schema fields in deterministic key order. Values remain
+ *  verbatim: the log preserves inference provenance and does not apply routing or heat policy. */
+function normalizeSeatInferred(value: SeatInferred | undefined): SeatInferred | undefined {
+  if (!value || !isNonEmptyString(value.seat) || !isNonEmptyString(value.reason)) {
+    return undefined;
+  }
+  return {
+    seat: value.seat,
+    reason: value.reason,
+  };
+}
+
 /** Normalize execution-seat provenance (T-071-01-01): a non-empty string is durable fact data
  *  and survives verbatim; absence or a malformed runtime value is omitted. This is structural
  *  validation only — the ledger intentionally does not import or consult KNOWN_SEATS. */
@@ -402,6 +435,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
   const overEnvelope = normalizeOverEnvelope(input.overEnvelope);
   const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
+  const seatInferred = normalizeSeatInferred(input.seatInferred);
   const seatOfExecution = normalizeSeatOfExecution(input.seatOfExecution);
 
   return Object.freeze({
@@ -422,6 +456,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
     ...(seatDefaulted ? { seatDefaulted } : {}),
+    ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
@@ -545,6 +580,16 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
       : undefined,
   );
 
+  // Inferred-seat details (T-071-02-02) follow the same atomic optional-marker contract: only a
+  // non-null object with both non-empty strings survives. Historical absence and malformed
+  // metadata are omitted without making an otherwise useful append-only record unreadable.
+  const rawSeatInferred = r.seatInferred;
+  const seatInferred = normalizeSeatInferred(
+    typeof rawSeatInferred === "object" && rawSeatInferred !== null
+      ? (rawSeatInferred as SeatInferred)
+      : undefined,
+  );
+
   // Execution-seat provenance (T-071-01-01) is raw fact data, not routing policy. Preserve any
   // non-empty string verbatim, including a value unknown to this version's routing registry;
   // historical absence or malformed optional metadata is omitted without losing the record.
@@ -568,6 +613,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
     ...(seatDefaulted ? { seatDefaulted } : {}),
+    ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,

@@ -683,6 +683,70 @@ describe("seatDefaulted marker — structured round-trip, byte compatibility, ma
   });
 });
 
+describe("seatInferred marker — structured readRuns round-trip, byte compatibility, malformed (T-071-02-02 AC)", () => {
+  const marker = {
+    seat: "codex",
+    reason: "recent cost-weighted burn: claude hotter",
+  } as const;
+
+  const preSeatInferredLine =
+    '{"v":1,"runId":"si2","play":"decompose-epic","epic":"E-001","model":"claude-opus-4-8",' +
+    '"outcome":"success","usage":{"input_tokens":1200,"output_tokens":800,' +
+    '"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"costUsd":0.42,' +
+    '"gateResults":[{"gate":"typecheck","passed":true}],' +
+    '"startedAt":"2026-06-18T12:00:00.000Z","endedAt":"2026-06-18T12:05:00.000Z"}\n';
+
+  test("chosen seat and heat reason survive build and a byte-stable readRuns round-trip", () => {
+    const built = buildRunRecord(baseInput({ runId: "si1", seatInferred: marker }));
+    expect(built.seatInferred).toEqual(marker);
+
+    const line = serializeRunRecord(built);
+    const { records, skipped } = readRuns(line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.seatInferred).toEqual(marker);
+    expect(serializeRunRecord(records[0]!)).toBe(line);
+  });
+
+  test("an absent marker emits a byte-identical pre-seatInferred record", () => {
+    const rec = buildRunRecord(baseInput({ runId: "si2" }));
+    expect("seatInferred" in rec).toBe(false);
+    expect(serializeRunRecord(rec).includes("seatInferred")).toBe(false);
+    expect(serializeRunRecord(rec)).toBe(preSeatInferredLine);
+  });
+
+  test("a partial marker is omitted atomically and byte-identically to absence on build", () => {
+    const rec = buildRunRecord(
+      baseInput({
+        runId: "si2",
+        seatInferred: { seat: "codex" },
+      } as never),
+    );
+    expect("seatInferred" in rec).toBe(false);
+    expect(serializeRunRecord(rec)).toBe(preSeatInferredLine);
+  });
+
+  test("a valid marker is canonically copied without extra nested fields", () => {
+    const rec = buildRunRecord(
+      baseInput({
+        runId: "si3",
+        seatInferred: { ...marker, diagnostic: "do-not-persist" },
+      } as never),
+    );
+    expect(rec.seatInferred).toEqual(marker);
+  });
+
+  test("malformed marker metadata is dropped on revive without losing the record", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "si4" })))),
+      seatInferred: { seat: "codex", reason: 42 },
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.runId).toBe("si4");
+    expect("seatInferred" in rec!).toBe(false);
+  });
+});
+
 describe("seatOfExecution — raw round-trip, byte compatibility, malformed, legacy (T-071-01-01 AC)", () => {
   const preE071Line =
     '{"v":1,"runId":"se2","play":"decompose-epic","epic":"E-001","model":"claude-opus-4-8",' +
