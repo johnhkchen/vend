@@ -5,6 +5,7 @@
 import { join } from "node:path";
 import type { WorkPlan } from "../../baml_client/index.ts";
 import type { CastContext, EffectResult } from "../engine/play.ts";
+import { DEFAULT_RUN_LOG_PATH, loadRunLog } from "../log/run-log.ts";
 import {
   blockEntryTicketsAfter,
   epicIdFromDoc,
@@ -12,6 +13,7 @@ import {
   renumberPlanToEpic,
 } from "./decompose-epic-core.ts";
 import { listIdsIn, type DecomposeInputs } from "./project-context.ts";
+import { inferDefaultSeat } from "./lane-heat.ts";
 import {
   materialize,
   BareCodeError,
@@ -99,6 +101,14 @@ export async function decomposeEffect(
   }
 
   try {
+    // An explicit counter choice is authoritative. Only an omitted `--agent` consults the
+    // project ledger; ambiguous/both-cool evidence returns null and preserves today's unrouted
+    // materialization bytes. Both direct decompose and chain converge on this one effect.
+    const seatInferred = ctx.inputs.agent === undefined
+      ? inferDefaultSeat((await loadRunLog({ path: join(root, DEFAULT_RUN_LOG_PATH) })).records)
+      : null;
+    const effectiveAgent = ctx.inputs.agent ?? seatInferred?.seat;
+
     // The charter is the same string `gates` fed ClearContext — materialize snapshots it once
     // per cut so every written body carries its codes' cut-time text. The optional routing seat
     // is resolved by materialize: known seats stamp; unknown seats omit the key and report the
@@ -110,7 +120,7 @@ export async function decomposeEffect(
         ticketsDir: join(root, "docs", "active", "tickets"),
       },
       ctx.inputs.charter,
-      ctx.inputs.agent,
+      effectiveAgent,
     );
     const validated = await validate(root);
     return {
@@ -118,6 +128,7 @@ export async function decomposeEffect(
       detail: validated.ok ? "lisa validate ✓" : `lisa validate ✗\n${validated.output}`,
       artifacts: [...storyFiles, ...ticketFiles],
       ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
+      ...(seatInferred !== null ? { seatInferred } : {}),
     };
   } catch (e) {
     if (e instanceof IdCollisionError) {

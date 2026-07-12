@@ -10,7 +10,14 @@ import type {
   WorkPlan,
 } from "../../baml_client/index.ts";
 import { castPlay } from "./cast.ts";
-import { reviveRecord, totalTokens } from "../log/run-log.ts";
+import { castChain } from "./chain.ts";
+import {
+  buildRunRecord,
+  DEFAULT_RUN_LOG_PATH,
+  reviveRecord,
+  serializeRunRecord,
+  totalTokens,
+} from "../log/run-log.ts";
 import type { Play } from "./play.ts";
 import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
@@ -131,7 +138,7 @@ const SEAT_PLAN: WorkPlan = {
     type: "Task" as DraftType,
     status: "Open" as DraftStatus,
     priority: "High" as DraftPriority,
-    tickets: ["T-070-99-01"],
+    tickets: ["T-070-99-01", "T-070-99-02"],
     scope: "Preserve a cleared board when a requested routing seat is unknown (P4).",
     storyAcceptance: "The full board lands with honest requested-versus-default provenance.",
     honestBoundary: "Fixture-proven and token-free; no live executor is used.",
@@ -150,6 +157,18 @@ const SEAT_PLAN: WorkPlan = {
     purpose: "Keep autonomous materialization available under a safe default (P4).",
     advances: ["P4"],
     doneSignal: "The default-byte ticket lands and its run record names the fallback.",
+  }, {
+    id: "T-070-99-02",
+    story: "S-070-99",
+    title: "record-the-default-on-every-ticket",
+    type: "Task" as DraftType,
+    status: "Open" as DraftStatus,
+    priority: "High" as DraftPriority,
+    phase: "Ready" as DraftPhase,
+    depends_on: ["T-070-99-01"],
+    purpose: "Prove one gesture applies its routing decision to the complete ticket set (P4).",
+    advances: ["P4"],
+    doneSignal: "The second ticket carries the same gesture-level routing seat.",
   }],
 };
 
@@ -165,6 +184,43 @@ function seatDefaultPlay(): Play<DecomposeInputs, WorkPlan> {
     effect: (plan, ctx) => decomposeEffect(plan, ctx, async () => ({ ok: true, output: "" })),
     budget: BIG_BUDGET,
     card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
+  };
+}
+
+/** Write pre-cast execution heat to the production project ledger the decompose effect reads. */
+async function writeLaneHeat(root: string, claudeTokens: number, codexTokens: number): Promise<void> {
+  const ledgerPath = join(root, DEFAULT_RUN_LOG_PATH);
+  await mkdir(join(root, ".vend"), { recursive: true });
+  const record = (runId: string, seatOfExecution: string, inputTokens: number) =>
+    serializeRunRecord(buildRunRecord({
+      runId,
+      play: "heat-fixture",
+      epic: "E-071",
+      model: "fixture",
+      outcome: "success",
+      usage: { input_tokens: inputTokens },
+      seatOfExecution,
+      startedAt: "2026-07-12T00:00:00.000Z",
+      endedAt: "2026-07-12T00:00:01.000Z",
+    }));
+  await writeFile(
+    ledgerPath,
+    record("heat-claude", "claude", claudeTokens) + record("heat-codex", "codex", codexTokens),
+    "utf8",
+  );
+}
+
+/** First chain step: lands a threadable reference so the real decompose-shaped second step runs. */
+function producingPlay(): Play<{ signal: string }, string> {
+  return {
+    name: "producer-fixture",
+    summary: "produce a threadable fixture reference",
+    render: ({ signal }) => signal,
+    parse: (text) => text,
+    gates: () => ({ status: "clear" }),
+    effect: async () => ({ ok: true, produced: "fixture-epic.md" }),
+    budget: BIG_BUDGET,
+    card: { color: ["blue"], type: "sorcery", rarity: "common" },
   };
 }
 
@@ -321,9 +377,9 @@ test("castPlay: an unknown requested seat materializes the default-byte board, r
   const storyDir = join("docs", "active", "stories");
   const ticketDir = join("docs", "active", "tickets");
   expect(await readdir(join(baselineRoot, storyDir))).toEqual(["S-070-99.md"]);
-  expect(await readdir(join(baselineRoot, ticketDir))).toEqual(["T-070-99-01.md"]);
+  expect((await readdir(join(baselineRoot, ticketDir))).sort()).toEqual(["T-070-99-01.md", "T-070-99-02.md"]);
   expect(await readdir(join(degradedRoot, storyDir))).toEqual(["S-070-99.md"]);
-  expect(await readdir(join(degradedRoot, ticketDir))).toEqual(["T-070-99-01.md"]);
+  expect((await readdir(join(degradedRoot, ticketDir))).sort()).toEqual(["T-070-99-01.md", "T-070-99-02.md"]);
 
   const baselineStory = await readFile(join(baselineRoot, storyDir, "S-070-99.md"), "utf8");
   const degradedStory = await readFile(join(degradedRoot, storyDir, "S-070-99.md"), "utf8");
@@ -346,6 +402,150 @@ test("castPlay: an unknown requested seat materializes the default-byte board, r
   expect(degraded.stdout).toContain(
     "· seat defaulted — requested 'kodex'; using 'claude' (unknown-seat; proceeding, recorded)\n",
   );
+});
+
+test("castPlay: omitted agent infers the cooler seat, stamps every ticket, and records provenance (T-071-02-03 AC)", async () => {
+  const root = await tmp();
+  await writeLaneHeat(root, 300, 100);
+  const outputLog = join(root, "cast-output.jsonl");
+
+  const summary = await castPlay(
+    seatDefaultPlay(),
+    { epic: "E-071 fixture", charter: SEAT_CHARTER, project: "fixture project" },
+    BIG_BUDGET,
+    {
+      subject: "E-071",
+      projectRoot: root,
+      transcriptDir: root,
+      runLogPath: outputLog,
+      executor: stubExecutor([], JSON.stringify(SEAT_PLAN)),
+    },
+  );
+
+  expect(summary.outcome).toBe("success");
+  for (const id of ["T-070-99-01", "T-070-99-02"]) {
+    const ticket = await readFile(join(root, "docs", "active", "tickets", `${id}.md`), "utf8");
+    expect(ticket).toContain("priority: high\nagent: codex\nphase: ready");
+    expect(ticket.match(/^agent: codex$/gm)).toHaveLength(1);
+  }
+
+  const record = JSON.parse((await readFile(outputLog, "utf8")).trim());
+  expect(record.seatInferred).toEqual({
+    seat: "codex",
+    reason: "recent cost-weighted burn (last 100 records): claude=300 vs codex=100; 3x hotter",
+  });
+  expect(reviveRecord(record)?.seatInferred).toEqual(record.seatInferred);
+  expect("seatDefaulted" in record).toBe(false);
+});
+
+test("castPlay: both-cool evidence preserves unrouted board bytes and emits no inference marker (T-071-02-03 AC)", async () => {
+  const baselineRoot = await tmp();
+  const coolRoot = await tmp();
+  await writeLaneHeat(coolRoot, 100, 100);
+  const inputs: DecomposeInputs = {
+    epic: "E-071 fixture",
+    charter: SEAT_CHARTER,
+    project: "fixture project",
+  };
+
+  await castPlay(seatDefaultPlay(), inputs, BIG_BUDGET, {
+    subject: "E-071-baseline",
+    projectRoot: baselineRoot,
+    transcriptDir: baselineRoot,
+    runLogPath: join(baselineRoot, "cast-output.jsonl"),
+    executor: stubExecutor([], JSON.stringify(SEAT_PLAN)),
+  });
+  await castPlay(seatDefaultPlay(), inputs, BIG_BUDGET, {
+    subject: "E-071-cool",
+    projectRoot: coolRoot,
+    transcriptDir: coolRoot,
+    runLogPath: join(coolRoot, "cast-output.jsonl"),
+    executor: stubExecutor([], JSON.stringify(SEAT_PLAN)),
+  });
+
+  for (const kind of ["stories", "tickets"] as const) {
+    const relative = join("docs", "active", kind);
+    const files = await readdir(join(baselineRoot, relative));
+    expect(await readdir(join(coolRoot, relative))).toEqual(files);
+    for (const file of files) {
+      expect(await readFile(join(coolRoot, relative, file), "utf8")).toBe(
+        await readFile(join(baselineRoot, relative, file), "utf8"),
+      );
+    }
+  }
+  const coolTicket = await readFile(join(coolRoot, "docs", "active", "tickets", "T-070-99-01.md"), "utf8");
+  expect(coolTicket).not.toContain("\nagent:");
+  const record = JSON.parse((await readFile(join(coolRoot, "cast-output.jsonl"), "utf8")).trim());
+  expect("seatInferred" in record).toBe(false);
+});
+
+test("castPlay: explicit agent overrides hot-lane inference and emits no inferred marker (T-071-02-03 AC)", async () => {
+  const root = await tmp();
+  await writeLaneHeat(root, 300, 100);
+  const outputLog = join(root, "cast-output.jsonl");
+
+  await castPlay(
+    seatDefaultPlay(),
+    { epic: "E-071 fixture", charter: SEAT_CHARTER, project: "fixture project", agent: "claude" },
+    BIG_BUDGET,
+    {
+      subject: "E-071-explicit",
+      projectRoot: root,
+      transcriptDir: root,
+      runLogPath: outputLog,
+      executor: stubExecutor([], JSON.stringify(SEAT_PLAN)),
+    },
+  );
+
+  for (const id of ["T-070-99-01", "T-070-99-02"]) {
+    const ticket = await readFile(join(root, "docs", "active", "tickets", `${id}.md`), "utf8");
+    expect(ticket).toContain("priority: high\nagent: claude\nphase: ready");
+  }
+  const record = JSON.parse((await readFile(outputLog, "utf8")).trim());
+  expect("seatInferred" in record).toBe(false);
+});
+
+test("castChain: the decompose step exercises the same inferred-seat injection (T-071-02-03 AC)", async () => {
+  const root = await tmp();
+  await writeLaneHeat(root, 300, 100);
+  const outputLog = join(root, "chain-output.jsonl");
+
+  const result = await castChain([
+    {
+      play: producingPlay(),
+      budget: BIG_BUDGET,
+      opts: {
+        runId: "chain-producer",
+        subject: "signal",
+        projectRoot: root,
+        transcriptDir: root,
+        runLogPath: outputLog,
+        executor: stubExecutor([], "threaded"),
+      },
+      adapt: () => ({ signal: "signal" }),
+    },
+    {
+      play: seatDefaultPlay(),
+      budget: BIG_BUDGET,
+      opts: {
+        runId: "chain-decompose",
+        subject: "E-071-chain",
+        projectRoot: root,
+        transcriptDir: root,
+        runLogPath: outputLog,
+        executor: stubExecutor([], JSON.stringify(SEAT_PLAN)),
+      },
+      adapt: () => ({ epic: "E-071 fixture", charter: SEAT_CHARTER, project: "fixture project" }),
+    },
+  ]);
+
+  expect(result.outcome).toBe("success");
+  const ticket = await readFile(join(root, "docs", "active", "tickets", "T-070-99-02.md"), "utf8");
+  expect(ticket).toContain("agent: codex");
+  const records = (await readFile(outputLog, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  expect(records).toHaveLength(2);
+  expect(records[0]!.seatInferred).toBeUndefined();
+  expect(records[1]!.seatInferred?.seat).toBe("codex");
 });
 
 test("castPlay: a cast WITHOUT codebase-memory-mcp writes the reduced-grounding marker into runs.jsonl (T-060-01-02 AC)", async () => {

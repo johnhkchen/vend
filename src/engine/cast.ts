@@ -27,7 +27,7 @@ import type { Executor } from "../executor/executor.ts";
 import { executorFor } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
-import type { CastContext, GateVerdict, Play, SeatDefaulted } from "./play.ts";
+import type { CastContext, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
 import {
   classify,
   makeStreamSink,
@@ -268,6 +268,7 @@ export async function castPlay<I, O>(
   let materialized = false;
   let produced: string | undefined;
   let seatDefaulted: SeatDefaulted | undefined;
+  let seatInferred: SeatInferred | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
     const eff = await play.effect(output, ctx);
@@ -275,6 +276,7 @@ export async function castPlay<I, O>(
     // Preserve the effect's authoritative routing disposition. The generic cast loop does not
     // inspect play-specific inputs or re-run seat policy; it only surfaces and records the report.
     seatDefaulted = eff.seatDefaulted;
+    seatInferred = eff.seatInferred;
     // Surface the produced reference ONLY when the effect actually landed — a chain threads it
     // into the next play (T-011-01); a failed (e.g. id-collision) effect surfaces nothing.
     produced = eff.ok ? eff.produced : undefined;
@@ -362,6 +364,9 @@ export async function castPlay<I, O>(
       // The effect's authoritative routing disposition (T-070-01-03). Forward the exact report;
       // absence omits the key so ordinary and historical records retain their existing shape.
       ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
+      // The effect is the sole inference-policy boundary. Preserve its chosen seat and evidence
+      // verbatim; an explicit or ambiguous/unrouted cast omits the one-way marker.
+      ...(seatInferred !== undefined ? { seatInferred } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,

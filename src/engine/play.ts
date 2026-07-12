@@ -102,6 +102,15 @@ export interface SeatDefaulted {
 }
 
 /**
+ * A board-writing effect inferred a default routing seat from project evidence. The engine keeps
+ * this structural and policy-free: the concrete effect owns which seats exist and why one wins.
+ */
+export interface SeatInferred {
+  readonly seat: string;
+  readonly reason: string;
+}
+
+/**
  * What a play's `effect` reports back to the cast loop after touching the world. `ok` is
  * whether the effect landed; `outcome` optionally RELABELS the run outcome (e.g. an
  * id-collision refusal → `"id-collision"`) so the loop logs it without the effect having
@@ -115,6 +124,8 @@ export interface EffectResult {
   readonly artifacts?: readonly string[];
   /** Successful routing degradation, absent when no default was applied. */
   readonly seatDefaulted?: SeatDefaulted;
+  /** Automatic routing provenance, absent when the caller chose a seat or evidence was ambiguous. */
+  readonly seatInferred?: SeatInferred;
   /**
    * The single canonical reference a downstream play threads on — the chain primitive
    * (T-011-01). DISTINCT from `artifacts` (ALL files written, for provenance): `produced` is
