@@ -28,7 +28,16 @@ import { executorFor } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import type { CastContext, GateVerdict, Play, SeatDefaulted } from "./play.ts";
-import { classify, makeStreamSink, resolveLoggedModel, resolveMaxTurns, resolveTools, resolveTurnsUsed, toolFlags } from "./cast-core.ts";
+import {
+  classify,
+  makeStreamSink,
+  resolveLoggedModel,
+  resolveMaxTurns,
+  resolveSeatOfExecution,
+  resolveTools,
+  resolveTurnsUsed,
+  toolFlags,
+} from "./cast-core.ts";
 import { readProjectMcpServers } from "./mcp-registry.ts";
 
 // Re-export the pure core so callers (T-007-03) have one engine entry for the cast surface.
@@ -206,6 +215,11 @@ export async function castPlay<I, O>(
   // `executorFor()` ⇒ `ClaudeExecutor` ⇒ the same `dispense` with the same args ⇒
   // byte-identical to before the interface existed.
   const executor = opts.executor ?? executorFor(opts.executorId ? { executor: opts.executorId } : {});
+  // Execution provenance (T-071-01-02): map the instance ACTUALLY selected/injected to the
+  // KNOWN_SEATS lane it burns. Unknown executor ids stay undefined and are omitted below rather
+  // than being falsely charged to a default lane. Resolve before dispense so timeouts still name
+  // the executor lane on which work was attempted.
+  const seatOfExecution = resolveSeatOfExecution(executor.id);
 
   let timedOut = false;
   let result: ResultMessage | null = null;
@@ -334,6 +348,10 @@ export async function castPlay<I, O>(
       // The agentic turns the cast took (T-015-02) — pass-through, spread only when known so a
       // timed-out run (no result) leaves the field off, exactly like `intervened`.
       ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+      // The resolved executor's accounting lane (T-071-01-02). The pure core owns the explicit
+      // executor-id mapping; spread only when known so an unmapped/lane-less executor leaves the
+      // key off, exactly like `turnsUsed`, rather than fabricating provenance.
+      ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
       // The reduced-grounding marker (T-060-01-02, E-060 #3) — one-way, spread only when the cast
       // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
       // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.

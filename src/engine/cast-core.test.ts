@@ -14,6 +14,7 @@ import {
   makeStreamSink,
   resolveLoggedModel,
   resolveMaxTurns,
+  resolveSeatOfExecution,
   resolveTools,
   resolveTurnsUsed,
   toolFlags,
@@ -144,6 +145,22 @@ describe("resolveLoggedModel — real id → pinned → sentinel", () => {
   });
   test("falls back to the DEFAULT_MODEL sentinel when neither is present (a timed-out run)", () => {
     expect(resolveLoggedModel(undefined, undefined)).toBe(DEFAULT_MODEL);
+  });
+});
+
+describe("resolveSeatOfExecution — resolved executor id → KNOWN_SEATS lane (T-071-01-02)", () => {
+  test("the Claude executor burns the claude lane", () => {
+    expect(resolveSeatOfExecution("claude")).toBe("claude");
+  });
+
+  test("the OpenAI-compatible executor burns the codex lane", () => {
+    expect(resolveSeatOfExecution("openai-compat")).toBe("codex");
+  });
+
+  test("an unmapped executor stays lane-less rather than defaulting", () => {
+    expect(resolveSeatOfExecution("stub")).toBeUndefined();
+    expect(resolveSeatOfExecution("Claude")).toBeUndefined();
+    expect(resolveSeatOfExecution("")).toBeUndefined();
   });
 });
 

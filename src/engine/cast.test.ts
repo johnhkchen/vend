@@ -69,9 +69,9 @@ const SAMPLE_STREAM: StreamMessage[] = [
 ];
 
 /** A stub Executor: streams the sample messages to onMessage in order, returns a success result. */
-function stubExecutor(seen: StreamMessage[], resultText = "hello from stub"): Executor {
+function stubExecutor(seen: StreamMessage[], resultText = "hello from stub", id = "stub"): Executor {
   return {
-    id: "stub",
+    id,
     async dispense(opts: DispenseOptions): Promise<ResultMessage> {
       for (const m of SAMPLE_STREAM) {
         seen.push(m);
@@ -193,7 +193,7 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
     projectRoot: root,
     transcriptDir: root,
     runLogPath,
-    executor: stubExecutor(seen), // the injection seam — no spawn, no Claude
+    executor: stubExecutor(seen, "hello from stub", "claude"), // known lane, still no spawn/tokens
   });
 
   // onMessage fired (the stub received a working callback and streamed through it).
@@ -215,7 +215,26 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.play).toBe("echo");
   expect(rec.outcome).toBe("success");
   expect(rec.model).toBe("stub-model-1");
+  expect(rec.seatOfExecution).toBe("claude");
   expect(rec.overEnvelope).toBeUndefined();
+});
+
+test("castPlay: a lane-less executor omits seatOfExecution like other unknown facts", async () => {
+  const root = await tmp();
+  const runLogPath = join(root, "runs.jsonl");
+
+  const summary = await castPlay(echoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-071-01-02-lane-less",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    executor: stubExecutor([]),
+  });
+
+  expect(summary.outcome).toBe("success");
+  const rec = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect("seatOfExecution" in rec).toBe(false);
+  expect(rec.seatOfExecution).toBeUndefined();
 });
 
 test("castPlay: a gates-cleared token overshoot writes story/ticket files and logs a warned clear (T-068-02-03 AC)", async () => {

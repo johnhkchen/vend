@@ -22,6 +22,7 @@
 
 import type { StreamMessage } from "../executor/claude.ts";
 import type { BudgetOutcome } from "../budget/budget.ts";
+import type { AgentSeat } from "../play/agent-seat.ts";
 import type { GateVerdict, PlayTools } from "./play.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 
@@ -40,6 +41,24 @@ export const DEFAULT_MODEL = "claude-cli-default";
  */
 export function resolveLoggedModel(real: string | undefined, opt: string | undefined): string {
   return real ?? opt ?? DEFAULT_MODEL;
+}
+
+/**
+ * Project a resolved executor's stable id onto the KNOWN_SEATS lane whose budget it burns
+ * (T-071-01-02). Exact, explicit matching keeps provenance honest: a future or injected
+ * executor has no known lane until its accounting policy is named here, so it returns
+ * `undefined` and the run-log field is omitted rather than guessed. PURE — no registry or env
+ * lookup; the caller passes the id of the executor instance it actually resolved.
+ */
+export function resolveSeatOfExecution(executorId: string): AgentSeat | undefined {
+  switch (executorId) {
+    case "claude":
+      return "claude";
+    case "openai-compat":
+      return "codex";
+    default:
+      return undefined;
+  }
 }
 
 /**
