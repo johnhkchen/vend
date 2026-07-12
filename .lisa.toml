@@ -12,6 +12,7 @@ max_threads = 2
 # review_timeout_secs = 600
 # session_timeout_secs = 3600
 # wind_down_secs = 300
+# assignment_ack_timeout_secs = 30
 
 # [scheduling.phase_timeouts]
 # research = 300
