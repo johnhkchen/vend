@@ -929,9 +929,10 @@ if (import.meta.main) {
     // (generous, heaviest-read) envelope. Lazy import keeps the shell (and its BAML addon) off the
     // pure-parse path, exactly as the other arms.
     const { castSteer, steerProjectPlay } = await import("./play/steer.ts");
+    const { withFundingCounter } = await import("./shelf/funding-counter.ts");
     const budget = parsed.budget ?? steerProjectPlay.budget;
     if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
-    const summary = await castSteer({ budget });
+    const summary = await withFundingCounter(steerProjectPlay, budget, async () => await castSteer({ budget }));
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
   }

@@ -15,6 +15,7 @@
 
 import { registry, type PlayNotFoundError } from "../engine/play.ts";
 import type { RunSummary } from "../engine/cast.ts";
+import { withFundingCounter } from "../shelf/funding-counter.ts";
 import { assembleAndCast, type RunOptions } from "./decompose-epic.ts";
 
 /** The outcome of a by-name dispatch: a typed not-found andon, or the cast's summary. */
@@ -31,5 +32,10 @@ export type DispatchResult =
 export async function runPlay(name: string, opts: RunOptions): Promise<DispatchResult> {
   const lookup = registry.get(name);
   if (!lookup.found) return { kind: "no-play", error: lookup.error };
-  return { kind: "ran", summary: await assembleAndCast(lookup.play, opts) };
+  return await withFundingCounter(
+    lookup.play,
+    opts.budget,
+    async () => ({ kind: "ran", summary: await assembleAndCast(lookup.play, opts) }),
+    { projectRoot: opts.projectRoot },
+  );
 }
