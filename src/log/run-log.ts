@@ -125,6 +125,17 @@ export interface SeatInferred {
   readonly reason: string;
 }
 
+/** Durable explanation for a relevant cross-review that could not bind a complement reviewer
+ *  (T-076-01-02). Declared locally so the ledger records the resolver disposition without
+ *  importing executor capability or cross-review policy. Both the reason and the capability
+ *  condition that would bind review are required. */
+export interface CrossReviewSkipped {
+  /** Stable explanation for why no complement review ran. */
+  readonly reason: string;
+  /** Stable description of the configured capability condition that would bind review. */
+  readonly bindsWhen: string;
+}
+
 /** Durable outcome of an adversarial review performed on a different executor seat (S-073-01).
  *  Declared locally so the append-only ledger records routing provenance and judgment without
  *  importing cross-review or executor policy. The nested value is atomic: both seats and the
@@ -208,6 +219,11 @@ export interface RunRecordInput {
    *  entirely. The log preserves a supplied non-empty string verbatim and deliberately does
    *  not police it against the routing layer's known-seat registry. */
   readonly seatOfExecution?: string;
+  /** Optional relevant-but-inert cross-review disposition (T-076-01-02). Both why resolution was
+   *  inert and what capability condition would bind it are required. Absent means no relevant
+   *  skipped-resolution event was recorded / historical unknown. Malformed values are omitted so
+   *  an ordinary record remains byte-identical to a pre-feature record. */
+  readonly crossReviewSkipped?: CrossReviewSkipped;
   /** Optional cross-vendor gate outcome. Absent means no complement review ran, so a single-seat
    *  cast remains inert and emits no verdict field. Malformed optional values are omitted. */
   readonly crossVendorVerdict?: CrossVendorVerdict;
@@ -277,6 +293,11 @@ export interface RunRecord {
    *  (T-071-01-01). Absence remains unknown rather than being defaulted to a lane.
    *  {@link reviveRecord} preserves the raw string without applying routing policy. */
   readonly seatOfExecution?: string;
+  /** Present ONLY as a complete marker (T-076-01-02) when review was relevant but complement
+   *  resolution was inert. Absence preserves irrelevant, reviewed, and historical record shape.
+   *  {@link reviveRecord} retains valid reason/binding details and drops malformed optional
+   *  metadata without losing the record. */
+  readonly crossReviewSkipped?: CrossReviewSkipped;
   /** Present only as a complete cross-vendor outcome with both seat provenances and pass/fail.
    *  Absence means no complement review was recorded / historical unknown. */
   readonly crossVendorVerdict?: CrossVendorVerdict;
@@ -427,6 +448,21 @@ function normalizeSeatOfExecution(value: unknown): string | undefined {
   return isNonEmptyString(value) ? value : undefined;
 }
 
+/** Normalize the skipped cross-review marker (T-076-01-02): the reason and binding condition are
+ *  atomic. Rebuilding selects only schema fields in deterministic order. A partial or malformed
+ *  optional marker is omitted rather than invalidating the otherwise useful run. */
+function normalizeCrossReviewSkipped(value: unknown): CrossReviewSkipped | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (!isNonEmptyString(candidate.reason) || !isNonEmptyString(candidate.bindsWhen)) {
+    return undefined;
+  }
+  return {
+    reason: candidate.reason,
+    bindsWhen: candidate.bindsWhen,
+  };
+}
+
 /** Normalize the cross-vendor gate outcome (T-073-01-04): required provenance and judgment are
  *  atomic, while detail is optional. Rebuilding selects only schema fields in deterministic key
  *  order. A partial/malformed optional value is omitted rather than invalidating the run; the log
@@ -490,6 +526,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
   const seatInferred = normalizeSeatInferred(input.seatInferred);
   const seatOfExecution = normalizeSeatOfExecution(input.seatOfExecution);
+  const crossReviewSkipped = normalizeCrossReviewSkipped(input.crossReviewSkipped);
   const crossVendorVerdict = normalizeCrossVendorVerdict(input.crossVendorVerdict);
   const capturedDiff = normalizeCapturedDiff(input.capturedDiff);
 
@@ -513,6 +550,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+    ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
     ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
     ...(capturedDiff !== undefined ? { capturedDiff } : {}),
     startedAt: input.startedAt,
@@ -652,9 +690,15 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // historical absence or malformed optional metadata is omitted without losing the record.
   const seatOfExecution = normalizeSeatOfExecution(r.seatOfExecution);
 
+  // A skipped cross-review marker (T-076-01-02) is optional but atomic. Preserve only a complete
+  // reason and binding condition; historical absence or malformed metadata is omitted without
+  // losing the otherwise useful run. The read boundary does not re-run resolution policy.
+  const crossReviewSkipped = normalizeCrossReviewSkipped(r.crossReviewSkipped);
+
   // Cross-vendor review evidence (T-073-01-04) is optional but atomic. Preserve only a complete
   // authoring seat, reviewing seat, and pass/fail judgment; malformed metadata is dropped without
-  // losing the otherwise useful run. Absence is the inert single-seat/historical state.
+  // losing the otherwise useful run. Absence means no reviewer verdict was recorded / historical
+  // unknown; crossReviewSkipped separately distinguishes a relevant null resolution.
   const crossVendorVerdict = normalizeCrossVendorVerdict(r.crossVendorVerdict);
 
   // Captured patch evidence (T-073-01-01) follows the optional raw-fact contract: a non-empty
@@ -681,6 +725,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+    ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
     ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
     ...(capturedDiff !== undefined ? { capturedDiff } : {}),
     startedAt: r.startedAt,

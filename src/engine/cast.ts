@@ -26,7 +26,13 @@ import { ExecutorTimeoutError } from "../executor/executor.ts";
 import type { Executor, ExecutorProbeResult } from "../executor/executor.ts";
 import { executorFor, type ExecutorRegistry } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
-import { appendRunLog, type CrossVendorVerdict, type GateResult as LogGate, type RunOutcome } from "../log/run-log.ts";
+import {
+  appendRunLog,
+  type CrossReviewSkipped,
+  type CrossVendorVerdict,
+  type GateResult as LogGate,
+  type RunOutcome,
+} from "../log/run-log.ts";
 import { resolveComplementExecutor } from "../cross-review/resolve-complement.ts";
 import { dispenseReviewVerdict } from "../cross-review/review.ts";
 import type { CastContext, EffectResult, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
@@ -346,6 +352,7 @@ export async function castPlay<I, O>(
   let capturedDiff: string | undefined;
   let seatDefaulted: SeatDefaulted | undefined;
   let seatInferred: SeatInferred | undefined;
+  let crossReviewSkipped: CrossReviewSkipped | undefined;
   let crossVendorVerdict: CrossVendorVerdict | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
@@ -371,9 +378,10 @@ export async function castPlay<I, O>(
     if (eff.outcome) outcome = eff.outcome;
     process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
 
-    // A complement can review only concrete landed patch bytes. Resolution is deliberately inert
-    // for a lane-less author, one-seat registry, or ambiguous registry; those paths remain exactly
-    // the pre-cross-review clear. A valid refusal is a gate outcome, not a human approval step.
+    // A complement can review only concrete landed patch bytes from a known author lane. Those
+    // irrelevant paths remain exactly the pre-cross-review clear. Once relevant, a null resolution
+    // is recorded as skipped rather than silently resembling a gate that ran. A valid refusal is a
+    // gate outcome, not a human approval step.
     if (!opts.skipGates && eff.ok && capturedDiff !== undefined && seatOfExecution !== undefined) {
       const reviewer = opts.crossReviewRegistry === undefined
         ? resolveComplementExecutor(seatOfExecution)
@@ -392,6 +400,11 @@ export async function castPlay<I, O>(
           reviewingSeat: review.reviewingSeat,
           verdict: review.verdict,
           ...(review.verdict === "fail" ? { detail: review.reason } : {}),
+        };
+      } else {
+        crossReviewSkipped = {
+          reason: "no-complement-reviewer-resolved",
+          bindsWhen: "author-and-exactly-one-complement-reviewer-provisioned",
         };
       }
     }
@@ -486,6 +499,10 @@ export async function castPlay<I, O>(
       // Durable patch evidence (T-073-01-01): only a landed effect with a non-empty Git diff
       // supplies a reference. The ledger stays compact; the reviewing seat loads the artifact.
       ...(capturedDiff !== undefined ? { capturedDiff } : {}),
+      // Honest inert-gate provenance (T-076-01-02): this path had a known author lane and concrete
+      // patch bytes, but complement resolution returned null. Irrelevant or reviewed paths omit
+      // the complete marker so their existing ledger shape is unchanged.
+      ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
       // The reduced-grounding marker (T-060-01-02, E-060 #3) — one-way, spread only when the cast
       // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
       // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
@@ -499,8 +516,9 @@ export async function castPlay<I, O>(
       // The effect is the sole inference-policy boundary. Preserve its chosen seat and evidence
       // verbatim; an explicit or ambiguous/unrouted cast omits the one-way marker.
       ...(seatInferred !== undefined ? { seatInferred } : {}),
-      // Attached gate provenance: absent for the inert no-complement/no-diff path; present for
-      // both pass and fail so the final outcome is auditable from the same ledger line.
+      // Attached reviewer verdict: absent when no review ran (with crossReviewSkipped distinguishing
+      // a relevant null resolution from an irrelevant path); present for both pass and fail so the
+      // final outcome is auditable from the same ledger line.
       ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,

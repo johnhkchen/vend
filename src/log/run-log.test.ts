@@ -817,6 +817,81 @@ describe("capturedDiff — artifact-reference round-trip and omission (T-073-01-
   });
 });
 
+describe("crossReviewSkipped — structured round-trip, byte compatibility, malformed (T-076-01-02 AC)", () => {
+  const marker = {
+    reason: "no-complement-reviewer-resolved",
+    bindsWhen: "author-and-exactly-one-complement-reviewer-provisioned",
+  } as const;
+
+  const preCrossReviewSkippedLine =
+    '{"v":1,"runId":"xrs2","play":"decompose-epic","epic":"E-001","model":"claude-opus-4-8",' +
+    '"outcome":"success","usage":{"input_tokens":1200,"output_tokens":800,' +
+    '"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"costUsd":0.42,' +
+    '"gateResults":[{"gate":"typecheck","passed":true}],' +
+    '"startedAt":"2026-06-18T12:00:00.000Z","endedAt":"2026-06-18T12:05:00.000Z"}\n';
+
+  test("reason and binding condition survive a byte-stable ledger read round trip", () => {
+    const built = buildRunRecord(baseInput({ runId: "xrs1", crossReviewSkipped: marker }));
+    expect(built.crossReviewSkipped).toEqual(marker);
+
+    const line = serializeRunRecord(built);
+    const { records, skipped } = readRuns(line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.crossReviewSkipped).toEqual(marker);
+    expect(serializeRunRecord(records[0]!)).toBe(line);
+  });
+
+  test("an absent marker emits a byte-identical pre-feature record", () => {
+    const built = buildRunRecord(baseInput({ runId: "xrs2" }));
+    expect("crossReviewSkipped" in built).toBe(false);
+    expect(serializeRunRecord(built)).toBe(preCrossReviewSkippedLine);
+  });
+
+  test("a historical line revives without synthesizing a marker", () => {
+    const { records, skipped } = readRuns(preCrossReviewSkippedLine);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect("crossReviewSkipped" in records[0]!).toBe(false);
+  });
+
+  test("a partial marker is omitted atomically and byte-identically to absence", () => {
+    const built = buildRunRecord(
+      baseInput({
+        runId: "xrs2",
+        crossReviewSkipped: { reason: "no-complement-reviewer-resolved" },
+      } as never),
+    );
+    expect("crossReviewSkipped" in built).toBe(false);
+    expect(serializeRunRecord(built)).toBe(preCrossReviewSkippedLine);
+  });
+
+  test("a valid marker is canonically copied without extra nested fields", () => {
+    const built = buildRunRecord(
+      baseInput({
+        runId: "xrs3",
+        crossReviewSkipped: { ...marker, diagnostic: "do-not-persist" },
+      } as never),
+    );
+    expect(built.crossReviewSkipped).toEqual(marker);
+  });
+
+  test("malformed marker metadata is dropped on revive without losing the record", () => {
+    const raw = JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "xrs4" }))));
+    const revived = reviveRecord({
+      ...raw,
+      crossReviewSkipped: {
+        reason: "no-complement-reviewer-resolved",
+        bindsWhen: 42,
+      },
+    });
+
+    expect(revived).not.toBeNull();
+    expect(revived!.runId).toBe("xrs4");
+    expect("crossReviewSkipped" in revived!).toBe(false);
+  });
+});
+
 describe("crossVendorVerdict — reviewed and inert run-log round trip (T-073-01-04 AC)", () => {
   test("a cross-reviewed line carries both seats and pass/fail while a single-seat line carries no verdict", () => {
     const verdict = {

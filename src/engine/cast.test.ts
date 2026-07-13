@@ -409,7 +409,9 @@ test("castPlay: a file-writing effect captures a routable Git diff reference on 
 
   const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
   expect(raw.capturedDiff).toBe(summary.capturedDiff);
+  expect("crossReviewSkipped" in raw).toBe(false);
   expect(reviveRecord(raw)?.capturedDiff).toBe(summary.capturedDiff);
+  expect(reviveRecord(raw)?.crossReviewSkipped).toBeUndefined();
 });
 
 test("castPlay: a refusing complement verdict blocks clear as gate-failed and stays attached", async () => {
@@ -453,6 +455,7 @@ test("castPlay: a refusing complement verdict blocks clear as gate-failed and st
     verdict: "fail",
     detail: "acceptance proof is missing",
   });
+  expect("crossReviewSkipped" in raw).toBe(false);
   expect(raw.gateResults).toEqual([
     { gate: "fixture-contract", passed: true },
     { gate: "cross-vendor-review", passed: false, detail: "acceptance proof is missing" },
@@ -490,10 +493,11 @@ test("castPlay: a passing complement verdict clears with verdict and gate eviden
     reviewingSeat: "codex",
     verdict: "pass",
   });
+  expect("crossReviewSkipped" in raw).toBe(false);
   expect(raw.gateResults.at(-1)).toEqual({ gate: "cross-vendor-review", passed: true });
 });
 
-test("castPlay: a single configured seat clears unchanged with cross-review inert", async () => {
+test("castPlay: a relevant default-config review records why complement resolution was inert", async () => {
   const root = await tmp();
   await initGitRepo(root);
   const runLogPath = join(root, "runs.jsonl");
@@ -509,7 +513,6 @@ test("castPlay: a single configured seat clears unchanged with cross-review iner
     runLogPath,
     runId: "cross-review-inert",
     executor: stubExecutor([], JSON.stringify(plan), "claude"),
-    crossReviewRegistry: { claude: () => stubExecutor([], "unused", "claude") },
   });
 
   expect(summary.outcome).toBe("success");
@@ -518,6 +521,11 @@ test("castPlay: a single configured seat clears unchanged with cross-review iner
   expect(raw.outcome).toBe("success");
   expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
   expect("crossVendorVerdict" in raw).toBe(false);
+  expect(raw.crossReviewSkipped).toEqual({
+    reason: "no-complement-reviewer-resolved",
+    bindsWhen: "author-and-exactly-one-complement-reviewer-provisioned",
+  });
+  expect(reviveRecord(raw)?.crossReviewSkipped).toEqual(raw.crossReviewSkipped);
 });
 
 test("castPlay: a no-op effect omits captured diff evidence (T-073-01-01 AC)", async () => {
@@ -532,7 +540,7 @@ test("castPlay: a no-op effect omits captured diff evidence (T-073-01-01 AC)", a
     transcriptDir: root,
     runLogPath,
     runId,
-    executor: stubExecutor([]),
+    executor: stubExecutor([], "hello from stub", "claude"),
   });
 
   expect(summary.outcome).toBe("success");
@@ -540,7 +548,9 @@ test("castPlay: a no-op effect omits captured diff evidence (T-073-01-01 AC)", a
   expect(summary.capturedDiff).toBeUndefined();
   const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
   expect("capturedDiff" in raw).toBe(false);
+  expect("crossReviewSkipped" in raw).toBe(false);
   expect(reviveRecord(raw)?.capturedDiff).toBeUndefined();
+  expect(reviveRecord(raw)?.crossReviewSkipped).toBeUndefined();
   expect(await Bun.file(join(root, ".vend", "artifacts", `${runId}.diff`)).exists()).toBe(false);
 });
 
