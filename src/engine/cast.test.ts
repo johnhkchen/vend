@@ -1063,6 +1063,16 @@ test("castPlay: resume gates and materializes the stored draft without a new exe
   });
   expect(await readFile(materializedPath, "utf8")).toBe("paid-output-is-reused");
   expect(await loadDecomposeDrafts({ path: draftPath })).toEqual({ records: [], skipped: 0 });
+  const resumedRun = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(resumedRun.usage).toEqual({
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  });
+  expect(resumedRun.costUsd).toBe(0);
+  expect(resumedRun).not.toHaveProperty("envelope");
+  expect(resumedRun).not.toHaveProperty("seatOfExecution");
 
   const rawDraftRows = (await readFile(draftPath, "utf8"))
     .trimEnd()

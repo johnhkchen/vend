@@ -15,12 +15,21 @@
 
 import { registry, type PlayNotFoundError } from "../engine/play.ts";
 import type { RunSummary } from "../engine/cast.ts";
+import type { Budget } from "../budget/budget.ts";
 import { withFundingCounter } from "../shelf/funding-counter.ts";
-import { assembleAndCast, type RunOptions } from "./decompose-epic.ts";
+import {
+  assembleAndCast,
+  ResumeDraftNotFoundError,
+  type RunOptions,
+} from "./decompose-epic.ts";
+
+/** Dispatch accepts an omitted budget only for the no-dispense resume gesture. */
+export type DispatchRunOptions = Omit<RunOptions, "budget"> & { readonly budget?: Budget };
 
 /** The outcome of a by-name dispatch: a typed not-found andon, or the cast's summary. */
 export type DispatchResult =
   | { readonly kind: "no-play"; readonly error: PlayNotFoundError }
+  | { readonly kind: "no-draft"; readonly epic: string }
   | { readonly kind: "ran"; readonly summary: RunSummary };
 
 /**
@@ -29,13 +38,28 @@ export type DispatchResult =
  * the resolved play is cast through {@link assembleAndCast} (the single play-specific input
  * assembly today). IMPURE.
  */
-export async function runPlay(name: string, opts: RunOptions): Promise<DispatchResult> {
+export async function runPlay(name: string, opts: DispatchRunOptions): Promise<DispatchResult> {
   const lookup = registry.get(name);
   if (!lookup.found) return { kind: "no-play", error: lookup.error };
+
+  if (opts.resume) {
+    try {
+      return {
+        kind: "ran",
+        summary: await assembleAndCast(lookup.play, { ...opts, budget: lookup.play.budget }),
+      };
+    } catch (error) {
+      if (error instanceof ResumeDraftNotFoundError) return { kind: "no-draft", epic: error.epic };
+      throw error;
+    }
+  }
+
+  const budget = opts.budget;
+  if (budget === undefined) throw new TypeError("a cold play dispatch requires a budget");
   return await withFundingCounter(
     lookup.play,
-    opts.budget,
-    async () => ({ kind: "ran", summary: await assembleAndCast(lookup.play, opts) }),
+    budget,
+    async () => ({ kind: "ran", summary: await assembleAndCast(lookup.play, { ...opts, budget }) }),
     { projectRoot: opts.projectRoot },
   );
 }

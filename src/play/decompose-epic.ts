@@ -26,6 +26,7 @@
 // (memory 20232); a plain `bun` process — which the CLI/press are — runs both calls fine,
 // which is also why no bun-test file value-imports this module.
 
+import { isAbsolute, join } from "node:path";
 import { b } from "../../baml_client/sync_client.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 import { extractPromptText } from "../baml/decompose-bridge.ts";
@@ -48,6 +49,11 @@ import type { Budget } from "../budget/budget.ts";
 import { assembleInputs, contextSourcesForRun, type DecomposeInputs } from "./project-context.ts";
 import { decomposeEffect } from "./decompose-effect.ts";
 import type { DegradeDisposition } from "./degrade-disposition.ts";
+import {
+  DEFAULT_DECOMPOSE_DRAFT_PATH,
+  latestDecomposeDraft,
+  loadDecomposeDrafts,
+} from "../engine/decompose-draft.ts";
 
 export { lisaValidate, type ValidateResult } from "./decompose-effect.ts";
 
@@ -86,6 +92,29 @@ export interface RunOptions {
   /** Lisa executor-routing seat to stamp on every ticket minted by this run (`--agent`). Raw
    *  strings reach materialize's canonical write guard so unknown values become a named andon. */
   readonly agent?: string;
+  /** Re-enter the cast from the latest active persisted draft instead of cold-dispensing. */
+  readonly resume?: boolean;
+  /** Hermetic override for the decompose draft ledger. */
+  readonly decomposeDraftPath?: string;
+  /** Hermetic override for the terminal run ledger. */
+  readonly runLogPath?: string;
+}
+
+/** Expected recovery-state miss: the requested epic has no active draft to resume. */
+export class ResumeDraftNotFoundError extends Error {
+  readonly epic: string;
+  constructor(epic: string) {
+    super(`no active decompose draft for ${epic}`);
+    this.name = "ResumeDraftNotFoundError";
+    this.epic = epic;
+  }
+}
+
+/** Resolve the doctor hint's bare epic id while preserving explicit markdown paths. PURE. */
+export function resumeEpicPath(argument: string, root: string): string {
+  if (isAbsolute(argument)) return argument;
+  if (argument.endsWith(".md") || argument.includes("/")) return join(root, argument);
+  return join(root, "docs", "active", "epic", `${argument}.md`);
 }
 
 /** Pull a lisa id out of the epic's frontmatter (`id: E-001`), else the file basename. The
@@ -199,20 +228,31 @@ registry.register(decomposeEpicPlay);
  */
 export async function assembleAndCast(play: AnyPlay, opts: RunOptions): Promise<RunSummary> {
   const root = opts.projectRoot ?? process.cwd();
+  const epicPath = opts.resume ? resumeEpicPath(opts.epicPath, root) : opts.epicPath;
   const inputs = await assembleInputs(contextSourcesForRun({
-    epicPath: opts.epicPath,
+    epicPath,
     projectRoot: root,
     after: opts.after,
     agent: opts.agent,
   }));
+  const subject = epicIdOf(inputs.epic, epicPath);
+  const draftPath = opts.decomposeDraftPath ?? join(root, DEFAULT_DECOMPOSE_DRAFT_PATH);
+  const resumeDraft = opts.resume
+    ? latestDecomposeDraft((await loadDecomposeDrafts({ path: draftPath })).records, subject)
+    : null;
+  if (opts.resume && resumeDraft === null) throw new ResumeDraftNotFoundError(subject);
+
   return castPlay(play, inputs, opts.budget, {
-    subject: epicIdOf(inputs.epic, opts.epicPath),
+    subject,
     projectRoot: root,
     model: opts.model,
     runId: opts.runId,
     transcriptDir: opts.transcriptDir,
+    runLogPath: opts.runLogPath,
+    decomposeDraftPath: draftPath,
     intervened: opts.intervened,
     skipGates: opts.skipGates,
+    ...(resumeDraft !== null ? { resumeDraft } : {}),
   });
 }
 

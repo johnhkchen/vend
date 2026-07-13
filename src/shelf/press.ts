@@ -81,6 +81,7 @@ export async function pressShelf(opts: PressOpts): Promise<PressResult> {
     // registered), so it throws rather than returning a press andon.
     const res = await runPlay("decompose-epic", { epicPath: run.epicPath, budget: run.budget, projectRoot: root });
     if (res.kind === "no-play") throw res.error;
+    if (res.kind === "no-draft") throw new Error(`unexpected resume-state miss for cold press: ${res.epic}`);
     runs.push(res.summary);
   }
   return { kind: "dispatched", runs };

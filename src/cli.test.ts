@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { formatRunSummaryLine, formatSvgWriteLine, parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
 
 // T-002-03 CLI: the PURE arg parsers. The `import.meta.main` dispatch (which imports
@@ -157,6 +160,34 @@ describe("parseArgs", () => {
       cmd: "usage",
       error: "missing --budget <ms>,<tokens>",
     });
+  });
+  test("run decompose-epic <epic> --resume accepts the doctor's exact zero-dispense command", () => {
+    expect(parseArgs(["run", "decompose-epic", "E-077", "--resume"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "E-077",
+      resume: true,
+    });
+  });
+  test("run decompose-epic accepts an explicit markdown path on resume", () => {
+    expect(parseArgs(["run", "decompose-epic", "docs/active/epic/E-077.md", "--resume"])).toEqual({
+      cmd: "run",
+      play: "decompose-epic",
+      epicPath: "docs/active/epic/E-077.md",
+      resume: true,
+    });
+  });
+  test("run --resume refuses cold-only funding, gate bypass, and effect-input flags", () => {
+    for (const tail of [
+      ["--budget", "1,2"],
+      ["--no-gates"],
+      ["--intervened"],
+      ["--no-intervened"],
+      ["--after", "T-001-01"],
+      ["--agent", "codex"],
+    ]) {
+      expect(parseArgs(["run", "decompose-epic", "E-077", "--resume", ...tail]).cmd).toBe("usage");
+    }
   });
   test("malformed --budget surfaces the parse error as usage", () => {
     expect(parseArgs(["run", "decompose-epic", "epic.md", "--budget", "nope"]).cmd).toBe("usage");
@@ -671,9 +702,10 @@ describe("help command and grouped usage (T-072-01-01)", () => {
       "vend audit",
       "vend svg",
       "vend init",
+      "vend run decompose-epic <epic> --resume",
     ] as const;
     const meteredCommands = [
-      "vend run",
+      "vend run <play>",
       "vend chain",
       "vend expand",
       "vend annotate",
@@ -704,7 +736,14 @@ describe("help command and grouped usage (T-072-01-01)", () => {
 
     const completeInventory = [...freeCommands, ...meteredCommands];
     expect(new Set(completeInventory).size).toBe(completeInventory.length);
-    expect(completeInventory).toHaveLength(16);
+    expect(completeInventory).toHaveLength(17);
+  });
+
+  test("USAGE presents the exact resume gesture as free while cold run remains metered", () => {
+    const freeSection = USAGE.slice(USAGE.indexOf("free (no tokens):"), USAGE.indexOf("metered (uses tokens):"));
+    const meteredSection = USAGE.slice(USAGE.indexOf("metered (uses tokens):"));
+    expect(freeSection).toContain("vend run decompose-epic <epic> --resume");
+    expect(meteredSection).toContain("vend run <play> <epic.md> --budget");
   });
 
   test("both help spellings print the grouped banner to stdout and exit 0", async () => {
@@ -779,5 +818,35 @@ describe("funding echo (T-072-03-02)", () => {
       exitCode: 2,
     });
     expect(raw).toEqual({ ...humane, stdout: humane.stdout });
+  });
+
+  test("the exact resume command emits no funding line and treats a stale draft hint as data", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-cli-resume-"));
+    try {
+      await Promise.all([
+        mkdir(join(root, "docs", "active", "epic"), { recursive: true }),
+        mkdir(join(root, "docs", "knowledge"), { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(join(root, "docs", "active", "epic", "E-077.md"), "---\nid: E-077\n---\n", "utf8"),
+        writeFile(join(root, "docs", "knowledge", "charter.md"), "# Fixture charter\n", "utf8"),
+      ]);
+      const proc = Bun.spawn(
+        [process.execPath, join(process.cwd(), "src", "cli.ts"), "run", "decompose-epic", "E-077", "--resume"],
+        { cwd: root, stdout: "pipe", stderr: "pipe" },
+      );
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: "",
+        stderr: "no active decompose draft for E-077\n",
+        exitCode: 1,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

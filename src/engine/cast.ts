@@ -582,10 +582,9 @@ export async function castPlay<I, O>(
         play: play.name,
         epic: opts.subject,
         model: loggedModel,
-        // The allocated envelope this cast ran under — recorded so cost-vs-budget is
-        // recoverable from the ledger (T-013-01, IA-12/13). `Budget` duck-types onto the
-        // log's local `Envelope` (no src/budget ↔ src/log import — the decoupling holds).
-        envelope: budget,
+        // The allocated envelope a cold cast ran under. A resume has no new executor allocation;
+        // its zero actual usage remains countable without fabricating a funded envelope.
+        ...(resumeDraft === undefined ? { envelope: budget } : {}),
         // The project this cast ran against — groups the record for two-level bias correction
         // (T-013-03, IA-16); the repo-root basename unless the caller overrode it.
         project,

@@ -34,6 +34,7 @@ export const USAGE =
   "  vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]\n" +
   "  vend svg [--seat <designer|dev>] [--out <path>]\n" +
   "  vend init [--template <name>]\n" +
+  "  vend run decompose-epic <epic> --resume\n" +
   "\n" +
   "metered (uses tokens):\n" +
   "  vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened] [--after <ticket>] [--agent <seat>]\n" +
@@ -62,7 +63,10 @@ export type ParsedCommand =
       readonly cmd: "run";
       readonly play: string;
       readonly epicPath: string;
-      readonly budget: Budget;
+      /** Required for a cold dispense; absent only for the zero-dispense `--resume` path. */
+      readonly budget?: Budget;
+      /** Re-enter decompose from its latest active post-gate draft. */
+      readonly resume?: true;
       /** The E2 `--no-gates` run mode (T-014-02): skip the gate phase so the output
        *  materializes ungated. Spread only when the flag is present, so the gated default
        *  parses to the same object shape as before. */
@@ -719,13 +723,24 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
 
   const flagIdx = argv.indexOf("--budget", 3);
   const budgetVal = flagIdx >= 0 ? argv[flagIdx + 1] : undefined;
-  if (!budgetVal) return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  const resume = argv.includes("--resume");
+  if (resume) {
+    const incompatible = ["--budget", "--no-gates", "--intervened", "--no-intervened", "--after", "--agent"]
+      .find((flag) => argv.includes(flag));
+    if (incompatible !== undefined) {
+      return { cmd: "usage", error: `--resume cannot be combined with ${incompatible}` };
+    }
+  }
+  if (flagIdx >= 0 && !budgetVal) return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
+  if (flagIdx < 0 && !resume) return { cmd: "usage", error: "missing --budget <ms>,<tokens>" };
 
-  let budget: Budget;
-  try {
-    budget = parseBudgetArg(budgetVal);
-  } catch (e) {
-    return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+  let budget: Budget | undefined;
+  if (budgetVal !== undefined) {
+    try {
+      budget = parseBudgetArg(budgetVal);
+    } catch (e) {
+      return { cmd: "usage", error: e instanceof Error ? e.message : String(e) };
+    }
   }
   // `--no-gates` is a presence flag (the E2 run mode, T-014-02) — order-independent vs
   // `--budget`. Spread `skipGates` only when present so the gated default keeps its shape.
@@ -754,7 +769,8 @@ function parseRunArgs(argv: readonly string[]): ParsedCommand {
     cmd: "run",
     play,
     epicPath,
-    budget,
+    ...(budget !== undefined ? { budget } : {}),
+    ...(resume ? { resume: true } : {}),
     ...(skipGates ? { skipGates: true } : {}),
     ...(intervened !== undefined ? { intervened } : {}),
     ...(dedupAfter.length ? { after: dedupAfter } : {}),
@@ -1126,10 +1142,11 @@ if (import.meta.main) {
   // pure-parse path, exactly as the browse/press arms keep their deps lazy. An unknown play
   // is the registry's typed andon → stderr + exit 2.
   const { runPlay } = await import("./play/dispatch.ts");
-  process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
+  if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
   const res = await runPlay(parsed.play, {
     epicPath: parsed.epicPath,
     budget: parsed.budget,
+    resume: parsed.resume,
     skipGates: parsed.skipGates,
     intervened: parsed.intervened,
     after: parsed.after,
@@ -1138,6 +1155,10 @@ if (import.meta.main) {
   if (res.kind === "no-play") {
     process.stderr.write(`${res.error.message}\n`);
     process.exit(2);
+  }
+  if (res.kind === "no-draft") {
+    process.stderr.write(`no active decompose draft for ${res.epic}\n`);
+    process.exit(1);
   }
   const summary = res.summary;
   process.stdout.write(formatRunSummaryLine(summary));
