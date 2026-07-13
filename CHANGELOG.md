@@ -3,6 +3,13 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.5 — 2026-07-12
+
+- **Fixes rc.4's cast-killing bug — upgrade before running any metered command.** rc.4 tried to contact a local model server (port 11434) that nobody configured, crashing every `chain`/`steer`/`run` at its first step, leaving a half-minted epic and a spent cast missing from the ledger. Cross-vendor review now stays quietly out of the way unless you've actually set up a reviewer, and says so on the run record.
+- If a configured reviewer can't be reached mid-cast, the cast stops with a named, plain-words explanation — never a crash — and the run always lands on the ledger, even when something goes wrong at the finish line.
+- `vend doctor` now tells you what review will do before you spend: "cross-review: not provisioned — casts skip review" in green, or a red check naming an unreachable reviewer with the fix.
+- If rc.4 left you an orphaned epic card: upgrade, then re-run `vend run decompose-epic <card>` — it completes normally now.
+
 ## 0.4.0-rc.4 — 2026-07-12
 
 - `vend doctor` now proves your executor can actually run from where you are — not just that it's installed. A sandbox blocking credential access (the macOS Keychain case) shows up as a named red check with the fix, before any tokens are spent.
