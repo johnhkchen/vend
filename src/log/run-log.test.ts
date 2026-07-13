@@ -817,6 +817,87 @@ describe("capturedDiff — artifact-reference round-trip and omission (T-073-01-
   });
 });
 
+describe("crossVendorVerdict — reviewed and inert run-log round trip (T-073-01-04 AC)", () => {
+  test("a cross-reviewed line carries both seats and pass/fail while a single-seat line carries no verdict", () => {
+    const verdict = {
+      authoringSeat: "claude",
+      reviewingSeat: "codex",
+      verdict: "pass",
+      detail: "No blocking defect found",
+    } as const;
+    const reviewedLine = serializeRunRecord(
+      buildRunRecord(baseInput({ runId: "xv-reviewed", crossVendorVerdict: verdict })),
+    );
+    const singleSeatLine = serializeRunRecord(buildRunRecord(baseInput({ runId: "xv-single-seat" })));
+    const jsonl = reviewedLine + singleSeatLine;
+
+    const rawLines = jsonl.trimEnd().split("\n").map((line) => JSON.parse(line));
+    expect(rawLines[0].crossVendorVerdict).toEqual(verdict);
+    expect("crossVendorVerdict" in rawLines[1]).toBe(false);
+
+    const { records, skipped } = readRuns(jsonl);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(2);
+    expect(records[0]!.crossVendorVerdict).toEqual(verdict);
+    expect("crossVendorVerdict" in records[1]!).toBe(false);
+  });
+
+  test("a fail verdict and its detail survive a byte-stable readRuns round trip", () => {
+    const verdict = {
+      authoringSeat: "codex",
+      reviewingSeat: "claude",
+      verdict: "fail",
+      detail: "The new branch drops the recorded artifact",
+    } as const;
+    const line = serializeRunRecord(
+      buildRunRecord(baseInput({ runId: "xv-fail", crossVendorVerdict: verdict })),
+    );
+    const { records, skipped } = readRuns(line);
+
+    expect(skipped).toBe(0);
+    expect(records[0]!.crossVendorVerdict).toEqual(verdict);
+    expect(serializeRunRecord(records[0]!)).toBe(line);
+  });
+
+  test("detail is optional and is not synthesized for a pass", () => {
+    const verdict = {
+      authoringSeat: "claude",
+      reviewingSeat: "codex",
+      verdict: "pass",
+    } as const;
+    const built = buildRunRecord(baseInput({ runId: "xv-pass", crossVendorVerdict: verdict }));
+    expect(built.crossVendorVerdict).toEqual(verdict);
+    expect("detail" in built.crossVendorVerdict!).toBe(false);
+  });
+
+  test("partial provenance is omitted atomically on build", () => {
+    const built = buildRunRecord(
+      baseInput({
+        runId: "xv-partial",
+        crossVendorVerdict: { authoringSeat: "claude", verdict: "pass" },
+      } as never),
+    );
+    expect("crossVendorVerdict" in built).toBe(false);
+    expect(serializeRunRecord(built).includes("crossVendorVerdict")).toBe(false);
+  });
+
+  test("malformed optional verdict metadata is dropped without losing the run", () => {
+    const raw = JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "xv-malformed" }))));
+    const revived = reviveRecord({
+      ...raw,
+      crossVendorVerdict: {
+        authoringSeat: "claude",
+        reviewingSeat: 42,
+        verdict: "pass",
+      },
+    });
+
+    expect(revived).not.toBeNull();
+    expect(revived!.runId).toBe("xv-malformed");
+    expect("crossVendorVerdict" in revived!).toBe(false);
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(
