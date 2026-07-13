@@ -62,6 +62,7 @@ import { captureEffectDiff } from "./cast-diff.ts";
 import {
   appendDecomposeDraft,
   DEFAULT_DECOMPOSE_DRAFT_PATH,
+  type DecomposeDraftRecord,
   nextDecomposeRepairAction,
   RESUMABLE_DECOMPOSE_PLAY,
   settleDecomposeDraft,
@@ -98,6 +99,9 @@ export interface CastOptions {
   /** Override the resumable decompose checkpoint ledger (default
    *  `<root>/.vend/decompose-drafts.jsonl`). Ignored by every other play. */
   readonly decomposeDraftPath?: string;
+  /** Already-paid active state for a decompose resume. Bypasses cold source acquisition and
+   *  re-enters this same cast at gates over the stored parsed output. */
+  readonly resumeDraft?: DecomposeDraftRecord;
   /** The E1 trust bit (T-014-01): did the author step in mid-run (`true`) or let it clear
    *  (`false`)? Self-reported at the cast command; threaded straight to the single end-of-cast
    *  append (pass-through data, exactly like `project`). Absent ⇒ field omitted ⇒ unknown. */
@@ -202,6 +206,30 @@ export async function castPlay<I, O>(
   const startedAt = new Date().toISOString();
   const runId = opts.runId ?? `run-${startedAt.replace(/[:.]/g, "-")}`;
 
+  const resumeDraft = opts.resumeDraft;
+  if (resumeDraft !== undefined && play.name !== RESUMABLE_DECOMPOSE_PLAY) {
+    throw new TypeError(`cast resume is only valid for ${RESUMABLE_DECOMPOSE_PLAY}`);
+  }
+  if (resumeDraft !== undefined && resumeDraft.epic !== opts.subject) {
+    throw new TypeError(`cast resume draft epic '${resumeDraft.epic}' does not match subject '${opts.subject}'`);
+  }
+  if (resumeDraft !== undefined && opts.skipGates) {
+    throw new TypeError("cast resume must re-enter at gates; skipGates is not allowed");
+  }
+
+  // Facts shared by cold and resumed casts. Resume leaves executor-derived facts absent/zero: no
+  // tool provisioning, probe, transcript, dispense, or metered result occurs on that source path.
+  let executorProbe: ExecutorProbeResult | undefined;
+  let seatOfExecution: string | undefined;
+  let reducedGrounding = false;
+  let maxTurns: number | undefined;
+  let progress = EMPTY_CAST_PROGRESS;
+  let timedOut = false;
+  let result: ResultMessage | null = null;
+
+  // A resume supplies the already-parsed source and joins immediately before gates below. Keep
+  // every statement inside this cold branch in its established order.
+  if (resumeDraft === undefined) {
   // Per-play tool provisioning (E-032, T-032-02): resolve the play's declared `tools` against the
   // project MCP registry (`<root>/.mcp.json`) BEFORE rendering or dispensing. An UNDECLARED play
   // → passthrough (no flags, byte-identical to today). A DECLARED play missing a required MCP
@@ -210,6 +238,7 @@ export async function castPlay<I, O>(
   // STOP, not a silent blind run on the wrong tool set (IA-17).
   const { available, path: mcpConfigPath } = await readProjectMcpServers(root);
   const resolved = resolveTools(play.tools, available);
+  reducedGrounding = "reducedGrounding" in resolved && resolved.reducedGrounding;
   if (!resolved.ok) {
     const endedAt = new Date().toISOString();
     process.stdout.write(`· andon: missing-capability — required MCP absent from project registry: ${resolved.missing.join(", ")}\n`);
@@ -247,8 +276,8 @@ export async function castPlay<I, O>(
   // id/env resolution. The shallow probe spends no tokens and returns expected environment failure
   // as data, which the pure classifier turns into the existing missing-capability amber andon.
   const executor = opts.executor ?? executorFor(opts.executorId ? { executor: opts.executorId } : {});
-  const seatOfExecution = resolveSeatOfExecution(executor.id);
-  const executorProbe = await executor.probe();
+  seatOfExecution = resolveSeatOfExecution(executor.id);
+  executorProbe = await executor.probe();
   const probeVerdict = classify({
     executorProbe,
     timedOut: false,
@@ -296,7 +325,7 @@ export async function castPlay<I, O>(
   // warranted default (`play.maxTurns`), else undefined ⇒ the seam omits `--max-turns` ⇒ turns
   // bounded only by the wall-clock latch + token budget. Resolve it before the live sink because
   // the refreshing line carries the same effective cap handed to the executor.
-  const maxTurns = resolveMaxTurns(opts.maxTurns, play.maxTurns);
+  maxTurns = resolveMaxTurns(opts.maxTurns, play.maxTurns);
 
   // Both surfaces: ONE refreshing stdout line + a durable per-run transcript. The executor-facing
   // wrapper owns the impure clock/terminal control while the existing pure sink remains the single
@@ -315,7 +344,6 @@ export async function castPlay<I, O>(
   });
   const now = opts.now ?? Date.now;
   const progressStartedAt = now();
-  let progress = EMPTY_CAST_PROGRESS;
   let progressLineWritten = false;
   const onMessage = (message: Parameters<typeof transcriptSink>[0]): void => {
     progress = accumulateCastProgress(progress, message);
@@ -326,8 +354,6 @@ export async function castPlay<I, O>(
     transcriptSink(message);
   };
 
-  let timedOut = false;
-  let result: ResultMessage | null = null;
   try {
     result = await executor.dispense({
       prompt,
@@ -347,6 +373,7 @@ export async function castPlay<I, O>(
     // End the single refreshing row exactly once before any existing post-run surface writes.
     if (progressLineWritten) process.stdout.write("\n");
   }
+  }
 
   // The context both gates and effect receive — assembled once.
   const ctx: CastContext<I> = { inputs, projectRoot: root };
@@ -358,8 +385,12 @@ export async function castPlay<I, O>(
   // exhausted ungated result remains budget-exhausted while the in-budget E2 control still lands.
   let budgetOutcome: BudgetOutcome | null = null;
   let gateVerdict: GateVerdict | null = null;
-  let output: O | null = null;
-  if (!timedOut && result) {
+  let output: O | null = resumeDraft === undefined ? null : resumeDraft.parsedDraft as O;
+  if (resumeDraft !== undefined) {
+    // Persisted findings are evidence, not current authorization. Recompute gates against the
+    // current epic/charter context, then reuse the ordinary classifier/effect/settlement tail.
+    gateVerdict = play.gates(output as O, ctx);
+  } else if (!timedOut && result) {
     budgetOutcome = check(budget, (result.usage ?? {}) as Usage);
     output = play.parse(result.result ?? "", ctx);
     if (opts.skipGates) process.stdout.write("· gates skipped (--no-gates)\n");
@@ -392,7 +423,6 @@ export async function castPlay<I, O>(
   const turnsUsed = resolveTurnsUsed(result?.num_turns);
   const usage = (result?.usage ?? {}) as Usage;
   const costUsd = typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0;
-  const reducedGrounding = "reducedGrounding" in resolved && resolved.reducedGrounding;
 
   // The effect boundary remains unchanged: an uncontracted effect throw is not a settlement
   // failure because the shell cannot know whether that ambiguous effect landed. Once the effect

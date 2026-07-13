@@ -32,6 +32,7 @@ import { dispenseOpenAICompat, OPENAI_BASE_URL_ENV } from "../executor/openai-co
 import {
   appendDecomposeDraft,
   DEFAULT_DECOMPOSE_DRAFT_PATH,
+  latestDecomposeDraft,
   loadDecomposeDrafts,
 } from "./decompose-draft.ts";
 
@@ -983,6 +984,101 @@ test("castPlay: a timed-out decompose preserves an already-readable draft (T-077
     runId: "decompose-before-timeout",
     epic: "E-077",
     parsedDraft,
+  });
+});
+
+test("castPlay: resume gates and materializes the stored draft without a new executor dispense, then clears it (T-077-04-04 AC)", async () => {
+  const root = await tmp();
+  const draftPath = join(root, DEFAULT_DECOMPOSE_DRAFT_PATH);
+  const runLogPath = join(root, "runs.jsonl");
+  const materializedPath = join(root, "materialized-from-draft.txt");
+  const parsedDraft = { marker: "paid-output-is-reused" };
+  await appendDecomposeDraft({
+    runId: "decompose-interrupted-after-gates",
+    epic: "E-077",
+    parsedDraft,
+    gateFindings: { status: "clear", cleared: ["fixture-contract"] },
+    nextRepairAction: { kind: "resume-at-gates", cause: "post-gate-interruption" },
+    createdAt: "2026-07-13T12:00:00.000Z",
+  }, { path: draftPath });
+  const active = await loadDecomposeDrafts({ path: draftPath });
+  const resumeDraft = latestDecomposeDraft(active.records, "E-077");
+  expect(resumeDraft).not.toBeNull();
+
+  const calls: string[] = [];
+  const play: Play<{ epic: string }, typeof parsedDraft> = {
+    name: "decompose-epic",
+    summary: "resume a persisted decompose fixture at gates and effect",
+    render: () => {
+      calls.push("render");
+      throw new Error("resume must not render");
+    },
+    parse: () => {
+      calls.push("parse");
+      throw new Error("resume must not parse a regenerated result");
+    },
+    gates: (draft) => {
+      calls.push(`gates:${draft.marker}`);
+      return { status: "clear", cleared: ["fixture-contract"] };
+    },
+    effect: async (draft) => {
+      calls.push(`effect:${draft.marker}`);
+      await writeFile(materializedPath, draft.marker, "utf8");
+      return { ok: true, detail: "materialized the stored draft" };
+    },
+    budget: BIG_BUDGET,
+    card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
+  };
+  const forbiddenExecutor: Executor = {
+    id: "resume-must-bypass-this-executor",
+    async probe() {
+      calls.push("probe");
+      throw new Error("resume must not probe an executor");
+    },
+    async dispense(): Promise<ResultMessage> {
+      calls.push("dispense");
+      throw new Error("resume must not dispense an executor");
+    },
+  };
+
+  const summary = await castPlay(play, { epic: "E-077" }, BIG_BUDGET, {
+    subject: "E-077",
+    projectRoot: root,
+    runLogPath,
+    decomposeDraftPath: draftPath,
+    runId: "decompose-resumed-from-draft",
+    executor: forbiddenExecutor,
+    resumeDraft: resumeDraft!,
+  });
+
+  expect(calls).toEqual([
+    "gates:paid-output-is-reused",
+    "effect:paid-output-is-reused",
+  ]);
+  expect(summary).toMatchObject({
+    runId: "decompose-resumed-from-draft",
+    outcome: "success",
+    materialized: true,
+    actuals: { usage: {} },
+  });
+  expect(await readFile(materializedPath, "utf8")).toBe("paid-output-is-reused");
+  expect(await loadDecomposeDrafts({ path: draftPath })).toEqual({ records: [], skipped: 0 });
+
+  const rawDraftRows = (await readFile(draftPath, "utf8"))
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(rawDraftRows).toHaveLength(2);
+  expect(rawDraftRows[0]).toMatchObject({
+    runId: "decompose-interrupted-after-gates",
+    parsedDraft,
+  });
+  expect(rawDraftRows[1]).toEqual({
+    v: 1,
+    kind: "settled",
+    runId: "decompose-resumed-from-draft",
+    epic: "E-077",
+    settledAt: expect.any(String),
   });
 });
 
