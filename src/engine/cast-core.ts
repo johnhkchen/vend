@@ -321,10 +321,13 @@ export function classify(i: ClassifyInput): Verdict {
 }
 
 /**
- * The immutable live-progress fold over executor messages (T-072-02-01). `weightedTokens`
- * uses budget.ts's price-true numeraire; `turns` counts distinct assistant message ids, not
- * stream events (one Claude turn is repeated for its thinking/text/tool-use blocks).
- * `seenMessageIds` is transport bookkeeping that makes those repeats idempotent.
+ * The immutable live-progress fold over executor messages (T-072-02-01, T-081-02-01).
+ * `weightedTokens` uses budget.ts's price-true numeraire: main-loop assistant usage and explicit
+ * thinking deltas form the live estimate, then cumulative result usage reconciles it to the same
+ * terminal truth the ledger meters. `turns` counts distinct MAIN-LOOP assistant message ids, not
+ * stream events or sidechain/subagent ids (one Claude turn is repeated for its
+ * thinking/text/tool-use blocks). `seenMessageIds` is transport bookkeeping that makes those
+ * repeats idempotent.
  */
 export interface CastProgress {
   readonly weightedTokens: number;
@@ -338,6 +341,13 @@ export const EMPTY_CAST_PROGRESS: CastProgress = Object.freeze({
   turns: 0,
   seenMessageIds: Object.freeze([]) as readonly string[],
 });
+
+/**
+ * Maximum accepted terminal difference from the ledger, in weighted tokens (T-081-02-01).
+ * Both sides apply the canonical `countTokens` function to the same cumulative result usage, so
+ * agreement is exact; non-zero slack would hide a meter drift rather than model measurement noise.
+ */
+export const CAST_PROGRESS_LEDGER_TOLERANCE = 0;
 
 /** Inputs the impure cast shell supplies when rendering one progress state. */
 export interface CastProgressFormat {
@@ -365,14 +375,48 @@ function assistantTurn(msg: StreamMessage): { readonly id: string; readonly usag
   return { id, usage: usage as Usage };
 }
 
+/** A non-null parent marker is the captured stream's sidechain/subagent boundary. */
+function isSidechainMessage(msg: StreamMessage): boolean {
+  return msg.parent_tool_use_id !== undefined && msg.parent_tool_use_id !== null;
+}
+
+/** Extract one incremental main-loop thinking-token observation from the open stream shape. */
+function thinkingTokensDelta(msg: StreamMessage): number | null {
+  if (msg.type !== "system" || msg.subtype !== "thinking_tokens") return null;
+  const delta = msg.estimated_tokens_delta;
+  return typeof delta === "number" && Number.isFinite(delta) && delta >= 0 ? delta : null;
+}
+
+/** Extract cumulative terminal usage. It replaces estimates; it is never another increment. */
+function resultUsage(msg: StreamMessage): Usage | null {
+  return msg.type === "result" && isRecord(msg.usage) ? msg.usage as Usage : null;
+}
+
 /**
  * Fold one streamed executor message into live progress. PURE, immutable, and total over the open
- * transport shape: usage-less/malformed/unknown messages are no-ops; terminal `result.usage` is
- * deliberately ignored because it is the authoritative cumulative result, not another turn.
- * Only the first event for each nested assistant `message.id` is charged, via the canonical
- * price-true {@link countTokens} definition.
+ * transport shape. Marked sidechain records and usage-less/malformed/unknown records are no-ops.
+ * Main-loop thinking deltas are charged as output through the canonical price-true
+ * {@link countTokens} definition. Terminal `result.usage` is authoritative and cumulative, so it
+ * REPLACES the live estimate rather than being added as another turn. Otherwise only the first
+ * event for each main-loop assistant `message.id` is charged and counted.
  */
 export function accumulateCastProgress(state: CastProgress, msg: StreamMessage): CastProgress {
+  if (isSidechainMessage(msg)) return state;
+
+  const terminal = resultUsage(msg);
+  if (terminal !== null) {
+    const weightedTokens = countTokens(terminal);
+    return weightedTokens === state.weightedTokens ? state : Object.freeze({ ...state, weightedTokens });
+  }
+
+  const thinkingDelta = thinkingTokensDelta(msg);
+  if (thinkingDelta !== null) {
+    const weightedDelta = countTokens({ output_tokens: thinkingDelta });
+    return weightedDelta === 0
+      ? state
+      : Object.freeze({ ...state, weightedTokens: state.weightedTokens + weightedDelta });
+  }
+
   const turn = assistantTurn(msg);
   if (turn === null || state.seenMessageIds.includes(turn.id)) return state;
   return Object.freeze({
@@ -408,7 +452,7 @@ function humanElapsed(elapsedMs: number): string {
 export function formatCastProgress(state: CastProgress, opts: CastProgressFormat): string {
   const turn = opts.maxTurns === undefined ? `${state.turns}` : `${state.turns}/${opts.maxTurns}`;
   const detectAfter = state.weightedTokens > opts.tokenEnvelope ? " (detect-after)" : "";
-  const tokens = `${humanProgressTokens(state.weightedTokens)}/${humanProgressTokens(opts.tokenEnvelope)} tokens${detectAfter}`;
+  const tokens = `${humanProgressTokens(state.weightedTokens)}/${humanProgressTokens(opts.tokenEnvelope)} weighted tokens${detectAfter}`;
   return `elapsed ${humanElapsed(opts.elapsedMs)} · ${tokens} · turn ${turn}`;
 }
 

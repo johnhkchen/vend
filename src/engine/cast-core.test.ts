@@ -8,6 +8,7 @@ import { DECOMPOSE_TOOLS } from "../play/decompose-epic-core.ts";
 import { AUTONOMOUS_DENY } from "../play/autonomous-deny.ts";
 import {
   accumulateCastProgress,
+  CAST_PROGRESS_LEDGER_TOLERANCE,
   castGateRows,
   classify,
   DEFAULT_MODEL,
@@ -37,6 +38,11 @@ const exhausted: BudgetOutcome = { status: "exhausted", code: "EBUDGET_EXHAUSTED
 const cleared: GateVerdict = { status: "clear" };
 const clearedNamed: GateVerdict = { status: "clear", cleared: ["value", "allocation", "bounds", "structural"] };
 const stopped: GateVerdict = { status: "stop", gate: "value", unit: "<plan>", reason: "plan has no tickets" };
+
+async function readProgressFixture(name: string): Promise<StreamMessage[]> {
+  const text = await Bun.file(new URL(`./fixtures/T-081-02-01/${name}`, import.meta.url)).text();
+  return text.trimEnd().split("\n").map((line) => JSON.parse(line) as StreamMessage);
+}
 
 describe("classify — terminal outcome + materialize decision (play-generic)", () => {
   test("an unreachable executor is missing-capability before timeout, budget, or gate classification", () => {
@@ -221,7 +227,8 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
       assistant("turn-5"),
       assistant("turn-6"),
       assistant("turn-7"),
-      // Terminal usage is cumulative/authoritative and is not an eighth incremental turn.
+      // Terminal usage is cumulative/authoritative: it reconciles rather than adding an eighth
+      // incremental turn. This fixture's terminal truth intentionally equals its live estimate.
       { type: "result", subtype: "success", usage: { input_tokens: 210_000 } },
       // A future/unknown event cannot opt itself into assistant accounting with lookalike fields.
       { type: "future_event", message: { id: "turn-8", usage: perTurnUsage } },
@@ -241,8 +248,67 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
       "turn-7",
     ]);
     expect(formatCastProgress(progress, { elapsedMs: 252_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
-      "elapsed 4m12s · 210k/500k tokens · turn 7/15",
+      "elapsed 4m12s · 210k/500k weighted tokens · turn 7/15",
     );
+  });
+
+  test("captured jank run tracks explicit thinking spend and reconciles exactly to ledger truth (T-081-02-01)", async () => {
+    const fixture = await readProgressFixture("token-spend-excerpt.jsonl");
+    const terminal = fixture.at(-1);
+    if (terminal === undefined) throw new Error("token fixture must contain a terminal result");
+
+    const live = fixture.slice(0, -1).reduce(accumulateCastProgress, EMPTY_CAST_PROGRESS);
+    expect(live.turns).toBe(9);
+    // 104,807 assistant snapshots + 15,419 thinking tokens at the 5x output weight.
+    expect(live.weightedTokens).toBe(181_902);
+
+    const settled = accumulateCastProgress(live, terminal);
+    const ledgerTotalTokens = 214_621;
+
+    expect(CAST_PROGRESS_LEDGER_TOLERANCE).toBe(0);
+    expect(Math.abs(settled.weightedTokens - ledgerTotalTokens)).toBeLessThanOrEqual(
+      CAST_PROGRESS_LEDGER_TOLERANCE,
+    );
+    expect(settled.weightedTokens).toBe(ledgerTotalTokens);
+    expect(settled.turns).toBe(9);
+    expect(settled.seenMessageIds).toEqual(live.seenMessageIds);
+    expect(formatCastProgress(settled, { elapsedMs: 252_000, tokenEnvelope: 250_000, maxTurns: 15 })).toBe(
+      "elapsed 4m12s · 215k/250k weighted tokens · turn 9/15",
+    );
+  });
+
+  test("captured sidechain IDs affect neither parent turn count nor weighted spend (T-081-02-01)", async () => {
+    const fixture = await readProgressFixture("turn-sidechain-excerpt.jsonl");
+    const assistants = fixture.filter((msg) => msg.type === "assistant");
+    const main = assistants.filter((msg) => msg.parent_tool_use_id == null);
+    const sidechain = assistants.filter((msg) => msg.parent_tool_use_id != null);
+
+    expect(main).toHaveLength(12);
+    expect(sidechain).toHaveLength(33);
+
+    const captured = fixture.reduce(accumulateCastProgress, EMPTY_CAST_PROGRESS);
+    expect(captured.turns).toBe(12);
+    expect(captured.weightedTokens).toBe(0);
+    expect(captured.seenMessageIds).toHaveLength(12);
+    expect(captured.seenMessageIds.every((id) => id.startsWith("main-"))).toBe(true);
+
+    const mainSpend = accumulateCastProgress(EMPTY_CAST_PROGRESS, assistant("main-spend"));
+    const markedSidechain: StreamMessage[] = [
+      { ...assistant("sidechain-spend"), parent_tool_use_id: "tool-parent" },
+      {
+        type: "system",
+        subtype: "thinking_tokens",
+        estimated_tokens_delta: 10_000,
+        parent_tool_use_id: "tool-parent",
+      },
+      { type: "result", usage: { output_tokens: 99_999 }, parent_tool_use_id: "tool-parent" },
+    ];
+    const afterSidechain = markedSidechain.reduce(accumulateCastProgress, mainSpend);
+
+    expect(afterSidechain).toBe(mainSpend);
+    expect(afterSidechain.weightedTokens).toBe(30_000);
+    expect(afterSidechain.turns).toBe(1);
+    expect(afterSidechain.seenMessageIds).toEqual(["main-spend"]);
   });
 
   test("pins the live turn fraction to deduped agent turns, never executor num_turns (T-077-03-02)", () => {
@@ -261,7 +327,7 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
     expect(progress.turns).toBe(2);
     expect(progress.turns).toBeLessThanOrEqual(maxTurns);
     expect(executorNumTurns).toBeGreaterThan(maxTurns);
-    expect(line).toBe("elapsed 4m12s · 60k/500k tokens · turn 2/15");
+    expect(line).toBe("elapsed 4m12s · 60k/500k weighted tokens · turn 2/15");
     expect(line).not.toContain(`${executorNumTurns}/${maxTurns}`);
     expect(line).not.toContain(`${executorNumTurns} / ${maxTurns} cap`);
   });
@@ -277,7 +343,11 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
       { type: "assistant", message: { id: "no-usage" } },
       { type: "assistant", message: { id: "array-usage", usage: [] } },
       { type: "unknown", message: { id: "looks-valid", usage: perTurnUsage } },
-      { type: "result", usage: perTurnUsage },
+      { type: "result", usage: [] },
+      { type: "system", subtype: "thinking_tokens" },
+      { type: "system", subtype: "thinking_tokens", estimated_tokens_delta: -1 },
+      { type: "system", subtype: "thinking_tokens", estimated_tokens_delta: Number.NaN },
+      { type: "system", subtype: "thinking_tokens", estimated_tokens_delta: 0 },
       assistant("only-turn"),
     ];
 
@@ -289,10 +359,10 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
 
   test("formatter handles seconds, hours, small units, and an absent turn cap", () => {
     expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 12_999, tokenEnvelope: 999 })).toBe(
-      "elapsed 12s · 0/999 tokens · turn 0",
+      "elapsed 12s · 0/999 weighted tokens · turn 0",
     );
     expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 3_723_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
-      "elapsed 1h02m03s · 0/500k tokens · turn 0/15",
+      "elapsed 1h02m03s · 0/500k weighted tokens · turn 0/15",
     );
   });
 
@@ -306,8 +376,8 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
       { elapsedMs: 252_000, tokenEnvelope: 200_000, maxTurns: 15 },
     );
 
-    expect(overEnvelope).toBe("elapsed 4m12s · 392k/200k tokens (detect-after) · turn 0/15");
-    expect(underEnvelope).toBe("elapsed 4m12s · 199k/200k tokens · turn 0/15");
+    expect(overEnvelope).toBe("elapsed 4m12s · 392k/200k weighted tokens (detect-after) · turn 0/15");
+    expect(underEnvelope).toBe("elapsed 4m12s · 199k/200k weighted tokens · turn 0/15");
     expect(underEnvelope).not.toContain("(detect-after)");
   });
 });
