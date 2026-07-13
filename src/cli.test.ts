@@ -52,6 +52,10 @@ describe("parseArgs", () => {
   test("bare `vend` is the browse surface (T-003-02)", () => {
     expect(parseArgs([])).toEqual({ cmd: "browse", all: false });
   });
+  test("`--help` and `help` are successful discovery commands", () => {
+    expect(parseArgs(["--help"])).toEqual({ cmd: "help" });
+    expect(parseArgs(["help"])).toEqual({ cmd: "help" });
+  });
   test("`vend --all` browses with hidden rows revealed", () => {
     expect(parseArgs(["--all"])).toEqual({ cmd: "browse", all: true });
   });
@@ -575,5 +579,72 @@ describe("parseArgs — user-guide (T-066 fresh-repo orientation)", () => {
   test("USAGE lists the guide line and a discovery hint", () => {
     expect(USAGE).toContain("vend user-guide");
     expect(USAGE).toContain("new here?");
+  });
+});
+
+describe("help command and grouped usage (T-072-01-01)", () => {
+  test("every real command appears in exactly its free or metered group", () => {
+    const freeCommands = [
+      "vend help | vend --help",
+      "vend shelf",
+      "vend doctor",
+      "vend user-guide",
+      "vend --version",
+      "vend envelope",
+      "vend audit",
+      "vend svg",
+      "vend init",
+    ] as const;
+    const meteredCommands = [
+      "vend run",
+      "vend chain",
+      "vend expand",
+      "vend annotate",
+      "vend survey",
+      "vend steer",
+      "vend <selection>",
+    ] as const;
+
+    const freeHeading = "free (no tokens):";
+    const meteredHeading = "metered (uses tokens):";
+    const freeStart = USAGE.indexOf(freeHeading);
+    const meteredStart = USAGE.indexOf(meteredHeading);
+    const hintStart = USAGE.indexOf("\n\nnew here?");
+    expect(freeStart).toBeGreaterThan(-1);
+    expect(meteredStart).toBeGreaterThan(freeStart);
+    expect(hintStart).toBeGreaterThan(meteredStart);
+
+    const freeSection = USAGE.slice(freeStart, meteredStart);
+    const meteredSection = USAGE.slice(meteredStart, hintStart);
+    for (const command of freeCommands) {
+      expect(freeSection).toContain(command);
+      expect(meteredSection).not.toContain(command);
+    }
+    for (const command of meteredCommands) {
+      expect(meteredSection).toContain(command);
+      expect(freeSection).not.toContain(command);
+    }
+
+    const completeInventory = [...freeCommands, ...meteredCommands];
+    expect(new Set(completeInventory).size).toBe(completeInventory.length);
+    expect(completeInventory).toHaveLength(16);
+  });
+
+  test("both help spellings print the grouped banner to stdout and exit 0", async () => {
+    for (const spelling of ["--help", "help"] as const) {
+      const proc = Bun.spawn([process.execPath, "src/cli.ts", spelling], {
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      expect(exitCode).toBe(0);
+      expect(stdout).toBe(`${USAGE}\n`);
+      expect(stderr).toBe("");
+    }
   });
 });

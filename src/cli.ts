@@ -18,22 +18,29 @@ import type { Seat } from "./present/presets.ts";
 // --version` resolves without touching the executor graph.
 import { VERSION } from "./version.ts";
 
-/** Usage banner, printed on any parse error. */
+/** Complete command banner, printed for help and on any parse error. */
 export const USAGE =
-  "usage: vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened] [--after <ticket>] [--agent <seat>]\n" +
-  "       vend chain <signal> [--budget <ms>,<tokens>] [--after <ticket>] [--agent <seat>]\n" +
-  "       vend expand <fragment> [--budget <ms>,<tokens>]\n" +
-  '       vend annotate <node-id> "<feedback>" [--seat <designer|dev>]\n' +
-  "       vend survey [--budget <ms>,<tokens>]\n" +
-  "       vend steer [--budget <ms>,<tokens>]\n" +
-  "       vend svg [--seat <designer|dev>] [--out <path>]\n" +
-  "       vend shelf\n" +
-  "       vend init [--template <name>]\n" +
-  "       vend doctor\n" +
-  "       vend user-guide\n" +
-  "       vend --version\n" +
-  "       vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
-  "       vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]\n" +
+  "usage: vend <command>\n" +
+  "\n" +
+  "free (no tokens):\n" +
+  "  vend help | vend --help\n" +
+  "  vend shelf\n" +
+  "  vend doctor\n" +
+  "  vend user-guide\n" +
+  "  vend --version\n" +
+  "  vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
+  "  vend audit [<play>] [--tier <keystone|high|standard|leaf>] [--window <n>]\n" +
+  "  vend svg [--seat <designer|dev>] [--out <path>]\n" +
+  "  vend init [--template <name>]\n" +
+  "\n" +
+  "metered (uses tokens):\n" +
+  "  vend run <play> <epic.md> --budget <ms>,<tokens> [--no-gates] [--intervened|--no-intervened] [--after <ticket>] [--agent <seat>]\n" +
+  "  vend chain <signal> [--budget <ms>,<tokens>] [--after <ticket>] [--agent <seat>]\n" +
+  "  vend expand <fragment> [--budget <ms>,<tokens>]\n" +
+  '  vend annotate <node-id> "<feedback>" [--seat <designer|dev>]\n' +
+  "  vend survey [--budget <ms>,<tokens>]\n" +
+  "  vend steer [--budget <ms>,<tokens>]\n" +
+  "  vend <selection> [--all] [--budget <ms>,<tokens>]\n" +
   "\n" +
   "new here? run `vend user-guide` for how vend and lisa drive one board.";
 
@@ -97,6 +104,7 @@ export type ParsedCommand =
   | { readonly cmd: "svg"; readonly seat: Seat; readonly out?: string }
   | { readonly cmd: "shelf" }
   | { readonly cmd: "user-guide" }
+  | { readonly cmd: "help" }
   | { readonly cmd: "version" }
   | {
       readonly cmd: "init";
@@ -168,6 +176,10 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   // decompose path (T-002-03). Everything else — `vend --all`, `vend 1,2`,
   // `vend 1 --budget …` — is the browse/press tail (T-003-04).
   if (argv.length === 0) return { cmd: "browse", all: false };
+  // Help is a successful, FREE discovery query. Both conventional spellings
+  // short-circuit before the verb table and selection parser; like `--version`,
+  // trailing tokens are ignored.
+  if (argv[0] === "--help" || argv[0] === "help") return { cmd: "help" };
   // `--version` is a global flag, not a sub-verb (T-061-02): intercept it BEFORE the
   // verb table and before `parseSelectOrBrowse` (which would otherwise reject it as
   // `unknown command: --version`). Short-circuits — any trailing tokens are ignored,
@@ -683,6 +695,12 @@ if (import.meta.main) {
     if (parsed.error) process.stderr.write(`${parsed.error}\n`);
     process.stderr.write(`${USAGE}\n`);
     process.exit(2);
+  }
+  if (parsed.cmd === "help") {
+    // A successful, addon-free discovery query: the same complete banner usage
+    // errors print, but on stdout with a zero exit status.
+    process.stdout.write(`${USAGE}\n`);
+    process.exit(0);
   }
   if (parsed.cmd === "version") {
     // Print the build-embedded semver (T-061-02) and exit 0 — a successful query,
