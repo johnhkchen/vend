@@ -21,6 +21,7 @@
 // dependency direction (play → engine).
 
 import type { StreamMessage } from "../executor/claude.ts";
+import type { ExecutorProbeResult } from "../executor/executor.ts";
 import { countTokens, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import type { AgentSeat } from "../play/agent-seat.ts";
 import type { GateVerdict, PlayTools } from "./play.ts";
@@ -216,6 +217,8 @@ export function resolveTurnsUsed(numTurns: unknown): number | undefined {
 
 /** The inputs to the pure outcome decision (the play-generic analogue of the runner's). */
 export interface ClassifyInput {
+  /** The shallow pre-dispense capability result; a non-ok executor cannot start a cast. */
+  readonly executorProbe?: ExecutorProbeResult;
   /** The seam threw `ClaudeTimeoutError` (no result, nothing parsed/gated). */
   readonly timedOut: boolean;
   /** The token check after the seam returned; null when timed out. */
@@ -287,6 +290,11 @@ export function castGateRows(g: GateVerdict | null): readonly LogGate[] {
  * the P7 contract breach countable. Exhaustion without a clear remains censored and discarded.
  */
 export function classify(i: ClassifyInput): Verdict {
+  // A failed pre-dispense capability gate has no play-gate evidence: gates never ran. It outranks
+  // downstream terminal facts because no dispense was authorized in the first place.
+  if (i.executorProbe?.ok === false) {
+    return { outcome: "missing-capability", materialize: false, gateLog: [] };
+  }
   const gateLog = castGateRows(i.gateVerdict);
   if (i.timedOut) return { outcome: "timed-out", materialize: false, gateLog };
   if (i.gateVerdict?.status === "stop") {

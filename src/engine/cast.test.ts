@@ -317,6 +317,68 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.overEnvelope).toBeUndefined();
 });
 
+test("castPlay: an unreachable executor andons before dispense with one zero-spend record", async () => {
+  const root = await tmp();
+  const effectLog: string[] = [];
+  const runLogPath = join(root, "runs.jsonl");
+  const transcriptDir = join(root, "transcripts");
+  const runId = "executor-unreachable-fixture";
+  let probeCalls = 0;
+  let dispenseCalls = 0;
+  const executor: Executor = {
+    id: "claude",
+    async probe() {
+      probeCalls += 1;
+      return {
+        ok: false,
+        reason: "claude config store/Keychain is unreadable",
+        hint: "run `claude login`; grant the sandbox access to the Keychain",
+      };
+    },
+    async dispense(): Promise<ResultMessage> {
+      dispenseCalls += 1;
+      throw new Error("dispense must not run after a failed executor probe");
+    },
+  };
+
+  const { result: summary, stdout } = await captureStdout(() =>
+    castPlay(echoPlay(effectLog), { topic: "vend" }, BIG_BUDGET, {
+      subject: "T-074-01-03",
+      projectRoot: root,
+      transcriptDir,
+      runLogPath,
+      runId,
+      executor,
+    }));
+
+  expect(probeCalls).toBe(1);
+  expect(dispenseCalls).toBe(0);
+  expect(effectLog).toEqual([]);
+  expect(summary.outcome).toBe("missing-capability");
+  expect(summary.materialized).toBe(false);
+  expect(summary.actuals?.usage).toEqual({});
+  expect(stdout).toContain("· andon: missing-capability");
+  expect(stdout).toContain("executor 'claude' unreachable");
+  expect(stdout).toContain("claude config store/Keychain is unreadable");
+  expect(stdout).toContain("run `claude login`; grant the sandbox access to the Keychain");
+  expect(stdout).not.toContain("Error:");
+  expect(await Bun.file(join(transcriptDir, `${runId}.jsonl`)).exists()).toBe(false);
+
+  const lines = (await readFile(runLogPath, "utf8")).trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const rec = JSON.parse(lines[0]!);
+  expect(rec.outcome).toBe("missing-capability");
+  expect(rec.usage).toEqual({
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  });
+  expect(rec.costUsd).toBe(0);
+  expect(rec.gateResults).toEqual([]);
+  expect(rec.seatOfExecution).toBe("claude");
+});
+
 test("castPlay: a file-writing effect captures a routable Git diff reference on summary and record (T-073-01-01 AC)", async () => {
   const root = await tmp();
   await initGitRepo(root);

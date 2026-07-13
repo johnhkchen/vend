@@ -38,6 +38,23 @@ const clearedNamed: GateVerdict = { status: "clear", cleared: ["value", "allocat
 const stopped: GateVerdict = { status: "stop", gate: "value", unit: "<plan>", reason: "plan has no tickets" };
 
 describe("classify — terminal outcome + materialize decision (play-generic)", () => {
+  test("an unreachable executor is missing-capability before timeout, budget, or gate classification", () => {
+    const v = classify({
+      executorProbe: {
+        ok: false,
+        reason: "claude config store/Keychain is unreadable",
+        hint: "run `claude login`; grant the sandbox access to the Keychain",
+      },
+      timedOut: true,
+      budgetOutcome: exhausted,
+      gateVerdict: stopped,
+    });
+    expect(v.outcome).toBe("missing-capability");
+    expect(v.materialize).toBe(false);
+    expect(v.overEnvelope).toBeUndefined();
+    expect(v.gateLog).toEqual([]);
+  });
+
   test("timeout outranks everything; no materialize", () => {
     const v = classify({ timedOut: true, budgetOutcome: null, gateVerdict: null });
     expect(v.outcome).toBe("timed-out");
@@ -79,7 +96,7 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
   });
 
   test("cleared (opaque) + in budget → success + materialize; logs no per-gate rows", () => {
-    const v = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: cleared });
+    const v = classify({ executorProbe: { ok: true }, timedOut: false, budgetOutcome: okBudget, gateVerdict: cleared });
     expect(v.outcome).toBe("success");
     expect(v.materialize).toBe(true);
     expect(v.overEnvelope).toBeUndefined();

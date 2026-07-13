@@ -23,7 +23,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { type ResultMessage } from "../executor/claude.ts";
 import { ExecutorTimeoutError } from "../executor/executor.ts";
-import type { Executor } from "../executor/executor.ts";
+import type { Executor, ExecutorProbeResult } from "../executor/executor.ts";
 import { executorFor, type ExecutorRegistry } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type CrossVendorVerdict, type GateResult as LogGate, type RunOutcome } from "../log/run-log.ts";
@@ -208,6 +208,51 @@ export async function castPlay<I, O>(
       actuals: { usage: {} as Usage, wallMs: Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) },
     };
   }
+
+  // Resolve and probe the exact executor instance this cast would use BEFORE rendering, transcript
+  // setup, or dispense. Selection precedence is unchanged; an injected instance still wins over
+  // id/env resolution. The shallow probe spends no tokens and returns expected environment failure
+  // as data, which the pure classifier turns into the existing missing-capability amber andon.
+  const executor = opts.executor ?? executorFor(opts.executorId ? { executor: opts.executorId } : {});
+  const seatOfExecution = resolveSeatOfExecution(executor.id);
+  const executorProbe = await executor.probe();
+  const probeVerdict = classify({
+    executorProbe,
+    timedOut: false,
+    budgetOutcome: null,
+    gateVerdict: null,
+  });
+  if (probeVerdict.outcome === "missing-capability") {
+    const endedAt = new Date().toISOString();
+    process.stdout.write(`· andon: missing-capability — ${executorProbeDetail(executor.id, executorProbe)}\n`);
+    // Exactly one countable zero-spend refusal. The immediate return prevents transcript creation,
+    // dispense/effect, and the ordinary terminal append below.
+    await appendRunLog(
+      {
+        runId,
+        play: play.name,
+        epic: opts.subject,
+        model: resolveLoggedModel(undefined, opts.model),
+        envelope: budget,
+        project,
+        ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
+        ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+        outcome: probeVerdict.outcome,
+        usage: {} as Usage,
+        costUsd: 0,
+        gateResults: probeVerdict.gateLog,
+        startedAt,
+        endedAt,
+      },
+      opts.runLogPath ? { path: opts.runLogPath } : {},
+    );
+    return {
+      runId,
+      outcome: probeVerdict.outcome,
+      materialized: probeVerdict.materialize,
+      actuals: { usage: {} as Usage, wallMs: Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) },
+    };
+  }
   // The resolved scoping flags threaded into `dispense` below (passthrough ⇒ {} ⇒ no flags).
   const tflags = toolFlags(resolved, mcpConfigPath);
 
@@ -247,17 +292,6 @@ export async function castPlay<I, O>(
     progressLineWritten = true;
     transcriptSink(message);
   };
-
-  // Resolve the executor for this cast (T-035-01): an explicit instance wins; else the
-  // selector picks by id/env, defaulting to Claude. No instance, no id, no env ⇒
-  // `executorFor()` ⇒ `ClaudeExecutor` ⇒ the same `dispense` with the same args ⇒
-  // byte-identical to before the interface existed.
-  const executor = opts.executor ?? executorFor(opts.executorId ? { executor: opts.executorId } : {});
-  // Execution provenance (T-071-01-02): map the instance ACTUALLY selected/injected to the
-  // KNOWN_SEATS lane it burns. Unknown executor ids stay undefined and are omitted below rather
-  // than being falsely charged to a default lane. Resolve before dispense so timeouts still name
-  // the executor lane on which work was attempted.
-  const seatOfExecution = resolveSeatOfExecution(executor.id);
 
   let timedOut = false;
   let result: ResultMessage | null = null;
@@ -299,7 +333,7 @@ export async function castPlay<I, O>(
     gateVerdict = opts.skipGates ? null : play.gates(output, ctx);
   }
 
-  const verdict = classify({ timedOut, budgetOutcome, gateVerdict });
+  const verdict = classify({ executorProbe, timedOut, budgetOutcome, gateVerdict });
 
   // On a CLEAR verdict the play's effect lands the output in the world. The effect REPORTS
   // back as data (`EffectResult` — T-007-01 design D3): `ok` whether it landed, and an
@@ -510,4 +544,11 @@ function stopReason(gate: GateVerdict | null, budget: BudgetOutcome | null): str
   if (gate?.status === "stop") return ` — gate '${gate.gate}' stopped at ${gate.unit}: ${gate.reason}`;
   if (budget?.status === "exhausted") return ` — spent ${budget.spent}/${budget.ceiling} tokens (over by ${budget.overage})`;
   return "";
+}
+
+/** Render a total, actionable cast-time explanation from the executor-neutral probe contract. */
+function executorProbeDetail(executorId: string, result: ExecutorProbeResult): string {
+  const reason = result.reason?.trim() || `${executorId} executor is not dispensable from this environment`;
+  const hint = result.hint?.trim() || `check the ${executorId} executor's local configuration, authentication, and reachability`;
+  return `executor '${executorId}' unreachable: ${reason} — ${hint}`;
 }
