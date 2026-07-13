@@ -5,8 +5,22 @@
 
 import { resolveSeatOfExecution } from "../engine/cast-core.ts";
 import type { Executor } from "../executor/executor.ts";
-import { builtinExecutors, executorFor, type ExecutorRegistry } from "../executor/select.ts";
+import {
+  builtinExecutors,
+  DEFAULT_EXECUTOR_ID,
+  executorFor,
+  type ExecutorRegistry,
+} from "../executor/select.ts";
 import type { AgentSeat } from "../play/agent-seat.ts";
+
+/**
+ * Default configured review capability: the default Claude author seat and no complement.
+ * `builtinExecutors` is the shipped adapter catalog, not evidence that an operator provisioned
+ * every adapter as a reviewer. Callers opt into cross-review by passing an explicit registry.
+ */
+const defaultCrossReviewRegistry: ExecutorRegistry = {
+  [DEFAULT_EXECUTOR_ID]: () => executorFor({ executor: DEFAULT_EXECUTOR_ID }, {}, builtinExecutors),
+};
 
 /** The complement lane together with the invokable executor configured for that lane. */
 export interface ComplementExecutor {
@@ -21,14 +35,15 @@ export interface ComplementExecutor {
  * {@link resolveSeatOfExecution}; unknown ids cannot honestly participate in cross-review.
  * The authoring seat must itself be configured, and there must be exactly one different seat.
  * Any absent, stale, incomplete, or future-ambiguous configuration returns `null`, leaving
- * cross-review inert rather than guessing.
+ * cross-review inert rather than guessing. The omitted-registry default contains only Claude;
+ * an operator provisions a reviewer by passing an explicit registry with both seats.
  *
  * Passing `{}` as executorFor's env is deliberate: the complement id is an explicit routing
  * decision and must not be influenced by the process-wide default executor selector.
  */
 export function resolveComplementExecutor(
   seatOfExecution: string | undefined,
-  registry: ExecutorRegistry = builtinExecutors,
+  registry: ExecutorRegistry = defaultCrossReviewRegistry,
 ): ComplementExecutor | null {
   const configured = new Map<AgentSeat, string>();
   for (const executorId of Object.keys(registry)) {

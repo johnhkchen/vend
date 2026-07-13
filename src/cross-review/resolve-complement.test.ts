@@ -22,14 +22,19 @@ describe("resolveComplementExecutor", () => {
     "openai-compat": () => openaiCompat,
   };
 
-  test("a Claude-authored run resolves the Codex/openai-compat executor", () => {
+  test("the default registry is inert for every author seat, including the rc.4 Claude shape", () => {
+    expect(resolveComplementExecutor("claude")).toBeNull();
+    expect(resolveComplementExecutor("codex")).toBeNull();
+  });
+
+  test("an explicitly provisioned Claude author resolves the Codex/openai-compat executor", () => {
     const resolved = resolveComplementExecutor("claude", bothSeats);
 
     expect(resolved).toEqual({ seat: "codex", executor: openaiCompat });
     expect(resolved?.executor.id).toBe("openai-compat");
   });
 
-  test("a Codex-authored run resolves the Claude executor", () => {
+  test("an explicitly provisioned Codex author resolves the Claude executor", () => {
     const resolved = resolveComplementExecutor("codex", bothSeats);
 
     expect(resolved).toEqual({ seat: "claude", executor: claude });
