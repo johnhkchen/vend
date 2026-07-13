@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseArgs, parseBudgetArg, splitAfter, USAGE } from "./cli.ts";
+import { parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
 
 // T-002-03 CLI: the PURE arg parsers. The `import.meta.main` dispatch (which imports
 // the impure runner and exits the process) does not run on import, so this test never
@@ -21,6 +21,28 @@ describe("parseBudgetArg", () => {
   });
 });
 
+describe("suggestCommand", () => {
+  const verbs = ["steer", "shelf", "doctor", "user-guide"] as const;
+
+  test("maps insertion, deletion, and substitution near-misses to the nearest verb", () => {
+    expect(suggestCommand("steeer", verbs)).toBe("steer");
+    expect(suggestCommand("ster", verbs)).toBe("steer");
+    expect(suggestCommand("doctar", verbs)).toBe("doctor");
+  });
+
+  test("chooses the lowest distance and keeps candidate order on a tie", () => {
+    expect(suggestCommand("shel", ["steer", "shelf"])).toBe("shelf");
+    expect(suggestCommand("cot", ["cat", "cut"])).toBe("cat");
+  });
+
+  test("uses an inclusive threshold and stays silent when nothing is close", () => {
+    expect(suggestCommand("stxxr", verbs, 2)).toBe("steer");
+    expect(suggestCommand("stxxr", verbs, 1)).toBeUndefined();
+    expect(suggestCommand("frobnicate", verbs)).toBeUndefined();
+    expect(suggestCommand("steeer", [])).toBeUndefined();
+  });
+});
+
 describe("parseArgs", () => {
   test("happy path", () => {
     const p = parseArgs(["run", "decompose-epic", "docs/active/epic/E-001.md", "--budget", "120000,50000"]);
@@ -32,7 +54,10 @@ describe("parseArgs", () => {
     });
   });
   test("unknown command / play → usage", () => {
-    expect(parseArgs(["frobnicate"])).toEqual({ cmd: "usage", error: "unknown command: frobnicate" } as never);
+    expect(parseArgs(["frobnicate"])).toEqual({
+      cmd: "usage",
+      error: "unknown command: frobnicate",
+    });
     // `run summon` parses past the (now-generic) play name and trips on the missing epic —
     // an unknown play is rejected at dispatch by the registry, not by the parser.
     expect(parseArgs(["run", "summon"])).toEqual({ cmd: "usage", error: "missing <epic.md>" });
@@ -78,7 +103,14 @@ describe("parseArgs", () => {
     });
   });
   test("a non-selection token is still an unknown command, not a press", () => {
-    expect(parseArgs(["frobnicate"])).toEqual({ cmd: "usage", error: "unknown command: frobnicate" });
+    expect(parseArgs(["frobnicate"])).toEqual({
+      cmd: "usage",
+      error: "unknown command: frobnicate",
+    });
+    expect(parseArgs(["steeer"])).toEqual({
+      cmd: "usage",
+      error: "unknown command: steeer — did you mean steer?",
+    });
   });
   test("a malformed press --budget surfaces as usage", () => {
     expect(parseArgs(["1,2", "--budget", "nope"]).cmd).toBe("usage");
@@ -645,6 +677,31 @@ describe("help command and grouped usage (T-072-01-01)", () => {
       expect(exitCode).toBe(0);
       expect(stdout).toBe(`${USAGE}\n`);
       expect(stderr).toBe("");
+    }
+  });
+});
+
+describe("unknown-verb suggestions (T-072-01-02)", () => {
+  test("unknown verbs print one targeted line without the usage wall", async () => {
+    const cases = [
+      ["frobnicate", "unknown command: frobnicate\n"],
+      ["steeer", "unknown command: steeer — did you mean steer?\n"],
+    ] as const;
+
+    for (const [token, expectedError] of cases) {
+      const proc = Bun.spawn([process.execPath, "src/cli.ts", token], {
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      expect(exitCode).toBe(2);
+      expect(stdout).toBe("");
+      expect(stderr).toBe(expectedError);
     }
   });
 });

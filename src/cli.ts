@@ -138,6 +138,69 @@ export type ParsedCommand =
  *  against the persisted menu's length — this only decides "is this a selection at all". */
 const SELECTION_SHAPE = /^[\d\s,-]+$/;
 
+/** Canonical literal verbs accepted at argv[0]. Flags, aliases, selection syntax,
+ *  and result-only command kinds are deliberately excluded: a correction should
+ *  teach the stable spelling operators see in help. */
+const COMMAND_VERBS = [
+  "help",
+  "run",
+  "chain",
+  "expand",
+  "annotate",
+  "survey",
+  "steer",
+  "svg",
+  "shelf",
+  "init",
+  "doctor",
+  "user-guide",
+  "envelope",
+  "audit",
+] as const;
+
+/** Levenshtein insertion/deletion/substitution distance. PURE. Two rows keep the
+ *  workspace proportional to the candidate length; `Array.from` compares Unicode
+ *  code points rather than UTF-16 halves. */
+function editDistance(left: string, right: string): number {
+  const leftChars = Array.from(left);
+  const rightChars = Array.from(right);
+  let previous = Array.from({ length: rightChars.length + 1 }, (_, index) => index);
+
+  for (let i = 0; i < leftChars.length; i++) {
+    const current = [i + 1];
+    for (let j = 0; j < rightChars.length; j++) {
+      const deletion = (previous[j + 1] as number) + 1;
+      const insertion = (current[j] as number) + 1;
+      const substitution = (previous[j] as number) + (leftChars[i] === rightChars[j] ? 0 : 1);
+      current.push(Math.min(deletion, insertion, substitution));
+    }
+    previous = current;
+  }
+
+  return previous[rightChars.length] as number;
+}
+
+/** Return the nearest candidate when it is within an inclusive edit-distance
+ *  threshold. PURE. Equal-distance candidates retain their input order. */
+export function suggestCommand(
+  token: string,
+  candidates: readonly string[],
+  maxDistance = 2,
+): string | undefined {
+  let nearest: string | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const distance = editDistance(token, candidate);
+    if (distance < nearestDistance) {
+      nearest = candidate;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearestDistance <= maxDistance ? nearest : undefined;
+}
+
 /**
  * Parse the `--budget <ms>,<tokens>` value into a {@link Budget}. PURE. Requires
  * exactly two comma-separated integer fields; a wrong arity or a non-integer is a
@@ -680,7 +743,12 @@ function parseSelectOrBrowse(argv: readonly string[]): ParsedCommand {
     return all ? { cmd: "browse", all: true } : { cmd: "usage", error: "missing selection" };
   }
   if (!positional.every((t) => SELECTION_SHAPE.test(t))) {
-    return { cmd: "usage", error: `unknown command: ${positional[0]}` };
+    const token = positional[0] as string;
+    const suggestion = suggestCommand(token, COMMAND_VERBS);
+    const error = suggestion
+      ? `unknown command: ${token} — did you mean ${suggestion}?`
+      : `unknown command: ${token}`;
+    return { cmd: "usage", error };
   }
   const selection = positional.join(",");
   return budget ? { cmd: "select", selection, all, budget } : { cmd: "select", selection, all };
@@ -693,7 +761,7 @@ if (import.meta.main) {
   const parsed = parseArgs(Bun.argv.slice(2));
   if (parsed.cmd === "usage") {
     if (parsed.error) process.stderr.write(`${parsed.error}\n`);
-    process.stderr.write(`${USAGE}\n`);
+    if (!parsed.error?.startsWith("unknown command:")) process.stderr.write(`${USAGE}\n`);
     process.exit(2);
   }
   if (parsed.cmd === "help") {
