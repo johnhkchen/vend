@@ -95,16 +95,50 @@ describe("recordLisaLoopSettled — Vend-owned filesystem crossing", () => {
 });
 
 describe("project-owned on-notify crossing", () => {
-  test("complete records the marker even when no ntfy topic is configured", async () => {
+  test("complete records, fires one verdict, and consumes provenance without an ntfy topic", async () => {
     const root = await tempRoot();
     const repositoryRoot = join(import.meta.dir, "..", "..");
     try {
       const hookDir = join(root, ".lisa", "hooks");
-      await mkdir(hookDir, { recursive: true });
+      await Promise.all([
+        mkdir(hookDir, { recursive: true }),
+        mkdir(join(root, "docs", "active", "epic"), { recursive: true }),
+        mkdir(join(root, "docs", "active", "stories"), { recursive: true }),
+        mkdir(join(root, "docs", "active", "tickets"), { recursive: true }),
+      ]);
       const hook = join(hookDir, "on-notify");
-      await writeFile(hook, await readFile(join(repositoryRoot, ".lisa", "hooks", "on-notify"), "utf8"));
+      await Promise.all([
+        writeFile(hook, await readFile(join(repositoryRoot, ".lisa", "hooks", "on-notify"), "utf8")),
+        writeFile(join(root, "docs", "active", "epic", "E-900.md"), [
+          "---", "id: E-900", "title: hook-fixture", "status: open", "advances: [P4]",
+          "serves: fixture", "---", "",
+        ].join("\n")),
+        writeFile(join(root, "docs", "active", "stories", "S-900-01.md"), [
+          "---", "id: S-900-01", "title: hook-story", "type: story", "status: open",
+          "priority: high", "tickets: [T-900-01]", "---", "",
+        ].join("\n")),
+        writeFile(join(root, "docs", "active", "tickets", "T-900-01.md"), [
+          "---", "id: T-900-01", "story: S-900-01", "title: hook-ticket", "type: task",
+          "status: done", "priority: high", "phase: done", "depends_on: []", "---", "",
+        ].join("\n")),
+        writeFile(
+          join(root, "package.json"),
+          '{"name":"hook-fixture","private":true,"scripts":{"check":"bun run fixture-check.ts"}}\n',
+        ),
+        writeFile(join(root, "fixture-check.ts"), 'console.log("9 pass");\n'),
+      ]);
       await chmod(hook, 0o755);
       await symlink(join(repositoryRoot, "src"), join(root, "src"), "dir");
+
+      const git = (...args: string[]) => {
+        const result = Bun.spawnSync(["git", ...args], { cwd: root });
+        expect(result.exitCode, result.stderr.toString()).toBe(0);
+      };
+      git("init", "-q");
+      git("config", "user.email", "fixture@example.test");
+      git("config", "user.name", "Vend Fixture");
+      git("add", ".");
+      git("commit", "-qm", "fixture baseline");
 
       const proc = Bun.spawn({
         cmd: [hook, "complete"],
@@ -121,14 +155,33 @@ describe("project-owned on-notify crossing", () => {
         stderr: "pipe",
       });
 
-      expect(await proc.exited).toBe(0);
-      const parsed = parseLisaLoopSettledMarker(
-        await readFile(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH), "utf8"),
-      );
-      expect(parsed.kind).toBe("valid");
-      if (parsed.kind !== "valid") throw new Error("hook marker unexpectedly malformed");
-      expect(parsed.marker.ticketsDone).toBe(5);
-      expect(parsed.marker.durationSecs).toBe(120);
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      expect(exitCode).toBe(0);
+      expect(stderr).toBe("");
+      expect(stdout).toContain(`loop: ${basename(root)} — 5 tickets done in 120s`);
+      expect(stdout.match(/^loop: /gm)).toHaveLength(1);
+      expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH))).toBe(false);
+
+      const repeated = Bun.spawn({
+        cmd: [process.execPath, join(root, "src", "cli.ts"), "settle"],
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [repeatedStdout, repeatedStderr, repeatedExitCode] = await Promise.all([
+        new Response(repeated.stdout).text(),
+        new Response(repeated.stderr).text(),
+        repeated.exited,
+      ]);
+      expect(repeatedExitCode).toBe(0);
+      expect(repeatedStderr).toBe("");
+      expect(repeatedStdout).toContain("delta: none since last settle");
+      expect(repeatedStdout).not.toContain("loop:");
+      expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

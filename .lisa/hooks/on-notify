@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lisa notify hook -> Vend loop-settled marker + ntfy.sh push notifications.
+# Lisa notify hook -> Vend loop-settled verdict + ntfy.sh push notifications.
 #
 # The ntfy TOPIC is a private channel (anyone who knows the name can read it), so it is
 # kept OUT of version control. Configure it locally, either:
@@ -16,12 +16,16 @@
 # Resolve the hook location before either local recording or optional network notification.
 HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || HOOK_DIR=".lisa/hooks"
 
-# The existing lisa `complete` emission crosses into Vend-owned state. The recorder validates the
-# env contract and writes only `.vend/loop-settled.json`; its failure must never block lisa.
+# The existing lisa `complete` emission crosses into Vend-owned state. A successful recorder call
+# publishes `.vend/loop-settled.json`, then the existing free settle verb claims it and prints the
+# verdict on this event path. Either failure is contained and must never block lisa or optional ntfy.
 if [ "$1" = "complete" ]; then
   RECORDER="$HOOK_DIR/../../src/seam/lisa-loop-settled.ts"
   if command -v bun >/dev/null 2>&1 && [ -r "$RECORDER" ]; then
-    LISA_EVENT=complete bun run "$RECORDER" >/dev/null 2>&1 || :
+    if LISA_EVENT=complete bun run "$RECORDER" >/dev/null 2>&1; then
+      SETTLER="$HOOK_DIR/../../src/cli.ts"
+      [ -r "$SETTLER" ] && bun run "$SETTLER" settle || :
+    fi
   fi
 fi
 
