@@ -20,6 +20,7 @@ import {
   resolveMaxTurns,
   resolveSeatOfExecution,
   settleCrossReview,
+  settleCrossReviewFailure,
   resolveTools,
   resolveTurnsUsed,
   toolFlags,
@@ -153,6 +154,18 @@ describe("settleCrossReview — post-effect complement gate", () => {
       detail: "ticket acceptance is not proven",
     });
     expect(settled.gateLog.slice(0, -1)).toEqual([...base.gateLog]);
+  });
+
+  test("a reviewer operational failure andons without erasing landed effect or gate facts", () => {
+    const landed = { ...base, overEnvelope: true as const };
+
+    expect(settleCrossReviewFailure(landed)).toEqual({
+      ...landed,
+      outcome: "missing-capability",
+    });
+    expect(landed.outcome).toBe("success");
+    expect(landed.materialize).toBe(true);
+    expect(landed.overEnvelope).toBe(true);
   });
 });
 

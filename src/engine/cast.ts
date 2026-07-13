@@ -33,7 +33,10 @@ import {
   type GateResult as LogGate,
   type RunOutcome,
 } from "../log/run-log.ts";
-import { resolveComplementExecutor } from "../cross-review/resolve-complement.ts";
+import {
+  type ComplementExecutor,
+  resolveComplementExecutor,
+} from "../cross-review/resolve-complement.ts";
 import { dispenseReviewVerdict } from "../cross-review/review.ts";
 import type { CastContext, EffectResult, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
 import {
@@ -49,6 +52,7 @@ import {
   resolveTools,
   resolveTurnsUsed,
   settleCrossReview,
+  settleCrossReviewFailure,
   toolFlags,
 } from "./cast-core.ts";
 import { readProjectMcpServers } from "./mcp-registry.ts";
@@ -155,6 +159,14 @@ export interface RunSummary {
    * The autonomous spend loop debits the wallet by this.
    */
   readonly actuals?: CastActuals;
+}
+
+/** Human-facing facts for a resolved reviewer that could not return a valid verdict. */
+interface CrossReviewFailure {
+  readonly reviewingSeat: string;
+  readonly endpointCategory: string;
+  readonly cause: string;
+  readonly hint: string;
 }
 
 /**
@@ -354,6 +366,7 @@ export async function castPlay<I, O>(
   let seatInferred: SeatInferred | undefined;
   let crossReviewSkipped: CrossReviewSkipped | undefined;
   let crossVendorVerdict: CrossVendorVerdict | undefined;
+  let crossReviewFailure: CrossReviewFailure | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
     const reported = await play.effect(output, ctx);
@@ -389,18 +402,25 @@ export async function castPlay<I, O>(
       if (reviewer !== null) {
         const patch = await readFile(join(root, capturedDiff), "utf8");
         const elapsedMs = Math.max(0, Date.now() - Date.parse(startedAt));
-        const review = await dispenseReviewVerdict({
-          reviewer,
-          capturedDiff: patch,
-          rubricContext: crossReviewRubric(play.name, play.summary, verdict.gateLog),
-          timeoutMs: Math.max(1, timeoutMsFor(budget) - elapsedMs),
-        });
-        crossVendorVerdict = {
-          authoringSeat: seatOfExecution,
-          reviewingSeat: review.reviewingSeat,
-          verdict: review.verdict,
-          ...(review.verdict === "fail" ? { detail: review.reason } : {}),
-        };
+        try {
+          const review = await dispenseReviewVerdict({
+            reviewer,
+            capturedDiff: patch,
+            rubricContext: crossReviewRubric(play.name, play.summary, verdict.gateLog),
+            timeoutMs: Math.max(1, timeoutMsFor(budget) - elapsedMs),
+          });
+          crossVendorVerdict = {
+            authoringSeat: seatOfExecution,
+            reviewingSeat: review.reviewingSeat,
+            verdict: review.verdict,
+            ...(review.verdict === "fail" ? { detail: review.reason } : {}),
+          };
+        } catch (error) {
+          // A resolved reviewer can still be unreachable, time out, or return malformed schema.
+          // Those are capability failures, not adversarial FAIL verdicts. Capture only a safe
+          // one-line cause (never a stack) and continue through the ordinary ledger settlement.
+          crossReviewFailure = describeCrossReviewFailure(reviewer, error);
+        }
       } else {
         crossReviewSkipped = {
           reason: "no-complement-reviewer-resolved",
@@ -415,9 +435,16 @@ export async function castPlay<I, O>(
   // The initial verdict authorized the effect; cross-review decides whether that landed run may
   // SETTLE as cleared. Preserve an effect's outcome relabel in the base, then autonomously turn a
   // complement refusal into gate-failed while retaining the physical `materialized` fact.
-  const settledVerdict = settleCrossReview({ ...verdict, outcome }, crossVendorVerdict);
+  const settledVerdict = crossReviewFailure === undefined
+    ? settleCrossReview({ ...verdict, outcome }, crossVendorVerdict)
+    : settleCrossReviewFailure({ ...verdict, outcome });
   outcome = settledVerdict.outcome;
-  if (crossVendorVerdict?.verdict === "fail") {
+  if (crossReviewFailure !== undefined) {
+    process.stdout.write(
+      `· andon: missing-capability — reviewer seat '${crossReviewFailure.reviewingSeat}' failed at ` +
+        `${crossReviewFailure.endpointCategory}: ${crossReviewFailure.cause} — ${crossReviewFailure.hint}\n`,
+    );
+  } else if (crossVendorVerdict?.verdict === "fail") {
     process.stdout.write(`· andon: gate-failed — cross-vendor review: ${crossVendorVerdict.detail ?? "refused"}\n`);
   }
 
@@ -569,4 +596,46 @@ function executorProbeDetail(executorId: string, result: ExecutorProbeResult): s
   const reason = result.reason?.trim() || `${executorId} executor is not dispensable from this environment`;
   const hint = result.hint?.trim() || `check the ${executorId} executor's local configuration, authentication, and reachability`;
   return `executor '${executorId}' unreachable: ${reason} — ${hint}`;
+}
+
+/** Plain provider category for reviewer failure copy; total over future executor ids. */
+function crossReviewEndpointCategory(executorId: string): string {
+  if (executorId === "openai-compat") return "OpenAI-compatible endpoint";
+  if (executorId === "claude") return "Claude Code executor";
+  const id = oneLine(executorId);
+  return id.length > 0 ? `executor '${id}' endpoint` : "reviewer endpoint";
+}
+
+/** Reduce an arbitrary rejection to one safe line. Error stacks are deliberately never read. */
+function crossReviewFailureCause(error: unknown): string {
+  if (error instanceof Error) {
+    return oneLine(error.message) || "review dispense failed without an error message";
+  }
+  try {
+    return oneLine(String(error)) || "review dispense failed without an error message";
+  } catch {
+    return "review dispense failed without an error message";
+  }
+}
+
+/** Build actionable andon copy from locally trusted reviewer routing facts. */
+function describeCrossReviewFailure(
+  reviewer: ComplementExecutor,
+  error: unknown,
+): CrossReviewFailure {
+  const endpointCategory = crossReviewEndpointCategory(reviewer.executor.id);
+  const hint = reviewer.executor.id === "openai-compat"
+    ? "verify VEND_OPENAI_BASE_URL is reachable and VEND_OPENAI_API_KEY contains valid bearer auth when required; run `vend doctor`"
+    : `check the ${reviewer.seat} reviewer's local configuration, authentication, and endpoint reachability; run \`vend doctor\``;
+  return {
+    reviewingSeat: reviewer.seat,
+    endpointCategory,
+    cause: crossReviewFailureCause(error),
+    hint,
+  };
+}
+
+/** Collapse untrusted external prose to one trimmed terminal line. */
+function oneLine(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
 }

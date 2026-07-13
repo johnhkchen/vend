@@ -268,6 +268,17 @@ export function settleCrossReview(base: Verdict, review: CrossVendorVerdict | un
 }
 
 /**
+ * Settle an operationally unavailable reviewer after the effect has already landed.
+ *
+ * This is not a review FAIL: no adversarial judgment exists, so no cross-vendor gate row is
+ * invented. Preserve the physical materialization fact, the play's gate evidence, and any
+ * over-envelope warning; relabel only the terminal outcome to the existing capability andon.
+ */
+export function settleCrossReviewFailure(base: Verdict): Verdict {
+  return { ...base, outcome: "missing-capability" };
+}
+
+/**
  * Translate a play's {@link GateVerdict} into run-log per-gate rows. A STOP → one failed
  * row naming the (real) gate/unit/reason the play reported. A CLEAR → one passed row per
  * gate name the play echoed in `cleared`, or `[]` when it echoed none. The generic verdict

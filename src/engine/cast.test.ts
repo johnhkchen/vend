@@ -138,6 +138,21 @@ function crossReviewRegistry(resultText: string, calls: DispenseOptions[]): Exec
   };
 }
 
+/** A configured reviewer whose live dispense fails after complement resolution succeeds. */
+function throwingCrossReviewRegistry(error: unknown, calls: DispenseOptions[]): ExecutorRegistry {
+  return {
+    claude: () => stubExecutor([], "unused author factory", "claude"),
+    "openai-compat": () => ({
+      id: "openai-compat",
+      async probe() { return { ok: true }; },
+      async dispense(opts: DispenseOptions): Promise<ResultMessage> {
+        calls.push(opts);
+        throw error;
+      },
+    }),
+  };
+}
+
 interface BoardPlanFixture {
   readonly story: { readonly id: string; readonly title: string };
   readonly ticket: { readonly id: string; readonly story: string; readonly title: string };
@@ -461,6 +476,62 @@ test("castPlay: a refusing complement verdict blocks clear as gate-failed and st
     { gate: "cross-vendor-review", passed: false, detail: "acceptance proof is missing" },
   ]);
   expect(reviveRecord(raw)?.crossVendorVerdict).toEqual(raw.crossVendorVerdict);
+});
+
+test("castPlay: a throwing reviewer settles as a named missing-capability andon without a stack", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const calls: DispenseOptions[] = [];
+  const runId = "cross-review-unreachable";
+  const plan: BoardPlanFixture = {
+    story: { id: "S-076-99", title: "reviewer failure fixture" },
+    ticket: { id: "T-076-99-01", story: "S-076-99", title: "record the andon" },
+  };
+
+  // Awaiting the whole cast to a value is the no-unhandled-rejection assertion: the reviewer's
+  // rejected promise is consumed at settlement rather than escaping this action.
+  const { result: summary, stdout } = await captureStdout(() =>
+    castPlay(boardPlanPlay(), { epic: "E-076" }, BIG_BUDGET, {
+      subject: "T-076-02-01",
+      projectRoot: root,
+      transcriptDir: root,
+      runLogPath,
+      runId,
+      executor: stubExecutor([], JSON.stringify(plan), "claude"),
+      crossReviewRegistry: throwingCrossReviewRegistry(
+        new Error("ConnectionRefused while dialing the configured review service"),
+        calls,
+      ),
+    }));
+
+  expect(calls).toHaveLength(1);
+  expect(summary.outcome).toBe("missing-capability");
+  expect(summary.materialized).toBe(true);
+  expect(summary.capturedDiff).toBe(join(".vend", "artifacts", `${runId}.diff`));
+  expect(stdout).toContain("· andon: missing-capability");
+  expect(stdout).toContain("reviewer seat 'codex'");
+  expect(stdout).toContain("OpenAI-compatible endpoint");
+  expect(stdout).toContain("ConnectionRefused while dialing the configured review service");
+  expect(stdout).toContain("VEND_OPENAI_BASE_URL");
+  expect(stdout).toContain("run `vend doctor`");
+  expect(stdout).not.toContain("· andon: gate-failed — cross-vendor review");
+  expect(stdout).not.toContain("Error:");
+  expect(stdout).not.toContain("\n    at ");
+
+  const patch = await readFile(join(root, summary.capturedDiff!), "utf8");
+  expect(patch.length).toBeGreaterThan(0);
+  const lines = (await readFile(runLogPath, "utf8")).trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const raw = JSON.parse(lines[0]!);
+  expect(raw.outcome).toBe("missing-capability");
+  expect(raw.capturedDiff).toBe(summary.capturedDiff);
+  expect(raw.usage.input_tokens).toBe(7);
+  expect(raw.usage.output_tokens).toBe(3);
+  expect(raw.costUsd).toBe(0.001);
+  expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
+  expect("crossVendorVerdict" in raw).toBe(false);
+  expect("crossReviewSkipped" in raw).toBe(false);
 });
 
 test("castPlay: a passing complement verdict clears with verdict and gate evidence attached", async () => {
