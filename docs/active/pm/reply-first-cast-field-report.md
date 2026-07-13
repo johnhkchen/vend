@@ -1,7 +1,40 @@
 # Reply to the first-cast field report (2026-07-12)
 
 Plaintext to pass to the user who hit the sandboxed `vend steer` failure. Send after
-v0.4.0-rc.4 is confirmed on the tap.
+v0.4.0-rc.4 is confirmed on the tap. (Superseded guidance: recommend **rc.5**, not rc.4 —
+see the localhost:11434 reply below.)
+
+---
+
+# Reply to the localhost:11434 crash report (boilerplate-demo, 2026-07-13)
+
+Your report was exactly right on every point, and it's fixed. **`brew update && brew upgrade
+vend` → 0.4.0-rc.5**, then:
+
+1. **Your orphan E-013**: re-run the decompose you had to kill —
+   `vend run decompose-epic docs/active/epic/E-013.md --budget 40m,500k` (budgets take humane
+   units now). It completes normally; we proved the fix on our own identically-orphaned epic.
+   `vend doctor` goes fully green once it lands.
+
+2. **What it was**: vend's new cross-vendor review gate shipped with a default registry that
+   fabricated a reviewer on `localhost:11434` (a local-model default nobody configured), and its
+   failure was uncaught. You never had a misconfig — `grep` finding nothing was the correct
+   result. As of rc.5, cross-review is inert unless you explicitly provision a reviewer (the run
+   record says `crossReviewSkipped` honestly), a configured-but-unreachable reviewer stops the
+   cast with a named explanation instead of a stack trace, and doctor tells you up front what
+   review will do.
+
+3. **Your missing ledger line and stray `.vend/artifacts/run-….diff`**: both were our bug — the
+   crash pre-empted the record write. That can't recur (the record now survives settlement
+   failures), but the crashed cast's line is unrecoverable; your ledger simply has a gap at
+   ~04:28 UTC. The stray artifact is safe to delete or keep.
+
+4. Your version-skew observation (rc.3 → rc.4 mid-session) explained why your earlier chains
+   cleared — rc.3 had no cross-review code. Good catch; it confirmed the failure was
+   every-cast-on-rc.4, not conditional.
+
+Your report — killed retry, preserved orphan, grep evidence, ledger timestamps — turned a
+crash into a shipped fix in one working day. Genuinely appreciated; keep them coming.
 
 ---
 
