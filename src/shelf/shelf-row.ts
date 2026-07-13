@@ -14,8 +14,9 @@
 //
 // BOUNDARIES: this module CALLS `recalibrate` (E-013 owns the percentile/cold-start/
 // confidence math — we never re-derive it) with the play's authored `budget` as the
-// cold-start prior. The one value import is `recalibrate`; everything else is type-only,
-// so the zero-coupling, addon-free discipline holds. Nothing imports this back yet —
+// cold-start prior. Its value imports stay inside that existing ledger boundary:
+// `recalibrate` supplies the result while the ledger-owned threshold/window constants define
+// the honest confidence ranges. The module remains addon-free. Nothing imports this back yet —
 // T-030-02 (renderShelf + `vend shelf`) is the first consumer.
 
 import type { Budget } from "../budget/budget.ts";
