@@ -23,7 +23,9 @@ import {
 import type { Play } from "./play.ts";
 import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
+import { buildArgs } from "../executor/claude.ts";
 import { decomposeEffect } from "../play/decompose-effect.ts";
+import { DECOMPOSE_MAX_TURNS } from "../play/decompose-epic-core.ts";
 import type { DecomposeInputs } from "../play/project-context.ts";
 import type { ExecutorRegistry } from "../executor/select.ts";
 import { dispenseOpenAICompat, OPENAI_BASE_URL_ENV } from "../executor/openai-compat.ts";
@@ -842,6 +844,110 @@ test("castPlay: stub stream refreshes one progress line and preserves every raw 
   const rawLines = transcript.trimEnd().split("\n");
   expect(rawLines).toEqual(SAMPLE_STREAM.map((message) => JSON.stringify(message)));
   expect(rawLines.map((line) => JSON.parse(line))).toEqual(SAMPLE_STREAM);
+});
+
+test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn units at the live seam (T-077-01-01 AC)", async () => {
+  const root = await tmp();
+  const runId = "decompose-max-turns-cap-hit";
+  const runLogPath = join(root, "runs.jsonl");
+  const effectLog: string[] = [];
+  let argv: string[] = [];
+
+  const assistantTurns: StreamMessage[] = Array.from(
+    { length: DECOMPOSE_MAX_TURNS },
+    (_, index): StreamMessage => ({
+      type: "assistant",
+      message: {
+        id: `cap-turn-${index + 1}`,
+        role: "assistant",
+        model: "stub-model-cap-hit",
+        usage: { input_tokens: 1 },
+      },
+    }),
+  );
+  const capHit: ResultMessage = {
+    type: "result",
+    subtype: "error_max_turns",
+    result: "cap-hit fixture",
+    usage: { input_tokens: DECOMPOSE_MAX_TURNS, output_tokens: 1 },
+    total_cost_usd: 0.001,
+    model: "stub-model-cap-hit",
+    num_turns: 23,
+  };
+  const stream: StreamMessage[] = [
+    { type: "system", subtype: "init", session_id: "cap-hit-session" },
+    ...assistantTurns.slice(0, 7),
+    assistantTurns[6]!, // repeated block for one assistant response: same id must count once
+    ...assistantTurns.slice(7),
+    capHit,
+  ];
+
+  const play: Play<{ epic: string }, { text: string }> = {
+    name: "decompose-epic",
+    summary: "characterize the decompose executor turn-cap seam",
+    render: ({ epic }) => `decompose fixture: ${epic}`,
+    parse: (text) => ({ text }),
+    gates: () => ({ status: "clear", cleared: ["fixture-contract"] }),
+    effect: async ({ text }) => {
+      effectLog.push(text);
+      return { ok: true, detail: "recorded cap-hit fixture result" };
+    },
+    maxTurns: DECOMPOSE_MAX_TURNS,
+    budget: BIG_BUDGET,
+    card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
+  };
+  const executor: Executor = {
+    id: "claude",
+    async probe() { return { ok: true }; },
+    async dispense(opts: DispenseOptions): Promise<ResultMessage> {
+      argv = buildArgs(opts);
+      for (const message of stream) opts.onMessage?.(message);
+      return capHit;
+    },
+  };
+
+  const captured = await captureStdout(() => castPlay(play, { epic: "E-077" }, BIG_BUDGET, {
+    subject: "E-077",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId,
+    executor,
+  }));
+
+  expect(argv).toEqual([
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--max-turns",
+    "15",
+  ]);
+  expect(captured.stdout).toContain("· agent turns: 15 / 15 cap; executor conversation events: 23");
+  expect(captured.stdout).not.toContain("23 / 15 cap");
+
+  const transcript = (await readFile(join(root, `${runId}.jsonl`), "utf8"))
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line) as StreamMessage);
+  const assistantIds = transcript
+    .filter((message) => message.type === "assistant")
+    .map((message) => (message.message as { id: string }).id);
+  expect(assistantIds).toHaveLength(DECOMPOSE_MAX_TURNS + 1);
+  expect(new Set(assistantIds).size).toBe(DECOMPOSE_MAX_TURNS);
+  expect(transcript.at(-1)).toMatchObject({
+    type: "result",
+    subtype: "error_max_turns",
+    num_turns: 23,
+  });
+
+  expect(captured.result.outcome).toBe("success");
+  expect(captured.result.materialized).toBe(true);
+  expect(effectLog).toEqual(["cap-hit fixture"]);
+  const record = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(record.play).toBe("decompose-epic");
+  expect(record.turnsUsed).toBe(23);
+  expect(record.outcome).toBe("success");
 });
 
 test("castPlay: a lane-less executor omits seatOfExecution like other unknown facts", async () => {
