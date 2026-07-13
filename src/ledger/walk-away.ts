@@ -232,10 +232,10 @@ function subWalk(s: InterventionSubStat): string {
 }
 
 /**
- * Render a {@link WalkAwayReport} as the E1 FINDINGS FRAGMENT (T-014-01 AC #3) — the trust
- * numbers block T-014-03's findings note quotes. PURE. Honest labels (IA-8): "no self-reports
- * yet" when nothing carried the bit, "no envelope data" when no cost pair — a guess never reads
- * as an earned number. The walk-away rate is `1 − intervention rate` (finished untouched).
+ * Render a {@link WalkAwayReport} as the plain trust findings block printed by `vend audit`.
+ * PURE. Honest labels (IA-8): "not recorded yet" when no run says whether anyone stepped in,
+ * "no planned cost data" when no cost pair exists — a guess never reads as an earned number.
+ * "Finished without help" is `1 − intervention rate` (finished untouched).
  */
 export function formatWalkAwayFindings(report: WalkAwayReport): string {
   const scope = report.play ?? "all plays";
@@ -243,32 +243,32 @@ export function formatWalkAwayFindings(report: WalkAwayReport): string {
   const iv = report.intervention;
 
   const lines: string[] = [];
-  lines.push(`E1 — walk-away trust · ${scope} · ${report.total} run${report.total === 1 ? "" : "s"} [${report.tier}]`);
+  lines.push(`run trust · ${scope} · ${report.total} run${report.total === 1 ? "" : "s"} [${report.tier}]`);
 
   if (iv.reported === 0) {
-    lines.push(`  walk-away rate: no self-reports yet (${report.total} runs, intervention bit unrecorded)`);
+    lines.push(`  finished without help: not recorded yet (${report.total} runs did not say whether anyone stepped in)`);
   } else {
     const walkAway = iv.rate === null ? null : 1 - iv.rate;
     const trendWalk = (r: number | null) => (r === null ? "—" : pct(1 - r));
     lines.push(
-      `  walk-away rate: ${pct(walkAway)} (${iv.reported - iv.intervened}/${iv.reported} ran untouched)` +
+      `  finished without help: ${pct(walkAway)} (${iv.reported - iv.intervened}/${iv.reported} ran untouched)` +
         ` · trend ${trendWalk(iv.trend.earlier)} → ${trendWalk(iv.trend.recent)} (target → 100%)`,
     );
     // Provenance split (T-028-01): the combined rate above pools two different KINDS of evidence —
     // forward (live) self-reports and attested back-fill. A verdict cites the FORWARD count; this
     // sub-line keeps them legible so attested back-fill is never mistaken for the live instrument.
-    lines.push(`    └ forward (live): ${subWalk(iv.forward)} · attested back-fill: ${subWalk(iv.attested)}`);
+    lines.push(`    └ recorded at the time: ${subWalk(iv.forward)} · filled in later: ${subWalk(iv.attested)}`);
   }
 
   const budgetMark = report.withinBudget ? "✓ within" : "⚠ over";
-  lines.push(`  andon rate: ${pct(report.andonRate)} vs ${pct(report.andonBudget)} budget — ${budgetMark} (gates working, not defects)`);
+  lines.push(`  runs stopped before finishing: ${pct(report.andonRate)} vs ${pct(report.andonBudget)} allowed — ${budgetMark} (checks working as intended)`);
   lines.push(
-    `  outcome mix: ${m.success} success · ${m.censored} censored (budget/timeout) · ${m["gate-failed"]} gate-failed · ${m["id-collision"]} id-collision`,
+    `  how runs ended: ${m.success} finished · ${m.censored} hit budget or time limit · ${m["gate-failed"]} stopped by a check · ${m["id-collision"]} duplicate run ID blocked`,
   );
   if (cost_has(report)) {
-    lines.push(`  cost vs envelope: tokens ${ratio(report.cost.tokens)} · time ${ratio(report.cost.timeMs)} (median over ${report.cost.n} successful run${report.cost.n === 1 ? "" : "s"})`);
+    lines.push(`  cost compared with plan: tokens ${ratio(report.cost.tokens)} · time ${ratio(report.cost.timeMs)} (middle result across ${report.cost.n} finished run${report.cost.n === 1 ? "" : "s"})`);
   } else {
-    lines.push(`  cost vs envelope: no envelope data`);
+    lines.push(`  cost compared with plan: no planned cost data`);
   }
   return lines.join("\n");
 }

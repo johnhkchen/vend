@@ -7,9 +7,10 @@
 // design-language.md). Two parts:
 //
 //   1. `homeLedgerLine(report)` — the FOOT (DL-6 / DL-8 / E-028). The compact one-line glance of the
-//      walk-away report: the provenance-split E-028 already computes (forward·attested), NOT a single
+//      trust report: the provenance-split E-028 already computes (recorded at the time · filled in
+//      later), NOT a single
 //      conflated rate. The full multi-line readout stays `vend audit` (`formatWalkAwayFindings`); this
-//      is the glance. Honest-empty — "no runs yet" / "no self-reports yet" — never a fabricated trust
+//      is the glance. Honest-empty — "no runs yet" / "not recorded yet" — never a fabricated trust
 //      number (the read-never-invent discipline, E-026 / IA-8). Percentages are rendered through the
 //      SAME `pct` the audit readout uses, so Home and `vend audit` can never round differently.
 //   2. `renderHome({ boardMenu, shelfRows, ledger })` — the COMPOSER (DL-6 / DL-1 / DL-9). A pure
@@ -58,27 +59,28 @@ function subPct(s: InterventionSubStat): string {
 
 /**
  * Render a {@link WalkAwayReport} as the compact DL-6 ledger FOOT — the trust line at the bottom of
- * Home. PURE/TOTAL. The walk-away rate is `1 − intervention rate` (finished untouched), shown with
- * the E-028 PROVENANCE SPLIT (forward·attested), NOT a single conflated rate — mirroring the labels
- * `formatWalkAwayFindings` (DL-8) uses, just on one line, so Home and `vend audit` read identically.
+ * Home. PURE/TOTAL. "Finished without help" is `1 − intervention rate` (finished untouched), shown
+ * with the E-028 provenance split (recorded at the time · filled in later), NOT a single conflated
+ * rate — mirroring the labels `formatWalkAwayFindings` (DL-8) uses, just on one line, so Home and
+ * `vend audit` read identically.
  *
  * Honest-empty (read-never-invent, E-026 / IA-8): with no runs at all it says "no runs yet"; with
- * runs but no recorded intervention bit it says "no self-reports yet (N runs)" — NEVER a fabricated
- * trust percentage. A populated line reads, e.g.:
- *   `ledger   E1 walk-away 87% (13/15)   └ forward 50% · attested 92%`
+ * runs but no recorded answer it says the runs did not say whether anyone stepped in — NEVER a
+ * fabricated trust percentage. A populated line reads, e.g.:
+ *   `ledger   finished without help 87% (13/15)   └ recorded at the time 50% · filled in later 92%`
  */
 export function homeLedgerLine(report: WalkAwayReport): string {
   const iv = report.intervention;
 
-  if (report.total === 0) return "ledger   E1 walk-away — no runs yet";
+  if (report.total === 0) return "ledger   finished without help — no runs yet";
   if (iv.reported === 0) {
-    return `ledger   E1 walk-away — no self-reports yet (${report.total} run${report.total === 1 ? "" : "s"})`;
+    return `ledger   finished without help — not recorded yet (${report.total} run${report.total === 1 ? "" : "s"} did not say whether anyone stepped in)`;
   }
 
   const walkAway = iv.rate === null ? null : 1 - iv.rate;
   return (
-    `ledger   E1 walk-away ${pct(walkAway)} (${iv.reported - iv.intervened}/${iv.reported})` +
-    `   └ forward ${subPct(iv.forward)} · attested ${subPct(iv.attested)}`
+    `ledger   finished without help ${pct(walkAway)} (${iv.reported - iv.intervened}/${iv.reported})` +
+    `   └ recorded at the time ${subPct(iv.forward)} · filled in later ${subPct(iv.attested)}`
   );
 }
 

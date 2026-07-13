@@ -137,25 +137,30 @@ describe("auditWalkAway — play filter and window", () => {
   });
 });
 
-describe("formatWalkAwayFindings — the E1 fragment (AC #3)", () => {
-  test("reports the walk-away rate, andon-vs-budget, and cost when data exists", () => {
+describe("formatWalkAwayFindings — plain operator trust lines", () => {
+  const forbidden = /E1[^\n]*walk-away|andon rate|censored|intervention bit unrecorded/i;
+
+  test("reports help-free finishes, stopped runs, end states, and planned cost in plain words", () => {
     const r = auditWalkAway([
       rec({ intervened: false, envelope: { timeMs: 1000, tokens: 400 } }),
       rec({ intervened: false, envelope: { timeMs: 1000, tokens: 400 } }),
       rec({ intervened: true, outcome: "gate-failed" }),
     ]);
     const out = formatWalkAwayFindings(r);
-    expect(out).toContain("walk-away rate:");
-    expect(out).toContain("andon rate:");
-    expect(out).toContain("budget");
-    expect(out).toContain("cost vs envelope:");
-    expect(out).toContain("outcome mix:");
+    expect(out).toContain("run trust · all plays · 3 runs [standard]");
+    expect(out).toContain("finished without help: 67% (2/3 ran untouched)");
+    expect(out).toContain("runs stopped before finishing: 33% vs 10% allowed — ⚠ over");
+    expect(out).toContain("how runs ended: 2 finished · 0 hit budget or time limit · 1 stopped by a check · 0 duplicate run ID blocked");
+    expect(out).toContain("cost compared with plan: tokens ×1.50 · time ×300.00 (middle result across 2 finished runs)");
+    expect(out).not.toMatch(forbidden);
   });
 
-  test("honest fallbacks: no self-reports, no envelope data", () => {
+  test("honest fallbacks say what was not recorded and never invent planned cost data", () => {
     const out = formatWalkAwayFindings(auditWalkAway([rec(), rec()]));
-    expect(out).toContain("no self-reports yet");
-    expect(out).toContain("no envelope data");
+    expect(out).toContain("finished without help: not recorded yet (2 runs did not say whether anyone stepped in)");
+    expect(out).toContain("cost compared with plan: no planned cost data");
+    expect(out).not.toContain("finished without help: 0%");
+    expect(out).not.toMatch(forbidden);
   });
 });
 
@@ -187,14 +192,14 @@ describe("auditWalkAway — intervention provenance split (T-028-01 AC #2)", () 
     expect(r.intervention.attested).toEqual({ reported: 0, intervened: 0, rate: null });
   });
 
-  test("the fragment renders the forward vs attested split beside the combined rate", () => {
+  test("the fragment plainly separates answers recorded at the time from those filled in later", () => {
     const out = formatWalkAwayFindings(auditWalkAway(mixed()));
-    expect(out).toContain("forward (live): 50% (1/2 untouched)");
-    expect(out).toContain("attested back-fill: 100% (3/3 untouched)");
+    expect(out).toContain("recorded at the time: 50% (1/2 untouched)");
+    expect(out).toContain("filled in later: 100% (3/3 untouched)");
   });
 
   test("the split sub-line shows 'none yet' for an empty partition", () => {
     const out = formatWalkAwayFindings(auditWalkAway([rec({ intervened: true }), rec({ intervened: false })]));
-    expect(out).toContain("attested back-fill: none yet");
+    expect(out).toContain("filled in later: none yet");
   });
 });
