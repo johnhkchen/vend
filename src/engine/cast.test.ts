@@ -1,4 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
+import { rmSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,6 +151,31 @@ function throwingCrossReviewRegistry(error: unknown, calls: DispenseOptions[]): 
         throw error;
       },
     }),
+  };
+}
+
+/** Remove the captured patch after complement resolution but before castPlay reads it. */
+function disappearingDiffRegistry(root: string, runId: string, calls: DispenseOptions[]): ExecutorRegistry {
+  return {
+    claude: () => stubExecutor([], "unused author factory", "claude"),
+    "openai-compat": () => {
+      rmSync(join(root, ".vend", "artifacts", `${runId}.diff`));
+      return {
+        id: "openai-compat",
+        async probe() { return { ok: true }; },
+        async dispense(opts: DispenseOptions): Promise<ResultMessage> {
+          calls.push(opts);
+          return {
+            type: "result",
+            subtype: "success",
+            result: '{"verdict":"pass"}',
+            usage: {},
+            total_cost_usd: 0,
+            model: "review-stub",
+          } as ResultMessage;
+        },
+      };
+    },
   };
 }
 
@@ -532,6 +558,51 @@ test("castPlay: a throwing reviewer settles as a named missing-capability andon 
   expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
   expect("crossVendorVerdict" in raw).toBe(false);
   expect("crossReviewSkipped" in raw).toBe(false);
+});
+
+test("castPlay: a non-reviewer settlement throw writes an errored row and records a missing diff discrepancy", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const calls: DispenseOptions[] = [];
+  const runId = "settlement-read-failure";
+  const expectedReference = join(".vend", "artifacts", `${runId}.diff`);
+  const plan: BoardPlanFixture = {
+    story: { id: "S-076-98", title: "settlement failure fixture" },
+    ticket: { id: "T-076-98-01", story: "S-076-98", title: "preserve the ledger" },
+  };
+
+  const cast = castPlay(boardPlanPlay(), { epic: "E-076" }, BIG_BUDGET, {
+    subject: "T-076-02-02",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId,
+    executor: stubExecutor([], JSON.stringify(plan), "claude"),
+    crossReviewRegistry: disappearingDiffRegistry(root, runId, calls),
+  });
+
+  await expect(cast).rejects.toMatchObject({ code: "ENOENT" });
+  expect(calls).toHaveLength(0);
+
+  const lines = (await readFile(runLogPath, "utf8")).trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const raw = JSON.parse(lines[0]!);
+  expect(raw.runId).toBe(runId);
+  expect(raw.outcome).toBe("errored");
+  expect(raw.usage.input_tokens).toBe(7);
+  expect(raw.usage.output_tokens).toBe(3);
+  expect(raw.costUsd).toBe(0.001);
+  expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
+  expect("capturedDiff" in raw).toBe(false);
+  expect(raw.artifactDiscrepancy).toEqual({
+    reference: expectedReference,
+    reason: "captured-diff-unavailable-at-settlement",
+  });
+  expect(reviveRecord(raw)?.artifactDiscrepancy).toEqual(raw.artifactDiscrepancy);
+  expect("crossVendorVerdict" in raw).toBe(false);
+  expect("crossReviewSkipped" in raw).toBe(false);
+  expect(await Bun.file(join(root, expectedReference)).exists()).toBe(false);
 });
 
 test("castPlay: a passing complement verdict clears with verdict and gate evidence attached", async () => {

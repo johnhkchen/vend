@@ -19,7 +19,7 @@
 // log), and calls the play's own impure `effect`; it is the single UNTESTED verb (its logic
 // lives in the pure core), proven live in T-007-03 when a real play is registered and cast.
 
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { type ResultMessage } from "../executor/claude.ts";
 import { ExecutorTimeoutError } from "../executor/executor.ts";
@@ -28,6 +28,7 @@ import { executorFor, type ExecutorRegistry } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import {
   appendRunLog,
+  type ArtifactDiscrepancy,
   type CrossReviewSkipped,
   type CrossVendorVerdict,
   type GateResult as LogGate,
@@ -353,216 +354,216 @@ export async function castPlay<I, O>(
 
   const verdict = classify({ executorProbe, timedOut, budgetOutcome, gateVerdict });
 
-  // On a CLEAR verdict the play's effect lands the output in the world. The effect REPORTS
-  // back as data (`EffectResult` — T-007-01 design D3): `ok` whether it landed, and an
-  // optional `outcome` RELABEL (e.g. an id-collision refusal → "id-collision") the loop
-  // logs without the effect having to throw across this boundary. An UNCONTRACTED throw
-  // (a genuine fs failure, not the expected relabel) propagates — it is a real bug, not a
-  // clean outcome, mirroring the seam's non-timeout handling above.
+  // Primary execution facts are complete before settlement begins. Keep them in scope for the
+  // finally append so a later patch read, resolver, settlement, or presentation throw cannot erase
+  // the spend from the ledger.
+  const loggedModel = resolveLoggedModel(result?.model, opts.model);
+  const turnsUsed = resolveTurnsUsed(result?.num_turns);
+  const usage = (result?.usage ?? {}) as Usage;
+  const costUsd = typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0;
+  const reducedGrounding = "reducedGrounding" in resolved && resolved.reducedGrounding;
+
+  // The effect boundary remains unchanged: an uncontracted effect throw is not a settlement
+  // failure because the shell cannot know whether that ambiguous effect landed. Once the effect
+  // resolves, everything through the terminal append is guarded below.
+  let reported: EffectResult | undefined;
+  if (verdict.materialize && output !== null) reported = await play.effect(output, ctx);
+
   let materialized = false;
   let produced: string | undefined;
   let capturedDiff: string | undefined;
+  let artifactDiscrepancy: ArtifactDiscrepancy | undefined;
   let seatDefaulted: SeatDefaulted | undefined;
   let seatInferred: SeatInferred | undefined;
   let crossReviewSkipped: CrossReviewSkipped | undefined;
   let crossVendorVerdict: CrossVendorVerdict | undefined;
   let crossReviewFailure: CrossReviewFailure | undefined;
   let outcome: RunOutcome = verdict.outcome;
-  if (verdict.materialize && output !== null) {
-    const reported = await play.effect(output, ctx);
-    // The effect reports the files it wrote; the generic impure shell owns Git capture. Enriching
-    // the result here keeps capturedDiff on the EffectResult → RunRecord path without requiring
-    // every concrete play to know about Git or `.vend` storage.
-    const effectDiff = reported.ok
-      ? await captureEffectDiff({ projectRoot: root, runId, artifacts: reported.artifacts })
-      : undefined;
-    const eff: EffectResult = effectDiff === undefined
-      ? reported
-      : { ...reported, capturedDiff: effectDiff };
-    materialized = eff.ok;
-    // Preserve the effect's authoritative routing disposition. The generic cast loop does not
-    // inspect play-specific inputs or re-run seat policy; it only surfaces and records the report.
-    seatDefaulted = eff.seatDefaulted;
-    seatInferred = eff.seatInferred;
-    // Surface the produced reference ONLY when the effect actually landed — a chain threads it
-    // into the next play (T-011-01); a failed (e.g. id-collision) effect surfaces nothing.
-    produced = eff.ok ? eff.produced : undefined;
-    capturedDiff = eff.capturedDiff;
-    if (eff.outcome) outcome = eff.outcome;
-    process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
+  let settledVerdict = verdict;
+  let settlementThrew = false;
+  let settlementError: unknown;
+  let endedAt = "";
 
-    // A complement can review only concrete landed patch bytes from a known author lane. Those
-    // irrelevant paths remain exactly the pre-cross-review clear. Once relevant, a null resolution
-    // is recorded as skipped rather than silently resembling a gate that ran. A valid refusal is a
-    // gate outcome, not a human approval step.
-    if (!opts.skipGates && eff.ok && capturedDiff !== undefined && seatOfExecution !== undefined) {
-      const reviewer = opts.crossReviewRegistry === undefined
-        ? resolveComplementExecutor(seatOfExecution)
-        : resolveComplementExecutor(seatOfExecution, opts.crossReviewRegistry);
-      if (reviewer !== null) {
-        const patch = await readFile(join(root, capturedDiff), "utf8");
-        const elapsedMs = Math.max(0, Date.now() - Date.parse(startedAt));
-        try {
-          const review = await dispenseReviewVerdict({
-            reviewer,
-            capturedDiff: patch,
-            rubricContext: crossReviewRubric(play.name, play.summary, verdict.gateLog),
-            timeoutMs: Math.max(1, timeoutMsFor(budget) - elapsedMs),
-          });
-          crossVendorVerdict = {
-            authoringSeat: seatOfExecution,
-            reviewingSeat: review.reviewingSeat,
-            verdict: review.verdict,
-            ...(review.verdict === "fail" ? { detail: review.reason } : {}),
+  try {
+    if (reported !== undefined) {
+      // Preserve authoritative effect facts before diff capture: a capture error happens after the
+      // effect landed and must not erase its outcome/routing disposition from the terminal row.
+      materialized = reported.ok;
+      seatDefaulted = reported.seatDefaulted;
+      seatInferred = reported.seatInferred;
+      produced = reported.ok ? reported.produced : undefined;
+      if (reported.outcome) outcome = reported.outcome;
+
+      // The generic impure shell owns Git capture. Atomic publication in cast-diff.ts ensures a
+      // failed write cannot expose the final artifact name before this call returns its reference.
+      const effectDiff = reported.ok
+        ? await captureEffectDiff({ projectRoot: root, runId, artifacts: reported.artifacts })
+        : undefined;
+      const eff: EffectResult = effectDiff === undefined
+        ? reported
+        : { ...reported, capturedDiff: effectDiff };
+      capturedDiff = eff.capturedDiff;
+      process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
+
+      // A complement can review only concrete landed patch bytes from a known author lane. A valid
+      // reviewer dispense failure remains the named T-076-02-01 andon; unrelated operations such as
+      // this patch read fall through to the outer settlement guard.
+      if (!opts.skipGates && eff.ok && capturedDiff !== undefined && seatOfExecution !== undefined) {
+        const reviewer = opts.crossReviewRegistry === undefined
+          ? resolveComplementExecutor(seatOfExecution)
+          : resolveComplementExecutor(seatOfExecution, opts.crossReviewRegistry);
+        if (reviewer !== null) {
+          const patch = await readFile(join(root, capturedDiff), "utf8");
+          const elapsedMs = Math.max(0, Date.now() - Date.parse(startedAt));
+          try {
+            const review = await dispenseReviewVerdict({
+              reviewer,
+              capturedDiff: patch,
+              rubricContext: crossReviewRubric(play.name, play.summary, verdict.gateLog),
+              timeoutMs: Math.max(1, timeoutMsFor(budget) - elapsedMs),
+            });
+            crossVendorVerdict = {
+              authoringSeat: seatOfExecution,
+              reviewingSeat: review.reviewingSeat,
+              verdict: review.verdict,
+              ...(review.verdict === "fail" ? { detail: review.reason } : {}),
+            };
+          } catch (error) {
+            crossReviewFailure = describeCrossReviewFailure(reviewer, error);
+          }
+        } else {
+          crossReviewSkipped = {
+            reason: "no-complement-reviewer-resolved",
+            bindsWhen: "author-and-exactly-one-complement-reviewer-provisioned",
           };
-        } catch (error) {
-          // A resolved reviewer can still be unreachable, time out, or return malformed schema.
-          // Those are capability failures, not adversarial FAIL verdicts. Capture only a safe
-          // one-line cause (never a stack) and continue through the ordinary ledger settlement.
-          crossReviewFailure = describeCrossReviewFailure(reviewer, error);
         }
-      } else {
-        crossReviewSkipped = {
-          reason: "no-complement-reviewer-resolved",
-          bindsWhen: "author-and-exactly-one-complement-reviewer-provisioned",
-        };
       }
+    } else if (verdict.outcome !== "success") {
+      process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateVerdict, budgetOutcome)}\n`);
     }
-  } else if (verdict.outcome !== "success") {
-    process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateVerdict, budgetOutcome)}\n`);
-  }
 
-  // The initial verdict authorized the effect; cross-review decides whether that landed run may
-  // SETTLE as cleared. Preserve an effect's outcome relabel in the base, then autonomously turn a
-  // complement refusal into gate-failed while retaining the physical `materialized` fact.
-  const settledVerdict = crossReviewFailure === undefined
-    ? settleCrossReview({ ...verdict, outcome }, crossVendorVerdict)
-    : settleCrossReviewFailure({ ...verdict, outcome });
-  outcome = settledVerdict.outcome;
-  if (crossReviewFailure !== undefined) {
-    process.stdout.write(
-      `· andon: missing-capability — reviewer seat '${crossReviewFailure.reviewingSeat}' failed at ` +
-        `${crossReviewFailure.endpointCategory}: ${crossReviewFailure.cause} — ${crossReviewFailure.hint}\n`,
+    // The initial verdict authorized the effect; cross-review decides whether the landed run may
+    // settle as cleared. A later presentation throw retains this already-observed gate evidence.
+    settledVerdict = crossReviewFailure === undefined
+      ? settleCrossReview({ ...verdict, outcome }, crossVendorVerdict)
+      : settleCrossReviewFailure({ ...verdict, outcome });
+    outcome = settledVerdict.outcome;
+    if (crossReviewFailure !== undefined) {
+      process.stdout.write(
+        `· andon: missing-capability — reviewer seat '${crossReviewFailure.reviewingSeat}' failed at ` +
+          `${crossReviewFailure.endpointCategory}: ${crossReviewFailure.cause} — ${crossReviewFailure.hint}\n`,
+      );
+    } else if (crossVendorVerdict?.verdict === "fail") {
+      process.stdout.write(`· andon: gate-failed — cross-vendor review: ${crossVendorVerdict.detail ?? "refused"}\n`);
+    }
+
+    if (seatDefaulted !== undefined) {
+      process.stdout.write(
+        `· seat defaulted — requested '${seatDefaulted.requested}'; using '${seatDefaulted.applied}' ` +
+          `(${seatDefaulted.reason}; proceeding, recorded)\n`,
+      );
+    }
+
+    if (settledVerdict.outcome === "success" && settledVerdict.overEnvelope && budgetOutcome?.status === "exhausted") {
+      process.stdout.write(
+        `· settle warning: over-envelope — spent ${budgetOutcome.spent}/${budgetOutcome.ceiling} tokens ` +
+          `(over by ${budgetOutcome.overage}); gates cleared, output retained\n`,
+      );
+    }
+
+    const turnSummary = formatTurnSummary({
+      ...(progress.turns > 0 ? { agentTurns: progress.turns } : {}),
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
+      ...(turnsUsed !== undefined ? { executorReportedTurns: turnsUsed } : {}),
+    });
+    if (turnSummary !== undefined) process.stdout.write(`${turnSummary}\n`);
+
+    if (reducedGrounding) {
+      process.stdout.write("· reduced grounding — optional codebase-memory MCP absent; proceeding (degraded, recorded)\n");
+    }
+  } catch (error) {
+    // Unexpected settlement defects remain visible to the caller, but no longer pre-empt the
+    // ledger. Mark the durable row honestly, retain facts settled before the throw, then rethrow
+    // the original value only after the finally append succeeds.
+    settlementThrew = true;
+    settlementError = error;
+    outcome = "errored";
+    settledVerdict = { ...settledVerdict, outcome };
+  } finally {
+    const artifactState = await reconcileCapturedDiff(root, capturedDiff);
+    capturedDiff = artifactState.capturedDiff;
+    artifactDiscrepancy = artifactState.artifactDiscrepancy;
+
+    // Stamp the end once and reuse it for both ledger and successful returned actuals.
+    endedAt = new Date().toISOString();
+    await appendRunLog(
+      {
+        runId,
+        play: play.name,
+        epic: opts.subject,
+        model: loggedModel,
+        // The allocated envelope this cast ran under — recorded so cost-vs-budget is
+        // recoverable from the ledger (T-013-01, IA-12/13). `Budget` duck-types onto the
+        // log's local `Envelope` (no src/budget ↔ src/log import — the decoupling holds).
+        envelope: budget,
+        // The project this cast ran against — groups the record for two-level bias correction
+        // (T-013-03, IA-16); the repo-root basename unless the caller overrode it.
+        project,
+        // The E1 trust bit (T-014-01) — pass-through; spread only when supplied, so an
+        // unreported cast (and every pre-T-014-01 record) leaves the field off, reading unknown.
+        ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
+        // The agentic turns the cast took (T-015-02) — pass-through, spread only when known so a
+        // timed-out run (no result) leaves the field off, exactly like `intervened`.
+        ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+        // The resolved executor's accounting lane (T-071-01-02). The pure core owns the explicit
+        // executor-id mapping; spread only when known so an unmapped/lane-less executor leaves the
+        // key off, exactly like `turnsUsed`, rather than fabricating provenance.
+        ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+        // Durable patch evidence (T-073-01-01): only a landed effect with a non-empty Git diff
+        // still available at final settlement supplies a reference.
+        ...(capturedDiff !== undefined ? { capturedDiff } : {}),
+        // If a previously observed reference is unavailable, omit the false reference and retain
+        // an explicit countable discrepancy instead (T-076-02-02).
+        ...(artifactDiscrepancy !== undefined ? { artifactDiscrepancy } : {}),
+        // Honest inert-gate provenance (T-076-01-02): this path had a known author lane and concrete
+        // patch bytes, but complement resolution returned null. Irrelevant or reviewed paths omit
+        // the complete marker so their existing ledger shape is unchanged.
+        ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
+        // The reduced-grounding marker (T-060-01-02, E-060 #3) — one-way, spread only when the cast
+        // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
+        // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
+        ...(reducedGrounding ? { reducedGrounding: true } : {}),
+        // One authoritative warning fact (T-068-02-03): forward the classifier marker rather than
+        // re-deriving it from meter/gate state. Unmarked casts omit the key (one-way record contract).
+        ...(settledVerdict.overEnvelope ? { overEnvelope: true } : {}),
+        // The effect's authoritative routing disposition (T-070-01-03). Forward the exact report;
+        // absence omits the key so ordinary and historical records retain their existing shape.
+        ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
+        // The effect is the sole inference-policy boundary. Preserve its chosen seat and evidence
+        // verbatim; an explicit or ambiguous/unrouted cast omits the one-way marker.
+        ...(seatInferred !== undefined ? { seatInferred } : {}),
+        // Attached reviewer verdict: absent when no review ran (with crossReviewSkipped distinguishing
+        // a relevant null resolution from an irrelevant path); present for both pass and fail so the
+        // final outcome is auditable from the same ledger line.
+        ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
+        outcome,
+        usage,
+        costUsd,
+        gateResults: settledVerdict.gateLog,
+        startedAt,
+        endedAt,
+      },
+      opts.runLogPath ? { path: opts.runLogPath } : {},
     );
-  } else if (crossVendorVerdict?.verdict === "fail") {
-    process.stdout.write(`· andon: gate-failed — cross-vendor review: ${crossVendorVerdict.detail ?? "refused"}\n`);
   }
 
-  // The honest seat-default signal (T-070-01-03): an unknown requested routing seat did not
-  // discard the cleared board. Name requested versus applied at cast time and make clear that the
-  // successful degradation continues into the durable record below.
-  if (seatDefaulted !== undefined) {
-    process.stdout.write(
-      `· seat defaulted — requested '${seatDefaulted.requested}'; using '${seatDefaulted.applied}' ` +
-        `(${seatDefaulted.reason}; proceeding, recorded)\n`,
-    );
-  }
-
-  // The live Settle warning (T-068-02-03): presence comes ONLY from the pure classifier; the
-  // exhausted outcome contributes factual meter detail, not a second warning decision.
-  if (settledVerdict.outcome === "success" && settledVerdict.overEnvelope && budgetOutcome?.status === "exhausted") {
-    process.stdout.write(
-      `· settle warning: over-envelope — spent ${budgetOutcome.spent}/${budgetOutcome.ceiling} tokens ` +
-        `(over by ${budgetOutcome.overage}); gates cleared, output retained\n`,
-    );
-  }
-
-  // Resolve the logged model id DOWNSTREAM of dispense, so the real id the stream reported
-  // (on `result.model`) is in scope: real id → pinned `opts.model` → sentinel. On timeout
-  // `result` is null and this falls back cleanly.
-  const loggedModel = resolveLoggedModel(result?.model, opts.model);
-
-  // Preserve the terminal result's `num_turns` (T-015-02) as raw executor evidence. Claude's
-  // value counts conversation events (initial event + emitted user/tool-result messages), NOT
-  // the model-loop iterations bounded by `--max-turns`; parallel tool calls can therefore make
-  // it exceed that cap without an enforcement failure. The final formatter pairs the cap only
-  // with the stream's distinct-assistant count and labels this external counter separately.
-  const turnsUsed = resolveTurnsUsed(result?.num_turns);
-  const turnSummary = formatTurnSummary({
-    ...(progress.turns > 0 ? { agentTurns: progress.turns } : {}),
-    ...(maxTurns !== undefined ? { maxTurns } : {}),
-    ...(turnsUsed !== undefined ? { executorReportedTurns: turnsUsed } : {}),
-  });
-  if (turnSummary !== undefined) process.stdout.write(`${turnSummary}\n`);
-
-  // The honest reduced-grounding signal (E-060 #3, T-060-01-02): `resolved.reducedGrounding` exists
-  // only on the strict variant, so the `in` check narrows the resolved union and the `&&` collapses
-  // the strict-but-fully-grounded case to false. One-way — only a DEGRADE is surfaced/recorded
-  // (the andon early-return above is a different condition and never reaches here). The marker rides
-  // onto the run record below so a degraded clear is countable, not invisible; the stdout note makes
-  // it visible at cast time too (a designer watching the cast SEES the degrade, not only the ledger).
-  const reducedGrounding = "reducedGrounding" in resolved && resolved.reducedGrounding;
-  if (reducedGrounding) {
-    process.stdout.write("· reduced grounding — optional codebase-memory MCP absent; proceeding (degraded, recorded)\n");
-  }
-
-  // Stamp the end ONCE and reuse it for both the log record and the returned actuals (T-024-02),
-  // so the wall-clock the wallet debits is exactly the span the ledger records.
-  const endedAt = new Date().toISOString();
-
-  await appendRunLog(
-    {
-      runId,
-      play: play.name,
-      epic: opts.subject,
-      model: loggedModel,
-      // The allocated envelope this cast ran under — recorded so cost-vs-budget is
-      // recoverable from the ledger (T-013-01, IA-12/13). `Budget` duck-types onto the
-      // log's local `Envelope` (no src/budget ↔ src/log import — the decoupling holds).
-      envelope: budget,
-      // The project this cast ran against — groups the record for two-level bias correction
-      // (T-013-03, IA-16); the repo-root basename unless the caller overrode it.
-      project,
-      // The E1 trust bit (T-014-01) — pass-through; spread only when supplied, so an
-      // unreported cast (and every pre-T-014-01 record) leaves the field off, reading unknown.
-      ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
-      // The agentic turns the cast took (T-015-02) — pass-through, spread only when known so a
-      // timed-out run (no result) leaves the field off, exactly like `intervened`.
-      ...(turnsUsed !== undefined ? { turnsUsed } : {}),
-      // The resolved executor's accounting lane (T-071-01-02). The pure core owns the explicit
-      // executor-id mapping; spread only when known so an unmapped/lane-less executor leaves the
-      // key off, exactly like `turnsUsed`, rather than fabricating provenance.
-      ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
-      // Durable patch evidence (T-073-01-01): only a landed effect with a non-empty Git diff
-      // supplies a reference. The ledger stays compact; the reviewing seat loads the artifact.
-      ...(capturedDiff !== undefined ? { capturedDiff } : {}),
-      // Honest inert-gate provenance (T-076-01-02): this path had a known author lane and concrete
-      // patch bytes, but complement resolution returned null. Irrelevant or reviewed paths omit
-      // the complete marker so their existing ledger shape is unchanged.
-      ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
-      // The reduced-grounding marker (T-060-01-02, E-060 #3) — one-way, spread only when the cast
-      // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
-      // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
-      ...(reducedGrounding ? { reducedGrounding: true } : {}),
-      // One authoritative warning fact (T-068-02-03): forward the classifier marker rather than
-      // re-deriving it from meter/gate state. Unmarked casts omit the key (one-way record contract).
-      ...(settledVerdict.overEnvelope ? { overEnvelope: true } : {}),
-      // The effect's authoritative routing disposition (T-070-01-03). Forward the exact report;
-      // absence omits the key so ordinary and historical records retain their existing shape.
-      ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
-      // The effect is the sole inference-policy boundary. Preserve its chosen seat and evidence
-      // verbatim; an explicit or ambiguous/unrouted cast omits the one-way marker.
-      ...(seatInferred !== undefined ? { seatInferred } : {}),
-      // Attached reviewer verdict: absent when no review ran (with crossReviewSkipped distinguishing
-      // a relevant null resolution from an irrelevant path); present for both pass and fail so the
-      // final outcome is auditable from the same ledger line.
-      ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
-      outcome,
-      usage: (result?.usage ?? {}) as Usage,
-      costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
-      gateResults: settledVerdict.gateLog,
-      startedAt,
-      endedAt,
-    },
-    opts.runLogPath ? { path: opts.runLogPath } : {},
-  );
+  if (settlementThrew) throw settlementError;
 
   // Surface the cast's measured actuals (T-024-02) for the macro-wallet spend loop: the tokens the
   // seam reported (`{}` ⇒ 0 on a timed-out run, honestly nothing metered) and the wall-clock span
   // (non-negative by construction). The wallet debits by this; the predicted envelope only gates
   // authorization (P7).
   const wallMs = Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
-  const usage = (result?.usage ?? {}) as Usage;
   return {
     runId,
     outcome,
@@ -572,6 +573,27 @@ export async function castPlay<I, O>(
     capturedDiff,
     actuals: { usage, wallMs },
   };
+}
+
+/** Reconcile the artifact claim at the terminal append boundary. A row carries either the usable
+ * reference or an explicit discrepancy, never a `capturedDiff` path this cast already knows is
+ * unavailable. Filesystem policy stays in the impure cast shell; the run log preserves only data. */
+async function reconcileCapturedDiff(
+  root: string,
+  reference: string | undefined,
+): Promise<{ capturedDiff?: string; artifactDiscrepancy?: ArtifactDiscrepancy }> {
+  if (reference === undefined) return {};
+  try {
+    await access(join(root, reference));
+    return { capturedDiff: reference };
+  } catch {
+    return {
+      artifactDiscrepancy: {
+        reference,
+        reason: "captured-diff-unavailable-at-settlement",
+      },
+    };
+  }
 }
 
 /** Render the authored judgment available to the generic engine without inventing a new

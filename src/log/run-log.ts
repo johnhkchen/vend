@@ -151,6 +151,16 @@ export interface CrossVendorVerdict {
   readonly detail?: string;
 }
 
+/** Durable audit fact for an artifact reference observed during a cast but unavailable when the
+ * terminal row settled (T-076-02-02). Both the intended reference and a stable reason are atomic;
+ * the cast shell owns filesystem verification while this decoupled ledger preserves its result. */
+export interface ArtifactDiscrepancy {
+  /** Repository-relative reference the cast expected to make available. */
+  readonly reference: string;
+  /** Stable explanation of the discrepancy, suitable for counting and operator diagnosis. */
+  readonly reason: string;
+}
+
 /** What the runner hands {@link buildRunRecord} / {@link appendRunLog} (pre-normalization). */
 export interface RunRecordInput {
   readonly runId: string;
@@ -230,6 +240,10 @@ export interface RunRecordInput {
   /** Repository-relative reference to the non-empty patch captured from a completed cast's
    *  reported artifacts. Absent means no routable diff was captured. */
   readonly capturedDiff?: string;
+  /** Optional audit marker for a captured artifact reference that was unavailable at terminal
+   *  settlement. Both fields are required; malformed optional data is omitted. `castPlay` emits
+   *  this instead of `capturedDiff`, never alongside a reference it could not verify. */
+  readonly artifactDiscrepancy?: ArtifactDiscrepancy;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -303,6 +317,10 @@ export interface RunRecord {
   readonly crossVendorVerdict?: CrossVendorVerdict;
   /** Present only when a completed cast supplied a non-empty patch artifact reference. */
   readonly capturedDiff?: string;
+  /** Present only as a complete unavailable-artifact audit marker (T-076-02-02). Absence means no
+   *  discrepancy was recorded / historical unknown. The cast shell owns mutual exclusion with
+   *  `capturedDiff`; the ledger only preserves complete fact data. */
+  readonly artifactDiscrepancy?: ArtifactDiscrepancy;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -490,6 +508,21 @@ function normalizeCapturedDiff(value: unknown): string | undefined {
   return isNonEmptyString(value) ? value : undefined;
 }
 
+/** Normalize an unavailable-artifact marker (T-076-02-02): reference and reason are atomic.
+ * Rebuilding selects only schema fields in deterministic order; malformed optional metadata is
+ * omitted without losing the otherwise useful run. */
+function normalizeArtifactDiscrepancy(value: unknown): ArtifactDiscrepancy | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (!isNonEmptyString(candidate.reference) || !isNonEmptyString(candidate.reason)) {
+    return undefined;
+  }
+  return {
+    reference: candidate.reference,
+    reason: candidate.reason,
+  };
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -529,6 +562,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const crossReviewSkipped = normalizeCrossReviewSkipped(input.crossReviewSkipped);
   const crossVendorVerdict = normalizeCrossVendorVerdict(input.crossVendorVerdict);
   const capturedDiff = normalizeCapturedDiff(input.capturedDiff);
+  const artifactDiscrepancy = normalizeArtifactDiscrepancy(input.artifactDiscrepancy);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -553,6 +587,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
     ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
     ...(capturedDiff !== undefined ? { capturedDiff } : {}),
+    ...(artifactDiscrepancy !== undefined ? { artifactDiscrepancy } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -705,6 +740,11 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // string survives; absence or malformed metadata cannot make a historical record unreadable.
   const capturedDiff = normalizeCapturedDiff(r.capturedDiff);
 
+  // An unavailable-artifact discrepancy (T-076-02-02) is optional but atomic. Preserve only a
+  // complete expected reference and stable reason; malformed or historical absence cannot make an
+  // otherwise useful row unreadable. Filesystem verification remains the cast shell's concern.
+  const artifactDiscrepancy = normalizeArtifactDiscrepancy(r.artifactDiscrepancy);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -728,6 +768,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
     ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
     ...(capturedDiff !== undefined ? { capturedDiff } : {}),
+    ...(artifactDiscrepancy !== undefined ? { artifactDiscrepancy } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });

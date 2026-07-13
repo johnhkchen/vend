@@ -4,7 +4,8 @@
 // changes the caller's index. New, untracked artifacts need the explicit no-index arm because an
 // ordinary git diff HEAD omits them.
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export interface CaptureEffectDiffInput {
@@ -106,6 +107,17 @@ export async function captureEffectDiff(input: CaptureEffectDiffInput): Promise<
   const reference = join(".vend", "artifacts", `${safeRunId}.diff`);
   const destination = join(root, reference);
   await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, patch, "utf8");
+  // Publish the final reference only after every patch byte is durable in a sibling temporary
+  // file. A failed write cannot leave a partial `<run>.diff` that has no ledger row; same-directory
+  // rename makes final-name publication atomic on the local filesystem.
+  const temporary = `${destination}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, patch, "utf8");
+    await rename(temporary, destination);
+  } catch (error) {
+    // Cleanup must never replace the capture failure that explains why no reference was returned.
+    await rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
   return reference;
 }

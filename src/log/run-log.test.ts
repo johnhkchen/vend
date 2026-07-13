@@ -817,6 +817,41 @@ describe("capturedDiff — artifact-reference round-trip and omission (T-073-01-
   });
 });
 
+describe("artifactDiscrepancy — unavailable artifact audit round trip (T-076-02-02 AC)", () => {
+  const marker = {
+    reference: ".vend/artifacts/run-settlement-error.diff",
+    reason: "captured-diff-unavailable-at-settlement",
+  } as const;
+
+  test("a complete marker round-trips while unknown nested fields are dropped", () => {
+    const built = buildRunRecord(baseInput({
+      runId: "artifact-discrepancy-1",
+      artifactDiscrepancy: { ...marker, diagnostic: "do-not-persist" },
+    } as never));
+    expect(built.artifactDiscrepancy).toEqual(marker);
+
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(built)));
+    expect(revived?.artifactDiscrepancy).toEqual(marker);
+  });
+
+  test("absence, partial build input, and malformed read metadata omit the marker", () => {
+    const absent = buildRunRecord(baseInput({ runId: "artifact-discrepancy-2" }));
+    const partial = buildRunRecord(baseInput({
+      runId: "artifact-discrepancy-3",
+      artifactDiscrepancy: { reference: marker.reference },
+    } as never));
+    const revived = reviveRecord({
+      ...JSON.parse(serializeRunRecord(absent)),
+      artifactDiscrepancy: { reference: marker.reference, reason: 42 },
+    });
+
+    expect("artifactDiscrepancy" in absent).toBe(false);
+    expect("artifactDiscrepancy" in partial).toBe(false);
+    expect(revived).not.toBeNull();
+    expect("artifactDiscrepancy" in revived!).toBe(false);
+  });
+});
+
 describe("crossReviewSkipped — structured round-trip, byte compatibility, malformed (T-076-01-02 AC)", () => {
   const marker = {
     reason: "no-complement-reviewer-resolved",
