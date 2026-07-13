@@ -262,6 +262,21 @@ function formatFundingLine(budget: Budget): string {
   return `funding ~${formatBudget(budget)}`;
 }
 
+/** Format one regular count noun, using the singular form only for exactly one. PURE. */
+function countedNoun(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** Format the user-visible `vend svg` completion line. PURE — stdout remains in the dispatch shell. */
+export function formatSvgWriteLine(
+  path: string,
+  groupCount: number,
+  cardCount: number,
+  linkCount: number,
+): string {
+  return `wrote ${path} — ${countedNoun(groupCount, "group")}, ${countedNoun(cardCount, "card")}, ${countedNoun(linkCount, "link")}\n`;
+}
+
 /**
  * Parse argv (without the `bun`/script head) into a command. PURE — never reads fs or
  * exits. Recognizes `run <play> <epic.md> --budget <v>` (the play name is captured
@@ -951,9 +966,7 @@ if (import.meta.main) {
       seat: parsed.seat,
       ...(parsed.out ? { outDir: dirname(parsed.out), fileName: basename(parsed.out) } : {}),
     });
-    process.stdout.write(
-      `wrote ${result.path} — ${result.groupCount} groups, ${result.cardCount} cards, ${result.linkCount} links\n`,
-    );
+    process.stdout.write(formatSvgWriteLine(result.path, result.groupCount, result.cardCount, result.linkCount));
     process.exit(0);
   }
 

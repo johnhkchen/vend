@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
+import { formatSvgWriteLine, parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
 
 // T-002-03 CLI: the PURE arg parsers. The `import.meta.main` dispatch (which imports
 // the impure runner and exits the process) does not run on import, so this test never
@@ -510,6 +510,20 @@ describe("parseArgs — svg (T-055-03 file-output seam)", () => {
       cmd: "usage",
       error: "unexpected svg argument: frobnicate",
     });
+  });
+});
+
+describe("formatSvgWriteLine", () => {
+  test("uses singular group, card, and link labels at count 1", () => {
+    expect(formatSvgWriteLine("board.svg", 1, 1, 1)).toBe(
+      "wrote board.svg — 1 group, 1 card, 1 link\n",
+    );
+  });
+
+  test("uses plural group, card, and link labels when counts are greater than 1", () => {
+    expect(formatSvgWriteLine("board.svg", 2, 3, 4)).toBe(
+      "wrote board.svg — 2 groups, 3 cards, 4 links\n",
+    );
   });
 });
 
