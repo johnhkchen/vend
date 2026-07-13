@@ -10,6 +10,11 @@ describe("parseBudgetArg", () => {
     expect(parseBudgetArg("120000,50000")).toEqual({ timeMs: 120000, tokens: 50000 });
     expect(parseBudgetArg(" 1000 , 2000 ")).toEqual({ timeMs: 1000, tokens: 2000 });
   });
+  test("parses humane time and token units to the same raw Budget", () => {
+    expect(parseBudgetArg("40m,350k")).toEqual(parseBudgetArg("2400000,350000"));
+    expect(parseBudgetArg("2h,1.5m")).toEqual({ timeMs: 7_200_000, tokens: 1_500_000 });
+    expect(parseBudgetArg("2400000,350000")).toEqual({ timeMs: 2_400_000, tokens: 350_000 });
+  });
   test("rejects wrong arity", () => {
     expect(() => parseBudgetArg("1000")).toThrow(/<ms>,<tokens>/);
     expect(() => parseBudgetArg("1000,2000,3000")).toThrow(/<ms>,<tokens>/);
@@ -18,6 +23,11 @@ describe("parseBudgetArg", () => {
     expect(() => parseBudgetArg("a,b")).toThrow(/integers/);
     expect(() => parseBudgetArg("1000,")).toThrow(/integers/);
     expect(() => parseBudgetArg("1.5,2000")).toThrow(/integers/);
+  });
+  test("rejects malformed humane suffixes with the existing RangeError shape", () => {
+    const malformed = () => parseBudgetArg("40x,350k");
+    expect(malformed).toThrow(RangeError);
+    expect(malformed).toThrow(/integers/);
   });
 });
 

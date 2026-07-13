@@ -201,12 +201,41 @@ export function suggestCommand(
   return nearestDistance <= maxDistance ? nearest : undefined;
 }
 
+const TIME_UNIT_MS: Readonly<Record<string, number>> = {
+  h: 3_600_000,
+  m: 60_000,
+  s: 1_000,
+};
+
+const TOKEN_UNIT_MULTIPLIERS: Readonly<Record<string, number>> = {
+  k: 1_000,
+  m: 1_000_000,
+};
+
+/** Parse one raw integer or suffixed decimal budget field to an integer. PURE. */
+function parseBudgetField(field: string, units: Readonly<Record<string, number>>): number | undefined {
+  // Keep the established raw-number grammar byte-for-byte: only add a second path
+  // when the existing Number + integer check does not accept the field.
+  const raw = Number(field);
+  if (Number.isInteger(raw)) return raw;
+
+  const match = /^([+-]?\d+(?:\.\d+)?)([a-z])$/.exec(field);
+  if (!match) return undefined;
+  const multiplier = units[match[2] as string];
+  if (multiplier === undefined) return undefined;
+
+  const scaled = Number(match[1]) * multiplier;
+  return Number.isInteger(scaled) ? scaled : undefined;
+}
+
 /**
- * Parse the `--budget <ms>,<tokens>` value into a {@link Budget}. PURE. Requires
- * exactly two comma-separated integer fields; a wrong arity or a non-integer is a
- * `RangeError` surfaced at the boundary. The positive-int CONTRACT is enforced
- * downstream by budget's own `assertPositiveInt` when the run starts — this parser
- * only guarantees the shape (two integers).
+ * Parse the `--budget <time>,<tokens>` value into a {@link Budget}. PURE. Each
+ * field accepts its raw integer form; time additionally accepts `h`/`m`/`s` and
+ * tokens accept `k`/`m` magnitude suffixes. A wrong arity or a value that does
+ * not resolve to an integer is a `RangeError` surfaced at the boundary. The
+ * positive-int CONTRACT is enforced downstream by budget's own
+ * `assertPositiveInt` when the run starts — this parser only guarantees the
+ * shape (two integers).
  */
 export function parseBudgetArg(s: string): Budget {
   const parts = s.split(",");
@@ -219,9 +248,9 @@ export function parseBudgetArg(s: string): Budget {
   if (msStr.trim() === "" || tokStr.trim() === "") {
     throw new RangeError(`--budget fields must be integers, got ${JSON.stringify(s)}`);
   }
-  const timeMs = Number(msStr.trim());
-  const tokens = Number(tokStr.trim());
-  if (!Number.isInteger(timeMs) || !Number.isInteger(tokens)) {
+  const timeMs = parseBudgetField(msStr.trim(), TIME_UNIT_MS);
+  const tokens = parseBudgetField(tokStr.trim(), TOKEN_UNIT_MULTIPLIERS);
+  if (timeMs === undefined || tokens === undefined) {
     throw new RangeError(`--budget fields must be integers, got ${JSON.stringify(s)}`);
   }
   return { timeMs, tokens };
