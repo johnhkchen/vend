@@ -180,7 +180,8 @@ describe("project-owned on-notify crossing", () => {
       expect(repeatedExitCode).toBe(0);
       expect(repeatedStderr).toBe("");
       expect(repeatedStdout).toContain("delta: none since last settle");
-      expect(repeatedStdout).not.toContain("loop:");
+      expect(repeatedStdout).toContain("loop: none pending");
+      expect(repeatedStdout).not.toContain(`loop: ${basename(root)} —`);
       expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });

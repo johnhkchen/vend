@@ -167,7 +167,7 @@ describe("renderSettleResult — one-screen terminal contract", () => {
     }, { color: false });
 
     expect(rendered).toContain("delta: none since last settle");
-    expect(rendered).not.toContain("loop:");
+    expect(rendered).toContain("loop: none pending");
     expect(rendered).toContain("gate: green — repository gate: 7 tests");
     expect(rendered).toContain("presweep: green — 2 done tickets, source + board committed");
     expect(rendered).toContain("review concerns: none");
@@ -288,7 +288,7 @@ describe("runSettle — Lisa loop marker lifecycle", () => {
       expect(second.kind).toBe("verdict");
       if (second.kind !== "verdict") throw new Error("expected repeated verdict");
       expect(second.loop).toBeNull();
-      expect(renderSettleResult(second, { color: false })).not.toContain("loop:");
+      expect(renderSettleResult(second, { color: false })).toContain("loop: none pending");
       expect(await exists(markerPath)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });

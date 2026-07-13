@@ -328,6 +328,8 @@ export function renderSettleResult(
       `loop: ${result.loop.project} — ${countNoun(result.loop.ticketsDone, "ticket")} done in ` +
         `${result.loop.durationSecs}s`,
     );
+  } else {
+    lines.push("loop: none pending");
   }
   const deltaIds = result.delta.newlyDoneTicketIds.join(", ");
   if (result.delta.firstSettle) {
