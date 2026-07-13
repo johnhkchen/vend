@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatRunSummaryLine, formatSvgWriteLine, parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
@@ -111,9 +111,37 @@ describe("parseArgs", () => {
   test("bare `vend` is the browse surface (T-003-02)", () => {
     expect(parseArgs([])).toEqual({ cmd: "browse", all: false });
   });
-  test("`--help` and `help` are successful discovery commands", () => {
+  test("`--help`, `-h`, and `help` are successful discovery commands", () => {
     expect(parseArgs(["--help"])).toEqual({ cmd: "help" });
+    expect(parseArgs(["-h"])).toEqual({ cmd: "help" });
     expect(parseArgs(["help"])).toEqual({ cmd: "help" });
+  });
+  test("global help flags win at every argv position across every canonical verb", () => {
+    const verbInvocations = [
+      ["help"],
+      ["run", "decompose-epic", "epic.md", "--budget", "1,2"],
+      ["chain", "signal", "--budget", "1,2"],
+      ["expand", "fragment", "--budget", "1,2"],
+      ["annotate", "T-001", "feedback", "--seat", "dev"],
+      ["survey", "--budget", "1,2"],
+      ["steer", "--budget", "1,2"],
+      ["svg", "--seat", "dev", "--out", "board.svg"],
+      ["shelf"],
+      ["init", "--template", "kitchen"],
+      ["doctor"],
+      ["user-guide"],
+      ["envelope", "decompose-epic", "--tier", "leaf"],
+      ["audit", "decompose-epic", "--tier", "leaf", "--window", "1"],
+    ] as const;
+
+    for (const invocation of verbInvocations) {
+      for (const flag of ["--help", "-h"] as const) {
+        for (let index = 0; index <= invocation.length; index++) {
+          const argv = [...invocation.slice(0, index), flag, ...invocation.slice(index)];
+          expect(parseArgs(argv)).toEqual({ cmd: "help" });
+        }
+      }
+    }
   });
   test("`vend --all` browses with hidden rows revealed", () => {
     expect(parseArgs(["--all"])).toEqual({ cmd: "browse", all: true });
@@ -761,6 +789,48 @@ describe("help command and grouped usage (T-072-01-01)", () => {
       expect(exitCode).toBe(0);
       expect(stdout).toBe(`${USAGE}\n`);
       expect(stderr).toBe("");
+    }
+  });
+
+  test("vend chain --help prints USAGE without invoking an executor or writing a run record", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-cli-help-free-"));
+    const cliPath = join(process.cwd(), "src", "cli.ts");
+    const sentinelPath = join(root, "executor-sentinel.sh");
+    const markerPath = join(root, "executor-invoked");
+    const runLogPath = join(root, ".vend", "runs.jsonl");
+    try {
+      await writeFile(
+        sentinelPath,
+        '#!/bin/sh\nprintf invoked > "$VEND_EXECUTOR_MARKER"\nexit 99\n',
+        "utf8",
+      );
+      await chmod(sentinelPath, 0o755);
+
+      const proc = Bun.spawn([process.execPath, cliPath, "chain", "--help"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          CLAUDE_CLI: sentinelPath,
+          VEND_EXECUTOR_MARKER: markerPath,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: `${USAGE}\n`,
+        stderr: "",
+        exitCode: 0,
+      });
+      expect(await Bun.file(markerPath).exists()).toBe(false);
+      expect(await Bun.file(runLogPath).exists()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

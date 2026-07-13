@@ -299,14 +299,17 @@ export function formatRunSummaryLine(summary: RunSummary): string {
  * error string for the shell to print.
  */
 export function parseArgs(argv: readonly string[]): ParsedCommand {
+  // Help flags are global: their presence anywhere wins before a verb parser can
+  // reinterpret one as positional input and reach a metered dispatch. The `help`
+  // word remains the head-only command spelling below.
+  if (argv.includes("--help") || argv.includes("-h")) return { cmd: "help" };
   // Bare `vend` (no args) is the browse surface (T-003-02). `vend run …` is the static
   // decompose path (T-002-03). Everything else — `vend --all`, `vend 1,2`,
   // `vend 1 --budget …` — is the browse/press tail (T-003-04).
   if (argv.length === 0) return { cmd: "browse", all: false };
-  // Help is a successful, FREE discovery query. Both conventional spellings
-  // short-circuit before the verb table and selection parser; like `--version`,
-  // trailing tokens are ignored.
-  if (argv[0] === "--help" || argv[0] === "help") return { cmd: "help" };
+  // Help is a successful, FREE discovery query. Like `--version`, trailing tokens
+  // after the word-command spelling are ignored.
+  if (argv[0] === "help") return { cmd: "help" };
   // `--version` is a global flag, not a sub-verb (T-061-02): intercept it BEFORE the
   // verb table and before `parseSelectOrBrowse` (which would otherwise reject it as
   // `unknown command: --version`). Short-circuits — any trailing tokens are ignored,
