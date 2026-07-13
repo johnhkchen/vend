@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildGraph, type RawNode, type WorkGraph } from "../graph/model.ts";
+import { serializeLisaLoopSettledMarker } from "../seam/lisa-loop-settled-core.ts";
 import {
   computeSettleVerdict,
   deriveEpicClearance,
@@ -67,6 +68,7 @@ const greenGate = (): SettleGateResult => ({
 function input(overrides: Partial<ComputeSettleInput> = {}): ComputeSettleInput {
   return {
     graph: fixtureGraph(),
+    loopSettledContents: null,
     lastSettleContents: null,
     gate: greenGate(),
     presweep: { ok: true, doneIds: ["T-100-01", "T-100-02", "T-200-01"], offenders: [] },
@@ -183,6 +185,7 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
 
     expect(verdict.kind).toBe("verdict");
     if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
+    expect(verdict.loop).toBeNull();
     expect(verdict.delta).toEqual({ firstSettle: false, newlyDoneTicketIds: ["T-100-02"] });
     expect(verdict.doneTicketIds).toEqual(["T-100-01", "T-100-02", "T-200-01"]);
     expect(verdict.allDoneEpicIds).toEqual(["E-100"]);
@@ -257,7 +260,52 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
       firstSettle: true,
       newlyDoneTicketIds: ["T-100-01", "T-100-02", "T-200-01"],
     });
+    expect(verdict.loop).toBeNull();
     expect(verdict.exceptions).toEqual([]);
+  });
+
+  test("a valid pending Lisa marker becomes typed whole-loop provenance", () => {
+    const verdict = computeSettleVerdict(input({
+      loopSettledContents: serializeLisaLoopSettledMarker({
+        v: 1,
+        kind: "lisa-loop-settled",
+        project: "vend",
+        ticketsDone: 3,
+        durationSecs: 84,
+      }),
+    }));
+
+    expect(verdict.kind).toBe("verdict");
+    if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
+    expect(verdict.loop).toEqual({
+      v: 1,
+      kind: "lisa-loop-settled",
+      project: "vend",
+      ticketsDone: 3,
+      durationSecs: 84,
+    });
+  });
+
+  test.each([
+    ["invalid JSON", "{", "not valid JSON"],
+    [
+      "schema mismatch",
+      '{"v":1,"kind":"lisa-loop-settled","project":"vend","ticketsDone":3}',
+      "closed v1",
+    ],
+  ] as const)("a malformed Lisa marker (%s) refuses without verdict claims", (_name, bytes, reason) => {
+    const result = computeSettleVerdict(input({ loopSettledContents: bytes }));
+    expect(result).toMatchObject({
+      kind: "refusal",
+      code: "malformed-loop-settled-marker",
+      path: ".vend/loop-settled.json",
+      nextAction:
+        "Repair or remove .vend/loop-settled.json, then rerun `vend settle`; " +
+        "the malformed marker was left pending for diagnosis.",
+    });
+    if (result.kind !== "refusal") throw new Error("expected loop marker refusal");
+    expect(result.reason).toContain(reason);
+    expect("delta" in result).toBe(false);
   });
 
   test("writing the returned marker makes an immediate repeated settle report an empty delta", () => {

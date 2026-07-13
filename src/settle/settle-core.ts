@@ -7,6 +7,11 @@
 
 import type { SweepVerdict } from "../ci/presweep-core.ts";
 import type { WorkGraph } from "../graph/model.ts";
+import {
+  DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH,
+  parseLisaLoopSettledMarker,
+  type LisaLoopSettledMarker,
+} from "../seam/lisa-loop-settled-core.ts";
 
 export const LAST_SETTLE_MARKER_PATH = ".vend/last-settle.json" as const;
 export const LAST_SETTLE_MARKER_VERSION = 1 as const;
@@ -17,7 +22,7 @@ export interface LastSettleMarker {
   readonly doneTicketIds: readonly string[];
 }
 
-export interface SettleRefusal {
+export interface LastSettleRefusal {
   readonly kind: "refusal";
   readonly code: "malformed-last-settle-marker";
   readonly path: typeof LAST_SETTLE_MARKER_PATH;
@@ -25,10 +30,20 @@ export interface SettleRefusal {
   readonly nextAction: string;
 }
 
+export interface LoopSettledRefusal {
+  readonly kind: "refusal";
+  readonly code: "malformed-loop-settled-marker";
+  readonly path: typeof DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH;
+  readonly reason: string;
+  readonly nextAction: string;
+}
+
+export type SettleRefusal = LastSettleRefusal | LoopSettledRefusal;
+
 export type MarkerParseResult =
   | { readonly ok: true; readonly firstSettle: true; readonly marker: null }
   | { readonly ok: true; readonly firstSettle: false; readonly marker: LastSettleMarker }
-  | { readonly ok: false; readonly refusal: SettleRefusal };
+  | { readonly ok: false; readonly refusal: LastSettleRefusal };
 
 export interface EpicClearance {
   readonly epicId: string;
@@ -76,6 +91,8 @@ export interface SettleException {
 
 export interface SettleVerdict {
   readonly kind: "verdict";
+  /** Whole-loop provenance from one pending Lisa completion marker, or null after consumption. */
+  readonly loop: LisaLoopSettledMarker | null;
   readonly delta: SettleDelta;
   readonly epics: readonly EpicClearance[];
   readonly doneTicketIds: readonly string[];
@@ -92,6 +109,7 @@ export type SettleResult = SettleVerdict | SettleRefusal;
 
 export interface ComputeSettleInput {
   readonly graph: WorkGraph;
+  readonly loopSettledContents: string | null;
   readonly lastSettleContents: string | null;
   readonly gate: SettleGateResult;
   readonly presweep: SweepVerdict;
@@ -106,13 +124,25 @@ function isNonBlank(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function markerRefusal(reason: string): SettleRefusal {
+function markerRefusal(reason: string): LastSettleRefusal {
   return {
     kind: "refusal",
     code: "malformed-last-settle-marker",
     path: LAST_SETTLE_MARKER_PATH,
     reason,
     nextAction: `Remove ${LAST_SETTLE_MARKER_PATH} and rerun \`vend settle\` for a full-board first-settle summary.`,
+  };
+}
+
+function loopSettledRefusal(reason: string): LoopSettledRefusal {
+  return {
+    kind: "refusal",
+    code: "malformed-loop-settled-marker",
+    path: DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH,
+    reason,
+    nextAction:
+      `Repair or remove ${DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH}, then rerun \`vend settle\`; ` +
+      "the malformed marker was left pending for diagnosis.",
   };
 }
 
@@ -290,6 +320,18 @@ function deriveExceptions(
 
 /** Assemble one internally consistent settle result from a single immutable board snapshot. */
 export function computeSettleVerdict(input: ComputeSettleInput): SettleResult {
+  let loop: LisaLoopSettledMarker | null = null;
+  if (input.loopSettledContents !== null) {
+    const parsedLoop = parseLisaLoopSettledMarker(input.loopSettledContents);
+    if (parsedLoop.kind === "malformed") {
+      const reason = parsedLoop.reason === "invalid-json"
+        ? "marker is not valid JSON"
+        : "marker does not match the closed v1 Lisa loop-settled schema";
+      return loopSettledRefusal(reason);
+    }
+    loop = parsedLoop.marker;
+  }
+
   const marker = parseLastSettleMarker(input.lastSettleContents);
   if (!marker.ok) return marker.refusal;
 
@@ -303,6 +345,7 @@ export function computeSettleVerdict(input: ComputeSettleInput): SettleResult {
 
   return {
     kind: "verdict",
+    loop,
     delta: { firstSettle: marker.firstSettle, newlyDoneTicketIds },
     epics: clearance.epics,
     doneTicketIds,

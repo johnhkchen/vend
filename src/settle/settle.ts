@@ -1,14 +1,15 @@
-// The IMPURE settle shell (S-079-01): observe the current board, repository gate, presweep,
-// structured review artifacts, and last-settle marker; hand those facts to the pure settle core;
-// atomically publish its continuation; and render one terminal verdict. This module never imports
-// a play, executor, budget, or run ledger — `vend settle` is a free typed gesture.
+// The IMPURE settle shell (S-079-01/S-079-03): claim optional Lisa whole-loop provenance; observe
+// the current board, repository gate, presweep, structured review artifacts, and last-settle marker;
+// hand those facts to the pure settle core; atomically publish its continuation; consume provenance
+// only after a verdict; and render one terminal result. No play/executor/budget/run ledger enters.
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { classifySweep, donePhaseIds, type SweepVerdict } from "../ci/presweep-core.ts";
 import { loadWorkGraph } from "../graph/load.ts";
 import type { TicketNode } from "../graph/model.ts";
+import { DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH } from "../seam/lisa-loop-settled-core.ts";
 import {
   computeSettleVerdict,
   LAST_SETTLE_MARKER_PATH,
@@ -30,6 +31,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isMissingFile(error: unknown): boolean {
   return isRecord(error) && error["code"] === "ENOENT";
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return isRecord(error) && error["code"] === "EEXIST";
 }
 
 function malformedDispositionConcern(
@@ -212,6 +217,46 @@ async function writeMarkerAtomically(root: string, contents: string): Promise<vo
   }
 }
 
+interface ClaimedLoopSettledMarker {
+  readonly stablePath: string;
+  readonly claimedPath: string;
+  readonly contents: string;
+}
+
+type LoopSettledClaimPaths = Pick<ClaimedLoopSettledMarker, "stablePath" | "claimedPath">;
+
+/**
+ * Restore a claim without replacing a newer complete event. A hard link publishes the old inode
+ * only when the stable name is absent; EEXIST means the producer's newer singleton wins.
+ */
+async function restoreLoopSettledMarker(claim: LoopSettledClaimPaths): Promise<void> {
+  try {
+    await link(claim.claimedPath, claim.stablePath);
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+  }
+  await rm(claim.claimedPath, { force: true });
+}
+
+/** Atomically take one pending marker out of circulation so only this settle can print it. */
+async function claimLoopSettledMarker(root: string): Promise<ClaimedLoopSettledMarker | null> {
+  const stablePath = join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH);
+  const claimedPath = `${stablePath}.${process.pid}.${randomUUID()}.settling`;
+  try {
+    await rename(stablePath, claimedPath);
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
+
+  try {
+    return { stablePath, claimedPath, contents: await readFile(claimedPath, "utf8") };
+  } catch (error) {
+    await restoreLoopSettledMarker({ stablePath, claimedPath });
+    throw error;
+  }
+}
+
 export interface RunSettleOptions {
   readonly root?: string;
 }
@@ -219,24 +264,35 @@ export interface RunSettleOptions {
 /** Observe one current repository snapshot, compute its typed verdict, and advance its frontier. */
 export async function runSettle(options: RunSettleOptions = {}): Promise<SettleResult> {
   const root = options.root ?? process.cwd();
-  const [graph, lastSettleContents, reviewConcerns] = await Promise.all([
-    loadWorkGraph({ root }),
-    readOptionalText(join(root, LAST_SETTLE_MARKER_PATH)),
-    loadReviewConcerns(root),
-  ]);
-  const gate = await runRepositoryGate(root);
-  const presweep = await runPresweep(root, graph.tickets);
-  const result = computeSettleVerdict({
-    graph,
-    lastSettleContents,
-    gate,
-    presweep,
-    reviewConcerns,
-  });
-  if (result.kind === "verdict") {
+  const loopClaim = await claimLoopSettledMarker(root);
+  let loopFinalized = loopClaim === null;
+  try {
+    const [graph, lastSettleContents, reviewConcerns] = await Promise.all([
+      loadWorkGraph({ root }),
+      readOptionalText(join(root, LAST_SETTLE_MARKER_PATH)),
+      loadReviewConcerns(root),
+    ]);
+    const gate = await runRepositoryGate(root);
+    const presweep = await runPresweep(root, graph.tickets);
+    const result = computeSettleVerdict({
+      graph,
+      loopSettledContents: loopClaim?.contents ?? null,
+      lastSettleContents,
+      gate,
+      presweep,
+      reviewConcerns,
+    });
+    if (result.kind === "refusal") return result;
+
     await writeMarkerAtomically(root, serializeLastSettleMarker(result.nextMarker));
+    if (loopClaim !== null) await rm(loopClaim.claimedPath);
+    loopFinalized = true;
+    return result;
+  } finally {
+    if (!loopFinalized && loopClaim !== null) {
+      await restoreLoopSettledMarker(loopClaim);
+    }
   }
-  return result;
 }
 
 export interface RenderSettleOptions {
@@ -267,6 +323,12 @@ export function renderSettleResult(
   }
 
   const lines = ["settle"];
+  if (result.loop !== null) {
+    lines.push(
+      `loop: ${result.loop.project} — ${countNoun(result.loop.ticketsDone, "ticket")} done in ` +
+        `${result.loop.durationSecs}s`,
+    );
+  }
   const deltaIds = result.delta.newlyDoneTicketIds.join(", ");
   if (result.delta.firstSettle) {
     lines.push(
