@@ -222,10 +222,15 @@ describe("graphIntegrityViolations — vend's own buildGraph as the pre-write ne
   });
 });
 
-// ── advances normalization: strip non-goal codes before gating (honey-kitchen field fix #1) ──────
+// ── advances normalization: degrade editorial charter cites before gating ──────────────────────
 
 /** A ticket with a chosen `advances` list — the `ticket` helper above hardcodes ["P3"]. */
 const ticketAdv = (id: string, advances: string[]): TicketDraft => ({ ...ticket(id, "S-061-01"), advances });
+const ADVANCES_CHARTER = `
+- **P3 — Gates are the contract.** Quality lives inside the work.
+- **P7 — Budget is a hard contract.** A run respects its allocation.
+- **K1 — Kitchen value.** The local kitchen stays useful.
+`;
 
 describe("isNonGoalAdvance — the shape test that identifies a non-goal claim", () => {
   test("true for N-shaped codes (with surrounding space), false for invariants/prose", () => {
@@ -237,7 +242,7 @@ describe("isNonGoalAdvance — the shape test that identifies a non-goal claim",
   });
 });
 
-describe("stripNonGoalAdvances — drop mis-tagged non-goals before the gates run", () => {
+describe("stripNonGoalAdvances — degrade editorial advances cites before the gates run", () => {
   test("the common case: a ticket advancing [P4, N2] keeps P4, loses N2", () => {
     const out = stripNonGoalAdvances({
       stories: [story("S-061-01", ["T-061-01-01"])],
@@ -275,6 +280,46 @@ describe("stripNonGoalAdvances — drop mis-tagged non-goals before the gates ru
     });
     expect(out.tickets[0]!.advances).toEqual(["P2"]);
     expect(out.tickets[1]!.advances).toEqual(["P5"]);
+  });
+  test("charter-aware: a mixed known/dangling list keeps P3 and strips P9", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["P3", "P9"])],
+    }, ADVANCES_CHARTER);
+    expect(out.tickets[0]!.advances).toEqual(["P3"]);
+  });
+  test("charter-aware: a dangling-only list collapses to [] for the value gate", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["P9"])],
+    }, ADVANCES_CHARTER);
+    expect(out.tickets[0]!.advances).toEqual([]);
+  });
+  test("charter-aware: custom prefixes resolve from definitions; unknown custom codes strip", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["K1", "K9"])],
+    }, ADVANCES_CHARTER);
+    expect(out.tickets[0]!.advances).toEqual(["K1"]);
+  });
+  test("charter-aware: structural/free-text values remain for the existing gates to judge", () => {
+    const out = stripNonGoalAdvances({
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["faster-clearing-of-this-epic", "  "])],
+    }, ADVANCES_CHARTER);
+    expect(out.tickets[0]!.advances).toEqual(["faster-clearing-of-this-epic", "  "]);
+  });
+  test("charter-aware: a clean ticket keeps identity and a changed input remains untouched", () => {
+    const clean = ticketAdv("T-061-01-01", ["P3", "P7"]);
+    const noisy = ticketAdv("T-061-01-02", ["P3", "P9"]);
+    const p: WorkPlan = {
+      stories: [story("S-061-01", [clean.id, noisy.id])],
+      tickets: [clean, noisy],
+    };
+    const out = stripNonGoalAdvances(p, ADVANCES_CHARTER);
+    expect(out.tickets[0]).toBe(clean);
+    expect(out.tickets[1]!.advances).toEqual(["P3"]);
+    expect(noisy.advances).toEqual(["P3", "P9"]);
   });
 });
 

@@ -274,11 +274,11 @@ function allocationGate(plan: WorkPlan): Offense | null {
  * Free-text entries (epic-outcome prose, which carries no grep-able id) are human-judgment
  * territory and are not failed by rule.
  *
- * NON-GOAL BACKSTOP: the decompose play now strips `N\d+` codes from `advances` in `parse`
- * (`stripNonGoalAdvances`, honey-kitchen field fix #1), so on the normal play path the non-goal
- * branch below never fires — a mis-tagged `[P4, N2]` clears as `[P4]` instead of hard-halting the
- * chain, and a ticket left with no real claim collapses to `[]` and stops at VALUE (retry-able).
- * The check is KEPT as defense-in-depth for any caller that clears an un-normalized plan directly.
+ * NORMALIZATION BACKSTOP: the decompose play strips `N\d+` codes and well-shaped charter codes
+ * missing from this run's snapshot in `parse` (`stripNonGoalAdvances`). On the normal play path a
+ * noisy `[P4, N2, P99]` clears as `[P4]`; a ticket left with no real claim collapses to `[]` and
+ * stops at VALUE. Both checks below remain defense in depth for callers that clear an unnormalized
+ * plan directly.
  */
 function boundsGate(plan: WorkPlan, ctx: ClearContext): Offense | null {
   const invariants = matchIds(ctx.charter, "P");

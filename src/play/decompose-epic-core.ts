@@ -20,6 +20,8 @@ import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 import type { PlayTools } from "../engine/play.ts";
 import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 import { buildGraph, GraphIntegrityError, GraphParseError, type RawNode } from "../graph/model.ts";
+import { snapshotCharterCodes } from "./charter-snapshot.ts";
+import { classifyCharterCite } from "./degrade-disposition.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 
 /**
@@ -174,7 +176,7 @@ export function makeStreamSink(opts: {
   };
 }
 
-// ── advances normalization: strip non-goal codes before gating (honey-kitchen field fix) ────────
+// ── advances normalization: degrade editorial charter cites before gating ──────────────────────
 //
 // WHY: the decompose model recurrently tags a ticket's `advances` with a NON-GOAL id (`N2`, `N4`),
 // most often on an epic that is ABOUT respecting a non-goal (an access gate ↔ N2 "one couple";
@@ -190,22 +192,37 @@ export function makeStreamSink(opts: {
 
 /** True for an `advances` entry shaped like a non-goal id (`N4`), after trimming. PURE. The bounds
  *  gate's non-goal set is a subset of these — a charter's non-goals are all `N\d+` — so this shape
- *  test alone strips every non-goal without needing the charter. */
+ *  test strips every non-goal even when its definition resolves in the charter snapshot. */
 export const isNonGoalAdvance = (claim: string): boolean => /^N\d+$/.test(claim.trim());
 
 /**
- * Drop every non-goal (`N\d+`) entry from each ticket's `advances`, returning a NEW plan (PURE —
- * never mutates the input; stories carry no `advances`, so they pass through untouched). A ticket
- * left with an empty `advances` is deliberately NOT patched up here: the value gate then reports it
- * as advancing nothing, the honest verdict for a ticket that named only a non-goal. Only tickets
- * that actually carry an N-code are re-allocated, so the common no-N-code plan is returned as-is.
+ * Drop editorial charter-cite noise from each ticket's `advances`, returning a NEW plan (PURE —
+ * never mutates the input; stories carry no `advances`, so they pass through untouched). Non-goal
+ * (`N\d+`) entries always strip. When `charter` is supplied, any other well-shaped code absent from
+ * its definition snapshot also strips through the shared degrade classifier; resolvable codes and
+ * structural/free-text values remain. Omitting `charter` preserves the original N-only behavior.
+ *
+ * A ticket left with an empty `advances` is deliberately NOT patched up here: the value gate then
+ * reports it as advancing nothing, the honest verdict for a ticket that named only editorial noise.
+ * Only tickets that actually lose an entry are re-allocated.
  */
-export function stripNonGoalAdvances(plan: WorkPlan): WorkPlan {
-  const tickets = plan.tickets.map((t) =>
-    Array.isArray(t.advances) && t.advances.some(isNonGoalAdvance)
-      ? { ...t, advances: t.advances.filter((a) => !isNonGoalAdvance(a)) }
-      : t,
-  );
+export function stripNonGoalAdvances(plan: WorkPlan, charter?: string): WorkPlan {
+  const snapshot = charter === undefined ? undefined : snapshotCharterCodes(charter);
+  const tickets = plan.tickets.map((t) => {
+    if (!Array.isArray(t.advances)) return t;
+    const locationId = t.id.trim() || "<ticket>";
+    const stripped = t.advances.map((claim, index) => {
+      if (isNonGoalAdvance(claim)) return true;
+      if (snapshot === undefined) return false;
+      return classifyCharterCite(
+        { code: claim, location: `${locationId}.advances[${index}]`, action: "strip" },
+        snapshot,
+      ).classification === "degradable";
+    });
+    return stripped.some(Boolean)
+      ? { ...t, advances: t.advances.filter((_, index) => !stripped[index]) }
+      : t;
+  });
   return { ...plan, tickets };
 }
 

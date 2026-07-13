@@ -8,6 +8,7 @@ import type {
   TicketDraft,
   WorkPlan,
 } from "../../baml_client/index.ts";
+import { stripNonGoalAdvances } from "../play/decompose-epic-core.ts";
 import { type ClearContext, clear, GATE_NAMES, isStop, STORY_CONTRACT_FIELDS } from "./gates.ts";
 
 // T-002-02 clearing-gates: pure module, fabricated WorkPlan fixtures only — no spawn, no fs, no
@@ -25,6 +26,11 @@ const CHARTER = `
   N1 — Not a chat copilot. N2 — Not a babysitting dashboard. N3 — Not a one-off runner. N4 — Not an executor.
 `;
 const CTX: ClearContext = { epic: "E-001 dispense-slice — advances P1, P3, P7", charter: CHARTER };
+const DEFINITION_CHARTER = `
+- **P1 — Author once, run forever.** Cost lives at authoring.
+- **P3 — Gates are the contract.** Quality lives inside the work.
+`;
+const DEFINITION_CTX: ClearContext = { ...CTX, charter: DEFINITION_CHARTER };
 
 /** A fully-valid ticket; failing cases override exactly one field. */
 function ticket(over: Partial<TicketDraft> = {}): TicketDraft {
@@ -197,6 +203,28 @@ describe("allocation gate", () => {
 });
 
 describe("bounds gate", () => {
+  test("a dangling cite normalized beside a real advance clears instead of tripping bounds", () => {
+    const normalized = stripNonGoalAdvances(
+      plan([ticket({ advances: ["P3", "P9"] })]),
+      DEFINITION_CHARTER,
+    );
+    expect(normalized.tickets[0]!.advances).toEqual(["P3"]);
+    expect(clear(normalized, DEFINITION_CTX).status).toBe("clear");
+  });
+
+  test("a dangling-only cite normalizes to empty and still refuses at the value gate", () => {
+    const normalized = stripNonGoalAdvances(
+      plan([ticket({ advances: ["P9"] })]),
+      DEFINITION_CHARTER,
+    );
+    expect(normalized.tickets[0]!.advances).toEqual([]);
+    expect(clear(normalized, DEFINITION_CTX)).toMatchObject({
+      status: "stop",
+      gate: "value",
+      unit: "T-009-01",
+    });
+  });
+
   test("an `advances` ref not in the charter is a dangling claim", () => {
     const r = clear(plan([ticket({ advances: ["P9"] })]), CTX);
     expect(r).toMatchObject({ status: "stop", gate: "bounds", unit: "T-009-01" });

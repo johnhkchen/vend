@@ -134,11 +134,10 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
       },
     );
   },
-  // Parse, then NORMALIZE: strip non-goal (`N\d+`) codes the model recurrently mis-tags onto a
-  // ticket's `advances` before anything gates or materializes (honey-kitchen field fix #1). The
-  // cast loop feeds this one parsed plan to both `gates` and `effect`, so the board never carries
-  // the bogus code and the bounds gate stops babysitting the generator's noise.
-  parse: (text) => stripNonGoalAdvances(b.parse.DecomposeEpic(text)),
+  // Parse, then NORMALIZE: strip non-goal (`N\d+`) codes and well-shaped codes unresolved by this
+  // run's charter before anything gates or materializes. The cast loop feeds this one parsed plan
+  // to both `gates` and `effect`, so editorial cite noise degrades instead of discarding the board.
+  parse: (text, ctx) => stripNonGoalAdvances(b.parse.DecomposeEpic(text), ctx.inputs.charter),
   gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
   effect: decomposeEffect,
   // RE-recalibrated 2026-06-30 from a SUSTAINED real drive (honey-kitchen, 14 epics / 38 casts —
