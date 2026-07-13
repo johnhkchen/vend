@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   appendDecomposeDraft,
   nextDecomposeRepairAction,
 } from "../engine/decompose-draft.ts";
+import { CHARTER_CONVENTION_HOW_TO } from "./charter-convention-probe.ts";
 
 // T-042-03 doctor-cli-command (story S-042-02, epic E-042 vend-doctor-preflight) — the
 // guarded-live PROOF of the AC's RUNTIME half: running `vend doctor` prints the rendered preflight
@@ -40,6 +41,15 @@ function runDoctor(env: Record<string, string | undefined>, cwd?: string): {
 
 /** A Node.js stack frame ("\n    at …") — its ABSENCE is the AC's "no stack trace" clause. */
 const STACK_FRAME = /\n {4}at /;
+
+/** Create a disposable project root carrying exactly the charter bytes doctor should inspect. */
+async function charterRoot(charter: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "vend-doctor-charter-"));
+  const knowledgeDir = join(root, "docs", "knowledge");
+  await mkdir(knowledgeDir, { recursive: true });
+  await writeFile(join(knowledgeDir, "charter.md"), charter, "utf8");
+  return root;
+}
 
 describe("vend doctor — guarded-live CLI smoke (T-042-03)", () => {
   test("a wired env prints the report; exit 0 IFF all checks pass", () => {
@@ -87,6 +97,42 @@ describe("vend doctor — guarded-live CLI smoke (T-042-03)", () => {
       expect(exitCode).toBe(1);
       expect(stdout).toContain("✗ resumable-decompose: E-077");
       expect(stdout).toContain("vend run decompose-epic E-077 --resume");
+      expect(STACK_FRAME.test(stdout)).toBe(false);
+      expect(STACK_FRAME.test(stderr)).toBe(false);
+      expect(stderr).not.toContain("Unhandled");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a labeled charter prints a green convention line with the distinct invariant count", async () => {
+    const root = await charterRoot(`
+      P1 — Author once, run forever.
+      P3 — Gates are the contract.
+      P3 is cited again here.
+    `);
+    try {
+      const { exitCode, stdout, stderr } = runDoctor(process.env, root);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("✓ charter convention: green — 2 labeled invariants found");
+      expect(STACK_FRAME.test(stdout)).toBe(false);
+      expect(STACK_FRAME.test(stderr)).toBe(false);
+      expect(stderr).not.toContain("Unhandled");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an unlabeled charter prints the amber how-to and doctor still exits 0", async () => {
+    const root = await charterRoot(`
+      Author reusable work once.
+      Keep the run simple and make quality enforceable through gates.
+    `);
+    try {
+      const { exitCode, stdout, stderr } = runDoctor(process.env, root);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("✓ charter convention: amber — no labeled invariants found");
+      expect(stdout).toContain(CHARTER_CONVENTION_HOW_TO);
       expect(STACK_FRAME.test(stdout)).toBe(false);
       expect(STACK_FRAME.test(stderr)).toBe(false);
       expect(stderr).not.toContain("Unhandled");

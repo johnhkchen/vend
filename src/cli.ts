@@ -1054,9 +1054,10 @@ if (import.meta.main) {
     // The preflight gate (T-042-03), WORKSPACE-AWARE (T-062-02-02): doctor reports on "the
     // prerequisites for what you'd do HERE". In a build project that is the vend-specific deps
     // (lisa & claude on PATH, the BAML native addon loadable, the active executor's config) plus
-    // canonical-board hygiene and local resumable-decompose state. The dependency, board, and
-    // recovery probes stay separate because the former also guards every cast; an orphan or draft
-    // must make `vend doctor` red without blocking work that can repair/resume it. In a STANDALONE
+    // canonical-board hygiene, local resumable-decompose state, and a non-blocking charter-
+    // convention diagnostic. The dependency, board, recovery, and convention probes stay separate
+    // because only the former also guards every cast; an orphan or draft makes `vend doctor` red,
+    // while an unlabeled charter stays amber/exit-0 and teaches the fix. In a STANDALONE
     // kitchen workspace (the EmDash+Astro seed `vend init
     // --template kitchen` lays — no lisa marker) those build-engine deps are not what matters; the
     // app's are — bun, the Astro/Cloudflare storefront config, the EmDash Dish seed — probed by
@@ -1078,12 +1079,14 @@ if (import.meta.main) {
       const { probeDoctor } = await import("./doctor/doctor-probe.ts");
       const { probeBoardHygiene } = await import("./doctor/board-hygiene-probe.ts");
       const { probeResumableDecompose } = await import("./doctor/resumable-decompose-probe.ts");
-      const [dependencyChecks, boardChecks, resumableChecks] = await Promise.all([
+      const { probeCharterConvention } = await import("./doctor/charter-convention-probe.ts");
+      const [dependencyChecks, boardChecks, resumableChecks, charterChecks] = await Promise.all([
         probeDoctor(),
         probeBoardHygiene(),
         probeResumableDecompose(),
+        probeCharterConvention(),
       ]);
-      checks = [...dependencyChecks, ...boardChecks, ...resumableChecks];
+      checks = [...dependencyChecks, ...boardChecks, ...resumableChecks, ...charterChecks];
     }
     const report = renderDoctorReport(checks);
     process.stdout.write(`${report.report}\n`);
