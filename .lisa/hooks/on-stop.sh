@@ -12,5 +12,12 @@ fi
 
 # Forward the Stop payload (stdin: includes transcript_path) to the usage
 # capturer. No-capture markers and capture errors remain visible to operators.
-in=$(cat)
-printf '%s' "$in" | "${LISA_BIN:-lisa}" capture-usage
+# Usage provenance is a loop-pane concept: an ad-hoc session (no LISA_PANE_ID)
+# has no seat to attribute, so consume stdin and exit quietly instead of
+# erroring on every non-lisa Claude session in this repo.
+if [ -n "$LISA_PANE_ID" ]; then
+    in=$(cat)
+    printf '%s' "$in" | "${LISA_BIN:-lisa}" capture-usage
+else
+    cat > /dev/null
+fi
