@@ -155,6 +155,18 @@ function stubExecutor(seen: StreamMessage[], resultText = "hello from stub", id 
   };
 }
 
+/** A known-lane executor that settles with an open terminal failure record (no live provider). */
+function terminalFailureExecutor(result: ResultMessage): Executor {
+  return {
+    id: "claude",
+    async probe() { return { ok: true }; },
+    async dispense(opts: DispenseOptions): Promise<ResultMessage> {
+      opts.onMessage?.(result);
+      return result;
+    },
+  };
+}
+
 /** A configured two-seat registry whose complement is a recording, primed reviewer. */
 function crossReviewRegistry(resultText: string, calls: DispenseOptions[]): ExecutorRegistry {
   return {
@@ -411,6 +423,100 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.model).toBe("stub-model-1");
   expect(rec.seatOfExecution).toBe("claude");
   expect(rec.overEnvelope).toBeUndefined();
+});
+
+test("castPlay: a 429-shaped terminal failure settles one cap-marked row beside its execution seat (T-082-01-02 AC)", async () => {
+  const root = await tmp();
+  const runLogPath = join(root, "runs.jsonl");
+  const runId = "cap-window-exhausted-fixture";
+  const terminalFailure = {
+    type: "result",
+    subtype: "error_during_execution",
+    is_error: true,
+    status: 429,
+    result: "OpenAI-compatible request failed: HTTP 429 Too Many Requests",
+    usage: { input_tokens: 2 },
+    total_cost_usd: 0.002,
+    model: "stub-model-cap-window",
+  } as ResultMessage;
+
+  const summary = await castPlay(echoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-082-01-02-cap",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId,
+    executor: terminalFailureExecutor(terminalFailure),
+  });
+
+  expect(summary.outcome).toBe("success");
+  expect(summary.materialized).toBe(true);
+  const rawBytes = await readFile(runLogPath, "utf8");
+  const lines = rawBytes.trimEnd().split("\n");
+  expect(lines).toHaveLength(1);
+  const record = JSON.parse(lines[0]!);
+  expect(record.seatOfExecution).toBe("claude");
+  expect(record.capWindowExhausted).toEqual({
+    signal: "http-429",
+    reason: "executor terminal failure reported HTTP 429 at settlement",
+  });
+  expect(rawBytes).toContain('"seatOfExecution":"claude","capWindowExhausted":');
+  expect(reviveRecord(record)?.capWindowExhausted).toEqual(record.capWindowExhausted);
+});
+
+test("castPlay: a non-rate terminal failure keeps the existing marker-less row bytes (T-082-01-02 AC)", async () => {
+  const root = await tmp();
+  const runLogPath = join(root, "runs.jsonl");
+  const runId = "ordinary-executor-failure-fixture";
+  const terminalFailure = {
+    type: "result",
+    subtype: "error_during_execution",
+    is_error: true,
+    result: "connection reset by peer",
+    usage: { input_tokens: 2 },
+    total_cost_usd: 0.002,
+    model: "stub-model-ordinary-failure",
+  } as ResultMessage;
+
+  await castPlay(echoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-082-01-02-control",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId,
+    executor: terminalFailureExecutor(terminalFailure),
+  });
+
+  const rawBytes = await readFile(runLogPath, "utf8");
+  const lines = rawBytes.trimEnd().split("\n");
+  expect(lines).toHaveLength(1);
+  const record = JSON.parse(lines[0]!);
+  expect("capWindowExhausted" in record).toBe(false);
+  expect(reviveRecord(record)?.capWindowExhausted).toBeUndefined();
+
+  const expectedExistingRow = {
+    v: 1,
+    runId,
+    play: "echo",
+    epic: "T-082-01-02-control",
+    model: "stub-model-ordinary-failure",
+    outcome: "success",
+    usage: {
+      input_tokens: 2,
+      output_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
+    costUsd: 0.002,
+    gateResults: [],
+    envelope: { timeMs: 60_000, tokens: 1_000_000 },
+    project: record.project,
+    turnsUsed: 0,
+    seatOfExecution: "claude",
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+  };
+  expect(rawBytes).toBe(`${JSON.stringify(expectedExistingRow)}\n`);
 });
 
 test("castPlay: an unreachable executor andons before dispense with one zero-spend record", async () => {

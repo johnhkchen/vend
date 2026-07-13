@@ -21,11 +21,16 @@
 // dependency direction (play → engine).
 
 import type { StreamMessage } from "../executor/claude.ts";
-import type { ExecutorProbeResult } from "../executor/executor.ts";
+import type { ExecutorProbeResult, ResultMessage } from "../executor/executor.ts";
 import { countTokens, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import type { AgentSeat } from "../play/agent-seat.ts";
 import type { GateVerdict, PlayTools } from "./play.ts";
-import type { CrossVendorVerdict, GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
+import type {
+  CapWindowExhausted,
+  CrossVendorVerdict,
+  GateResult as LogGate,
+  RunOutcome,
+} from "../log/run-log.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned none
@@ -213,6 +218,104 @@ export function toolFlags(resolved: ResolvedTools, mcpConfigPath: string): ToolF
  */
 export function resolveTurnsUsed(numTurns: unknown): number | undefined {
   return typeof numTurns === "number" && Number.isInteger(numTurns) && numTurns >= 0 ? numTurns : undefined;
+}
+
+const HTTP_429_CAP_MARKER: CapWindowExhausted = Object.freeze({
+  signal: "http-429",
+  reason: "executor terminal failure reported HTTP 429 at settlement",
+});
+
+const RATE_LIMIT_CAP_MARKER: CapWindowExhausted = Object.freeze({
+  signal: "rate-limit",
+  reason: "executor terminal failure reported rate-limit exhaustion at settlement",
+});
+
+/** Safely read one named field from an open external record. An exotic throwing getter is
+ *  malformed evidence, never grounds for losing settlement or inventing a cap event. */
+function externalField(record: Record<string, unknown>, key: string): unknown {
+  try {
+    return record[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function isTerminalFailure(result: ResultMessage): boolean {
+  const subtype = externalField(result, "subtype");
+  return (typeof subtype === "string" && subtype.toLowerCase().startsWith("error")) ||
+    externalField(result, "is_error") === true;
+}
+
+function is429(value: unknown): boolean {
+  return value === 429 || (typeof value === "string" && value.trim() === "429");
+}
+
+function hasStructured429(result: ResultMessage): boolean {
+  const keys = ["status", "statusCode", "code"] as const;
+  if (keys.some((key) => is429(externalField(result, key)))) return true;
+
+  const error = externalField(result, "error");
+  return isRecord(error) && keys.some((key) => is429(externalField(error, key)));
+}
+
+function appendDiagnosticStrings(value: unknown, into: string[]): void {
+  if (typeof value === "string") {
+    into.push(value);
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const key of ["message", "type", "code"] as const) {
+    const candidate = externalField(value, key);
+    if (typeof candidate === "string") into.push(candidate);
+  }
+}
+
+/** Extract only bounded terminal diagnostic fields — never arbitrary model/telemetry structure. */
+function terminalDiagnostics(result: ResultMessage): readonly string[] {
+  const diagnostics: string[] = [];
+  for (const key of ["subtype", "result", "message"] as const) {
+    const candidate = externalField(result, key);
+    if (typeof candidate === "string") diagnostics.push(candidate);
+  }
+
+  appendDiagnosticStrings(externalField(result, "error"), diagnostics);
+  const errors = externalField(result, "errors");
+  if (Array.isArray(errors)) {
+    for (const error of errors) appendDiagnosticStrings(error, diagnostics);
+  }
+  return diagnostics;
+}
+
+function hasHttp429Text(value: string): boolean {
+  return /\bhttp(?:\s+status)?\s*429\b|\b429\s+too many requests\b/i.test(value);
+}
+
+function hasRateLimitText(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return /\brate limit(?:ed|ing)?(?: (?:reached|exceeded|exhausted))?\b/.test(normalized) ||
+    /\btoo many requests\b/.test(normalized) ||
+    /\bhit your(?: (?:usage|rate))? limit\b/.test(normalized) ||
+    /\b(?:usage|quota)(?: limit)? (?:reached|exceeded|exhausted)\b/.test(normalized);
+}
+
+/**
+ * Classify explicit provider-window exhaustion from a terminal executor failure (T-082-01-02).
+ * PURE and total over the seam's open result record. Successful model prose and live
+ * `rate_limit_event` telemetry are deliberately outside this settle-only decision.
+ */
+export function classifyCapWindowExhaustion(
+  result: ResultMessage | null,
+): CapWindowExhausted | undefined {
+  if (result === null || !isTerminalFailure(result)) return undefined;
+
+  const diagnostics = terminalDiagnostics(result);
+  if (hasStructured429(result) || diagnostics.some(hasHttp429Text)) {
+    return { ...HTTP_429_CAP_MARKER };
+  }
+  if (diagnostics.some(hasRateLimitText)) {
+    return { ...RATE_LIMIT_CAP_MARKER };
+  }
+  return undefined;
 }
 
 /** The inputs to the pure outcome decision (the play-generic analogue of the runner's). */

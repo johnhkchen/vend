@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BudgetOutcome } from "../budget/budget.ts";
 import type { GateVerdict } from "./play.ts";
 import type { StreamMessage } from "../executor/claude.ts";
+import type { ResultMessage } from "../executor/executor.ts";
 import { buildArgs } from "../executor/claude.ts";
 import type { PlayTools } from "./play.ts";
 import { DECOMPOSE_TOOLS } from "../play/decompose-epic-core.ts";
@@ -11,6 +12,7 @@ import {
   CAST_PROGRESS_LEDGER_TOLERANCE,
   castGateRows,
   classify,
+  classifyCapWindowExhaustion,
   DEFAULT_MODEL,
   EMPTY_CAST_PROGRESS,
   formatCastProgress,
@@ -38,6 +40,15 @@ const exhausted: BudgetOutcome = { status: "exhausted", code: "EBUDGET_EXHAUSTED
 const cleared: GateVerdict = { status: "clear" };
 const clearedNamed: GateVerdict = { status: "clear", cleared: ["value", "allocation", "bounds", "structural"] };
 const stopped: GateVerdict = { status: "stop", gate: "value", unit: "<plan>", reason: "plan has no tickets" };
+
+function terminalFailure(overrides: Record<string, unknown> = {}): ResultMessage {
+  return {
+    type: "result",
+    subtype: "error_during_execution",
+    result: "executor failed",
+    ...overrides,
+  } as ResultMessage;
+}
 
 async function readProgressFixture(name: string): Promise<StreamMessage[]> {
   const text = await Bun.file(new URL(`./fixtures/T-081-02-01/${name}`, import.meta.url)).text();
@@ -121,6 +132,66 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
       { gate: "bounds", passed: true },
       { gate: "structural", passed: true },
     ]);
+  });
+});
+
+describe("classifyCapWindowExhaustion — terminal executor evidence (T-082-01-02)", () => {
+  const HTTP_429 = {
+    signal: "http-429",
+    reason: "executor terminal failure reported HTTP 429 at settlement",
+  };
+  const RATE_LIMIT = {
+    signal: "rate-limit",
+    reason: "executor terminal failure reported rate-limit exhaustion at settlement",
+  };
+
+  test("a numeric HTTP status on a terminal failure is complete cap evidence", () => {
+    expect(classifyCapWindowExhaustion(terminalFailure({ status: 429 }))).toEqual(HTTP_429);
+    expect(classifyCapWindowExhaustion(terminalFailure({ error: { statusCode: "429" } }))).toEqual(HTTP_429);
+  });
+
+  test("explicit HTTP 429 diagnostic text is classified without requiring provider-specific types", () => {
+    expect(classifyCapWindowExhaustion(terminalFailure({
+      result: "OpenAI-compatible request failed: HTTP 429 Too Many Requests",
+    }))).toEqual(HTTP_429);
+  });
+
+  test("typed and prose rate-limit failures use the broader honest signal", () => {
+    expect(classifyCapWindowExhaustion(terminalFailure({ subtype: "error_rate_limit_exceeded" }))).toEqual(RATE_LIMIT);
+    expect(classifyCapWindowExhaustion(terminalFailure({ result: "You've hit your usage limit; resets later" }))).toEqual(RATE_LIMIT);
+  });
+
+  test("HTTP 429 wins over broader rate-limit prose when both are present", () => {
+    expect(classifyCapWindowExhaustion(terminalFailure({
+      code: 429,
+      result: "rate limit exceeded",
+    }))).toEqual(HTTP_429);
+  });
+
+  test("ordinary and max-turn terminal failures remain unmarked", () => {
+    expect(classifyCapWindowExhaustion(terminalFailure({ result: "connection reset by peer" }))).toBeUndefined();
+    expect(classifyCapWindowExhaustion(terminalFailure({
+      subtype: "error_max_turns",
+      result: "maximum turn count reached",
+    }))).toBeUndefined();
+  });
+
+  test("successful model prose about rate limits cannot fabricate cap evidence", () => {
+    expect(classifyCapWindowExhaustion({
+      type: "result",
+      subtype: "success",
+      result: "The API returns HTTP 429 when its rate limit is exceeded.",
+    })).toBeUndefined();
+  });
+
+  test("null and malformed optional diagnostics are total non-evidence", () => {
+    expect(classifyCapWindowExhaustion(null)).toBeUndefined();
+    expect(classifyCapWindowExhaustion(terminalFailure({
+      status: 500,
+      message: 429,
+      error: ["HTTP 429"],
+      errors: [null, 429, { message: false }],
+    }))).toBeUndefined();
   });
 });
 

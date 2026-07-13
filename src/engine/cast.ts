@@ -44,6 +44,7 @@ import type { CastContext, EffectResult, GateVerdict, Play, SeatDefaulted, SeatI
 import {
   accumulateCastProgress,
   classify,
+  classifyCapWindowExhaustion,
   EMPTY_CAST_PROGRESS,
   formatCastProgress,
   formatTurnSummary,
@@ -425,6 +426,9 @@ export async function castPlay<I, O>(
   // fabricating a zero-turn cast. Keep the executor's unlike terminal counter separately named.
   const turnsUsed = resumeDraft === undefined ? progress.turns : undefined;
   const executorReportedTurns = resolveTurnsUsed(result?.num_turns);
+  // Settle-only provider-window evidence: successful prose and live rate-limit telemetry remain
+  // inert; the pure core admits only an explicit failure-shaped terminal signal.
+  const capWindowExhausted = classifyCapWindowExhaustion(result);
   const usage = (result?.usage ?? {}) as Usage;
   const costUsd = typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0;
 
@@ -606,6 +610,9 @@ export async function castPlay<I, O>(
         // executor-id mapping; spread only when known so an unmapped/lane-less executor leaves the
         // key off, exactly like `turnsUsed`, rather than fabricating provenance.
         ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+        // One-way provider-window evidence, classified from the terminal executor failure only
+        // after dispense settled. Absence contributes no key and leaves ordinary row bytes intact.
+        ...(capWindowExhausted !== undefined ? { capWindowExhausted } : {}),
         // Durable patch evidence (T-073-01-01): only a landed effect with a non-empty Git diff
         // still available at final settlement supplies a reference.
         ...(capturedDiff !== undefined ? { capturedDiff } : {}),
