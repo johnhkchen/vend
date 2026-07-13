@@ -116,8 +116,8 @@ hook contains the status and Lisa continues.
 
 This trace narrows the silent window; it is not a retry or delivery queue. A recorder process that
 never starts, or a filesystem that rejects both marker and trace writes, cannot leave durable local
-evidence. The dependent settle slice owns reading the trace, deciding freshness relative to a
-successful claim, and rendering the cord warning.
+evidence. Settle reads this evidence without truncating, rewriting, or otherwise acknowledging it
+inside the append-only log.
 
 ## Consumer and consume-on-settle lifecycle
 
@@ -130,10 +130,32 @@ shape. The marker is consumed only when that settle operation successfully reach
 verdict. Consumption removes the one stable Vend-owned marker. An immediate second settle therefore
 reports no pending loop and cannot print the provenance again.
 
+Settle also reads the failure trace as advisory verdict context. It scans physical JSONL records
+from newest to oldest and selects the newest record that matches the exact timestamp/reason shape.
+Blank, malformed, torn, and unrelated lines are skipped: diagnostic corruption does not turn the
+free board verdict into a refusal. If no exact record exists, no cord line is rendered.
+
+Freshness follows the local files that publish and acknowledge the crossing. The failure-log mtime
+is compared with the newest available claim watermark: the prior successful
+`.vend/last-settle.json` verdict write and the currently claimed loop marker's mtime. A trace whose
+mtime is strictly newer carries this normal verdict line, with JSON-decoded reason text preserved
+verbatim:
+
+```text
+cord: last recording failed — <reason>
+```
+
+An equal/newer successful claim suppresses the line. A verdict which surfaces a fresh failure then
+writes `.vend/last-settle.json` as usual, acknowledging the observed local state, so an immediate
+repeat does not print the same warning again. A current marker older than the trace does not hide
+the newer failure. The cord line is neither a refusal nor an exception and does not block settle's
+gate, presweep, review, continuation write, or marker lifecycle.
+
 Malformed marker bytes are an andon, not “no pending loop” and not partial provenance. Settle must
 refuse the malformed marker visibly and leave it in place for diagnosis; it must not print invented
-defaults or consume evidence it could not validate. The dependent settle ticket owns the exact CLI
-wording and atomic consume implementation.
+defaults or consume evidence it could not validate. Marker corruption remains distinct from the
+non-blocking failure-trace read because the marker is provenance settle would otherwise claim,
+while the trace is diagnostic context.
 
 ## One-way authority
 
@@ -162,7 +184,10 @@ The executable contract is pinned by:
 - `src/seam/lisa-loop-settled-core.test.ts` for valid/malformed marker cases and deterministic
   failure-line serialization;
 - `src/seam/lisa-loop-settled.test.ts` for the Vend-only filesystem crossing, refusal/failure
-  append behavior, Git ignore contract, and real hook path.
+  append behavior, Git ignore contract, and real hook path;
+- `src/settle/settle-core.test.ts` for tolerant trace parsing, exact reason recovery, and freshness
+  policy;
+- `src/settle/settle.test.ts` for the filesystem claim watermark and visible normal verdict line.
 
 ## Explicit exclusions
 
@@ -173,4 +198,5 @@ The executable contract is pinned by:
 - No watcher, daemon, or babysitting dashboard.
 - No retry, queue, replay, rotation, or guaranteed delivery for recorder failures.
 - No automatic signal promotion or next pull.
-- No settle rendering or marker consumption in this contract slice.
+- No trace mutation, retry, or delivery action from settle; consumption remains limited to the
+  successful singleton marker.

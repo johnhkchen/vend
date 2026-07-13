@@ -3,6 +3,7 @@ import { buildGraph, type RawNode, type WorkGraph } from "../graph/model.ts";
 import { serializeLisaLoopSettledMarker } from "../seam/lisa-loop-settled-core.ts";
 import {
   computeSettleVerdict,
+  cordFailureReason,
   deriveEpicClearance,
   LAST_SETTLE_MARKER_PATH,
   LAST_SETTLE_MARKER_VERSION,
@@ -79,6 +80,11 @@ function input(overrides: Partial<ComputeSettleInput> = {}): ComputeSettleInput 
     graph: fixtureGraph(),
     loopSettledContents: null,
     lastSettleContents: null,
+    cord: {
+      failureTraceContents: null,
+      failureTraceModifiedAtMs: null,
+      lastClaimModifiedAtMs: null,
+    },
     gate: greenGate(),
     presweep: {
       ok: true,
@@ -89,6 +95,67 @@ function input(overrides: Partial<ComputeSettleInput> = {}): ComputeSettleInput 
     ...overrides,
   };
 }
+
+const FAILURE_LINE =
+  '{"timestamp":"2026-07-13T20:00:00.000Z","reason":"LISA_PROJECT must be an absolute project root"}\n';
+
+describe("cordFailureReason — tolerant trace parsing and claim freshness", () => {
+  test("returns the logged reason verbatim when the trace has no prior claim", () => {
+    expect(cordFailureReason({
+      failureTraceContents: FAILURE_LINE,
+      failureTraceModifiedAtMs: 200,
+      lastClaimModifiedAtMs: null,
+    })).toBe("LISA_PROJECT must be an absolute project root");
+  });
+
+  test("returns the logged reason when the trace is strictly newer than the claim", () => {
+    expect(cordFailureReason({
+      failureTraceContents: FAILURE_LINE,
+      failureTraceModifiedAtMs: 200,
+      lastClaimModifiedAtMs: 199,
+    })).toBe("LISA_PROJECT must be an absolute project root");
+  });
+
+  test("no trace, a newer claim, or an equal claim renders no failure", () => {
+    expect(cordFailureReason({
+      failureTraceContents: null,
+      failureTraceModifiedAtMs: null,
+      lastClaimModifiedAtMs: 300,
+    })).toBeNull();
+    expect(cordFailureReason({
+      failureTraceContents: FAILURE_LINE,
+      failureTraceModifiedAtMs: 200,
+      lastClaimModifiedAtMs: 201,
+    })).toBeNull();
+    expect(cordFailureReason({
+      failureTraceContents: FAILURE_LINE,
+      failureTraceModifiedAtMs: 200,
+      lastClaimModifiedAtMs: 200,
+    })).toBeNull();
+  });
+
+  test("skips a malformed tail and preserves the preceding admitted reason exactly", () => {
+    const exact = "  marker write failed:\tpermission denied\nretry unavailable  ";
+    const contents =
+      `${JSON.stringify({ timestamp: "2026-07-13T20:00:00.000Z", reason: exact })}\n` +
+      '{"timestamp":"2026-07-13T20:01:00.000Z","reason":\n';
+    expect(cordFailureReason({
+      failureTraceContents: contents,
+      failureTraceModifiedAtMs: 200,
+      lastClaimModifiedAtMs: 100,
+    })).toBe(exact);
+  });
+
+  test("invalid-only diagnostic bytes stay quiet instead of refusing settle", () => {
+    expect(cordFailureReason({
+      failureTraceContents:
+        'not-json\n{"timestamp":"not-canonical","reason":"bad"}\n' +
+        '{"timestamp":"2026-07-13T20:00:00.000Z","reason":"ok","extra":true}\n',
+      failureTraceModifiedAtMs: 200,
+      lastClaimModifiedAtMs: null,
+    })).toBeNull();
+  });
+});
 
 describe("deriveEpicClearance — the shared phase-done source", () => {
   test("returns non-done epic counts and a whole-board sorted ticket frontier", () => {
@@ -199,6 +266,7 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     expect(verdict.kind).toBe("verdict");
     if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
     expect(verdict.loop).toBeNull();
+    expect(verdict.cordFailureReason).toBeNull();
     expect(verdict.delta).toEqual({ firstSettle: false, newlyDoneTicketIds: ["T-100-02"] });
     expect(verdict.doneTicketIds).toEqual([
       "T-050-01",
@@ -303,6 +371,21 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
       ticketsDone: 3,
       durationSecs: 84,
     });
+  });
+
+  test("a fresh failure trace becomes normal verdict context with its exact reason", () => {
+    const verdict = computeSettleVerdict(input({
+      cord: {
+        failureTraceContents: FAILURE_LINE,
+        failureTraceModifiedAtMs: 200,
+        lastClaimModifiedAtMs: 100,
+      },
+    }));
+
+    expect(verdict.kind).toBe("verdict");
+    if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
+    expect(verdict.cordFailureReason).toBe("LISA_PROJECT must be an absolute project root");
+    expect(verdict.exceptions).toEqual([]);
   });
 
   test("a valid pending Lisa marker carries honestly absent duration", () => {

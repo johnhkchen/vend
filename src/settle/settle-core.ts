@@ -82,6 +82,13 @@ export interface SettleDelta {
   readonly newlyDoneTicketIds: readonly string[];
 }
 
+/** Already-observed local cord files. The shell owns bytes/mtime reads; freshness stays pure. */
+export interface SettleCordObservation {
+  readonly failureTraceContents: string | null;
+  readonly failureTraceModifiedAtMs: number | null;
+  readonly lastClaimModifiedAtMs: number | null;
+}
+
 export interface SettleException {
   readonly kind: "gate" | "presweep" | "review";
   readonly name: string;
@@ -93,6 +100,8 @@ export interface SettleVerdict {
   readonly kind: "verdict";
   /** Whole-loop provenance from one pending Lisa completion marker, or null after consumption. */
   readonly loop: LisaLoopSettledMarker | null;
+  /** Latest unacknowledged recorder failure, rendered as verdict context rather than refusal. */
+  readonly cordFailureReason: string | null;
   readonly delta: SettleDelta;
   readonly epics: readonly EpicClearance[];
   readonly doneTicketIds: readonly string[];
@@ -111,6 +120,7 @@ export interface ComputeSettleInput {
   readonly graph: WorkGraph;
   readonly loopSettledContents: string | null;
   readonly lastSettleContents: string | null;
+  readonly cord: SettleCordObservation;
   readonly gate: SettleGateResult;
   readonly presweep: SweepVerdict;
   readonly reviewConcerns: readonly ReviewConcern[];
@@ -122,6 +132,70 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonBlank(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isUsableMtime(value: number | null): value is number {
+  return value !== null && Number.isFinite(value) && value >= 0;
+}
+
+interface LisaLoopSettledFailureRecord {
+  readonly timestamp: string;
+  readonly reason: string;
+}
+
+function reviveLisaLoopSettledFailureLine(line: string): LisaLoopSettledFailureRecord | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== 2 ||
+    keys[0] !== "reason" ||
+    keys[1] !== "timestamp" ||
+    !isCanonicalIsoTimestamp(value["timestamp"]) ||
+    !isNonBlank(value["reason"])
+  ) {
+    return null;
+  }
+  return { timestamp: value["timestamp"], reason: value["reason"] };
+}
+
+function latestLisaLoopSettledFailure(contents: string): LisaLoopSettledFailureRecord | null {
+  const lines = contents.split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (line === undefined || line.trim().length === 0) continue;
+    const failure = reviveLisaLoopSettledFailureLine(line);
+    if (failure !== null) return failure;
+  }
+  return null;
+}
+
+/** Select exact producer reason only while its log write is newer than the latest claim. PURE. */
+export function cordFailureReason(observation: SettleCordObservation): string | null {
+  if (
+    observation.failureTraceContents === null ||
+    !isUsableMtime(observation.failureTraceModifiedAtMs)
+  ) {
+    return null;
+  }
+  if (
+    isUsableMtime(observation.lastClaimModifiedAtMs) &&
+    observation.lastClaimModifiedAtMs >= observation.failureTraceModifiedAtMs
+  ) {
+    return null;
+  }
+  return latestLisaLoopSettledFailure(observation.failureTraceContents)?.reason ?? null;
 }
 
 function markerRefusal(reason: string): LastSettleRefusal {
@@ -351,6 +425,7 @@ export function computeSettleVerdict(input: ComputeSettleInput): SettleResult {
   return {
     kind: "verdict",
     loop,
+    cordFailureReason: cordFailureReason(input.cord),
     delta: { firstSettle: marker.firstSettle, newlyDoneTicketIds },
     epics: clearance.epics,
     doneTicketIds,

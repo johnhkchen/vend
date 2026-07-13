@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serializeLisaLoopSettledMarker } from "../seam/lisa-loop-settled-core.ts";
+import {
+  DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH,
+  serializeLisaLoopSettledMarker,
+} from "../seam/lisa-loop-settled-core.ts";
 import {
   LAST_SETTLE_MARKER_PATH,
   LAST_SETTLE_MARKER_VERSION,
@@ -67,6 +70,7 @@ function completeVerdict(): SettleResult {
       ticketsDone: 1,
       durationSecs: 41,
     },
+    cordFailureReason: "LISA_TICKETS_DONE must be a non-negative safe integer",
     delta: { firstSettle: true, newlyDoneTicketIds: [] },
     epics: [
       {
@@ -137,6 +141,12 @@ describe("renderSettleResult — one-screen terminal contract", () => {
   test("prints every verdict field, preserves actions, and colors each exception red", () => {
     const rendered = renderSettleResult(completeVerdict());
     expect(rendered).toContain("loop: vend — 1 ticket done in 41s");
+    expect(rendered).toContain(
+      "cord: last recording failed — LISA_TICKETS_DONE must be a non-negative safe integer",
+    );
+    expect(rendered).not.toContain(
+      `${ANSI_RED}cord: last recording failed — LISA_TICKETS_DONE must be a non-negative safe integer`,
+    );
     expect(rendered).toContain("delta: first settle — no baseline");
     expect(rendered).toContain("epic: E-900 — 1/2 cleared");
     expect(rendered).toContain("epic: E-901 — 1/1 cleared — sweep ready");
@@ -188,6 +198,7 @@ describe("renderSettleResult — one-screen terminal contract", () => {
     const rendered = renderSettleResult({
       ...base,
       loop: null,
+      cordFailureReason: null,
       delta: { firstSettle: false, newlyDoneTicketIds: [] },
       gate: { ok: true, name: "repository gate", detail: "7 tests", nextAction: null },
       presweep: { ok: true, doneIds: base.doneTicketIds, offenders: [] },
@@ -197,6 +208,7 @@ describe("renderSettleResult — one-screen terminal contract", () => {
 
     expect(rendered).toContain("delta: none since last settle");
     expect(rendered).toContain("loop: none pending");
+    expect(rendered).not.toContain("cord:");
     expect(rendered).toContain("gate: green — repository gate: 7 tests");
     expect(rendered).toContain("presweep: green — 2 done tickets, source + board committed");
     expect(rendered).toContain("review concerns: none");
@@ -320,8 +332,10 @@ describe("runSettle — Lisa loop marker lifecycle", () => {
       expect(first.kind).toBe("verdict");
       if (first.kind !== "verdict") throw new Error("expected first verdict");
       expect(first.loop).toMatchObject({ project: "fixture-project", ticketsDone: 1, durationSecs: 12 });
+      expect(first.cordFailureReason).toBeNull();
       const firstRendered = renderSettleResult(first, { color: false });
       expect(firstRendered).toContain("loop: fixture-project — 1 ticket done in 12s");
+      expect(firstRendered).not.toContain("cord:");
       expect(firstRendered).toContain("delta: first settle — no baseline");
       expect(firstRendered).not.toContain("epic: E-899");
       expect(firstRendered).toContain("epic: E-900 — 1/1 cleared — sweep ready");
@@ -355,6 +369,71 @@ describe("runSettle — Lisa loop marker lifecycle", () => {
       expect(result).toMatchObject({ kind: "refusal", code: "malformed-loop-settled-marker" });
       expect(await readFile(markerPath, "utf8")).toBe(malformed);
       expect((await Bun.$`find ${join(root, ".vend")} -name '*.settling'`.text()).trim()).toBe("");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a failure log newer than the last claim renders once with its reason verbatim", async () => {
+    const root = await createSettleFixtureRoot();
+    const tracePath = join(root, DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH);
+    const lastSettlePath = join(root, LAST_SETTLE_MARKER_PATH);
+    const reason = "LISA_PROJECT must be an absolute project root";
+    const trace = `${JSON.stringify({
+      timestamp: "2026-07-13T20:00:00.000Z",
+      reason,
+    })}\n`;
+    try {
+      const baseline = await runSettle({ root });
+      expect(baseline.kind).toBe("verdict");
+      await writeFile(tracePath, trace);
+      await utimes(lastSettlePath, new Date(100_000), new Date(100_000));
+      await utimes(tracePath, new Date(200_000), new Date(200_000));
+
+      const result = await runSettle({ root });
+      expect(result.kind).toBe("verdict");
+      if (result.kind !== "verdict") throw new Error("expected settle verdict");
+      expect(result.cordFailureReason).toBe(reason);
+      expect(renderSettleResult(result, { color: false })).toContain(
+        `cord: last recording failed — ${reason}`,
+      );
+      expect(await readFile(tracePath, "utf8")).toBe(trace);
+
+      const repeated = await runSettle({ root });
+      expect(repeated.kind).toBe("verdict");
+      if (repeated.kind !== "verdict") throw new Error("expected repeated verdict");
+      expect(repeated.cordFailureReason).toBeNull();
+      expect(renderSettleResult(repeated, { color: false })).not.toContain("cord:");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a successful marker claim newer than the log suppresses the cord line", async () => {
+    const root = await createSettleFixtureRoot();
+    const markerPath = join(root, ".vend", "loop-settled.json");
+    const tracePath = join(root, DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH);
+    try {
+      await writeFile(tracePath, `${JSON.stringify({
+        timestamp: "2026-07-13T20:00:00.000Z",
+        reason: "older recorder failure",
+      })}\n`);
+      await writeFile(markerPath, serializeLisaLoopSettledMarker({
+        v: 1,
+        kind: "lisa-loop-settled",
+        project: "fixture-project",
+        ticketsDone: 1,
+      }));
+      await utimes(tracePath, new Date(100_000), new Date(100_000));
+      await utimes(markerPath, new Date(200_000), new Date(200_000));
+
+      const result = await runSettle({ root });
+      expect(result.kind).toBe("verdict");
+      if (result.kind !== "verdict") throw new Error("expected settle verdict");
+      expect(result.loop).toMatchObject({ project: "fixture-project", ticketsDone: 1 });
+      expect(result.cordFailureReason).toBeNull();
+      expect(renderSettleResult(result, { color: false })).not.toContain("cord:");
+      expect(await exists(markerPath)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

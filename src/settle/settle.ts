@@ -4,12 +4,15 @@
 // only after a verdict; and render one terminal result. No play/executor/budget/run ledger enters.
 
 import { randomUUID } from "node:crypto";
-import { link, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { classifySweep, donePhaseIds, type SweepVerdict } from "../ci/presweep-core.ts";
 import { loadWorkGraph } from "../graph/load.ts";
 import type { TicketNode } from "../graph/model.ts";
-import { DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH } from "../seam/lisa-loop-settled-core.ts";
+import {
+  DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH,
+  DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH,
+} from "../seam/lisa-loop-settled-core.ts";
 import {
   computeSettleVerdict,
   LAST_SETTLE_MARKER_PATH,
@@ -195,9 +198,16 @@ async function runPresweep(root: string, tickets: readonly TicketNode[]): Promis
   return classifySweep({ doneIds: donePhaseIds(tickets), porcelain: stdout });
 }
 
-async function readOptionalText(path: string): Promise<string | null> {
+interface OptionalFileObservation {
+  readonly contents: string;
+  readonly modifiedAtMs: number;
+}
+
+async function readOptionalFile(path: string): Promise<OptionalFileObservation | null> {
   try {
-    return await readFile(path, "utf8");
+    const contents = await readFile(path, "utf8");
+    const metadata = await stat(path);
+    return { contents, modifiedAtMs: metadata.mtimeMs };
   } catch (error) {
     if (isMissingFile(error)) return null;
     throw error;
@@ -221,6 +231,7 @@ interface ClaimedLoopSettledMarker {
   readonly stablePath: string;
   readonly claimedPath: string;
   readonly contents: string;
+  readonly modifiedAtMs: number;
 }
 
 type LoopSettledClaimPaths = Pick<ClaimedLoopSettledMarker, "stablePath" | "claimedPath">;
@@ -250,7 +261,11 @@ async function claimLoopSettledMarker(root: string): Promise<ClaimedLoopSettledM
   }
 
   try {
-    return { stablePath, claimedPath, contents: await readFile(claimedPath, "utf8") };
+    const [contents, metadata] = await Promise.all([
+      readFile(claimedPath, "utf8"),
+      stat(claimedPath),
+    ]);
+    return { stablePath, claimedPath, contents, modifiedAtMs: metadata.mtimeMs };
   } catch (error) {
     await restoreLoopSettledMarker({ stablePath, claimedPath });
     throw error;
@@ -261,15 +276,21 @@ export interface RunSettleOptions {
   readonly root?: string;
 }
 
+function latestModifiedAt(...values: Array<number | undefined>): number | null {
+  const present = values.filter((value): value is number => value !== undefined);
+  return present.length === 0 ? null : Math.max(...present);
+}
+
 /** Observe one current repository snapshot, compute its typed verdict, and advance its frontier. */
 export async function runSettle(options: RunSettleOptions = {}): Promise<SettleResult> {
   const root = options.root ?? process.cwd();
   const loopClaim = await claimLoopSettledMarker(root);
   let loopFinalized = loopClaim === null;
   try {
-    const [graph, lastSettleContents, reviewConcerns] = await Promise.all([
+    const [graph, lastSettle, failureTrace, reviewConcerns] = await Promise.all([
       loadWorkGraph({ root }),
-      readOptionalText(join(root, LAST_SETTLE_MARKER_PATH)),
+      readOptionalFile(join(root, LAST_SETTLE_MARKER_PATH)),
+      readOptionalFile(join(root, DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH)),
       loadReviewConcerns(root),
     ]);
     const gate = await runRepositoryGate(root);
@@ -277,7 +298,15 @@ export async function runSettle(options: RunSettleOptions = {}): Promise<SettleR
     const result = computeSettleVerdict({
       graph,
       loopSettledContents: loopClaim?.contents ?? null,
-      lastSettleContents,
+      lastSettleContents: lastSettle?.contents ?? null,
+      cord: {
+        failureTraceContents: failureTrace?.contents ?? null,
+        failureTraceModifiedAtMs: failureTrace?.modifiedAtMs ?? null,
+        lastClaimModifiedAtMs: latestModifiedAt(
+          lastSettle?.modifiedAtMs,
+          loopClaim?.modifiedAtMs,
+        ),
+      },
       gate,
       presweep,
       reviewConcerns,
@@ -332,6 +361,9 @@ export function renderSettleResult(
     );
   } else {
     lines.push("loop: none pending");
+  }
+  if (result.cordFailureReason !== null) {
+    lines.push(`cord: last recording failed — ${result.cordFailureReason}`);
   }
   const deltaIds = result.delta.newlyDoneTicketIds.join(", ");
   if (result.delta.firstSettle) {
