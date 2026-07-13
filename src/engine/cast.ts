@@ -347,7 +347,7 @@ export async function castPlay<I, O>(
   let output: O | null = null;
   if (!timedOut && result) {
     budgetOutcome = check(budget, (result.usage ?? {}) as Usage);
-    output = play.parse(result.result ?? "");
+    output = play.parse(result.result ?? "", ctx);
     if (opts.skipGates) process.stdout.write("· gates skipped (--no-gates)\n");
     gateVerdict = opts.skipGates ? null : play.gates(output, ctx);
   }

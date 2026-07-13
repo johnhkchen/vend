@@ -20,7 +20,7 @@ import {
   serializeRunRecord,
   totalTokens,
 } from "../log/run-log.ts";
-import type { Play } from "./play.ts";
+import type { CastContext, Play } from "./play.ts";
 import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
 import { buildArgs } from "../executor/claude.ts";
@@ -89,12 +89,18 @@ async function closedLoopbackOpenAIBaseUrl(): Promise<string> {
 const BIG_BUDGET: Budget = { timeMs: 60_000, tokens: 1_000_000 };
 
 /** A trivial play: render → parse (echo) → gates clear → effect reports it landed. */
-function echoPlay(effectLog: string[]): Play<{ topic: string }, { text: string }> {
+function echoPlay(
+  effectLog: string[],
+  parseContexts?: CastContext<{ topic: string }>[],
+): Play<{ topic: string }, { text: string }> {
   return {
     name: "echo",
     summary: "echo the model reply back as the parsed output (test fixture)",
     render: (inputs) => `echo: ${inputs.topic}`,
-    parse: (text) => ({ text }),
+    parse: (text, ctx) => {
+      parseContexts?.push(ctx);
+      return { text };
+    },
     gates: () => ({ status: "clear" }),
     effect: async (out) => {
       effectLog.push(out.text);
@@ -366,9 +372,10 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   const root = await tmp();
   const seen: StreamMessage[] = [];
   const effectLog: string[] = [];
+  const parseContexts: CastContext<{ topic: string }>[] = [];
   const runLogPath = join(root, "runs.jsonl");
 
-  const summary = await castPlay(echoPlay(effectLog), { topic: "vend" }, BIG_BUDGET, {
+  const summary = await castPlay(echoPlay(effectLog, parseContexts), { topic: "vend" }, BIG_BUDGET, {
     subject: "T-035-01-stub",
     projectRoot: root,
     transcriptDir: root,
@@ -385,6 +392,7 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(summary.materialized).toBe(true);
   expect(summary.produced).toBe("echo-artifact");
   expect(effectLog).toEqual(["hello from stub"]); // effect saw the parsed output
+  expect(parseContexts).toEqual([{ inputs: { topic: "vend" }, projectRoot: root }]);
   expect(summary.actuals?.usage).toEqual({ input_tokens: 7, output_tokens: 3 });
 
   // Exactly one run-log record, stamped with the stub's model id (proves the result's

@@ -203,8 +203,9 @@ export interface Play<I, O> {
   readonly summary: string;
   /** Render the typed inputs into the prompt string the seam dispenses. */
   readonly render: (inputs: I) => string;
-  /** SAP-parse the model's reply text into the typed output. */
-  readonly parse: (text: string) => O;
+  /** SAP-parse the model's reply text into the typed output. The cast context permits deterministic,
+   *  input-aware normalization before the ONE output fans out to both gates and effect. */
+  readonly parse: (text: string, ctx: CastContext<I>) => O;
   /** Clear the output against the play's gates — the contract that nothing unworthy lands. */
   readonly gates: (out: O, ctx: CastContext<I>) => GateVerdict;
   /** Land the cleared output in the world (the one async, impure member). */
