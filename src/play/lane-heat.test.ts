@@ -43,6 +43,50 @@ function inputBurn(seat: AgentSeat, tokens: number): RunRecord {
   return record(seat, { input_tokens: tokens });
 }
 
+const QUOTA_BASE = Date.parse("2026-07-13T00:00:00.000Z");
+const CAP_MARKER = {
+  signal: "http-429",
+  reason: "provider reset-window capacity exhausted",
+} as const;
+
+function quotaRecord(
+  seatOfExecution: AgentSeat,
+  minute: number,
+  usage: UsageInput = {},
+  capped = false,
+): RunRecord {
+  sequence += 1;
+  const endedAt = new Date(QUOTA_BASE + minute * 60_000).toISOString();
+  return buildRunRecord({
+    runId: "quota-heat-" + String(sequence),
+    play: "decompose-epic",
+    epic: "E-QUOTA-HEAT",
+    model: "fixture",
+    outcome: capped ? "errored" : "success",
+    usage,
+    seatOfExecution,
+    ...(capped ? { capWindowExhausted: CAP_MARKER } : {}),
+    startedAt: endedAt,
+    endedAt,
+  });
+}
+
+function learnedQuotaRecords(
+  firstCapacity: number,
+  firstCurrent: number,
+  secondCapacity: number,
+  secondCurrent: number,
+): readonly RunRecord[] {
+  return [
+    quotaRecord(FIRST, 0, {}, true),
+    quotaRecord(SECOND, 0, {}, true),
+    quotaRecord(FIRST, 100, { input_tokens: firstCapacity }, true),
+    quotaRecord(SECOND, 100, { input_tokens: secondCapacity }, true),
+    quotaRecord(FIRST, 200, { input_tokens: firstCurrent }),
+    quotaRecord(SECOND, 200, { input_tokens: secondCurrent }),
+  ];
+}
+
 describe("inferDefaultSeat — relative recent lane heat", () => {
   test("a clearly hot lane returns the cooler known seat plus a heat reason", () => {
     const result = inferDefaultSeat([
@@ -129,5 +173,54 @@ describe("inferDefaultSeat — canonical inputs", () => {
     expect(result).not.toBeNull();
     expect(result?.seat).toBe(KNOWN_SEATS[0]);
     expect(KNOWN_SEATS).toContain(result!.seat);
+  });
+});
+
+describe("inferDefaultSeat — learned quota-fraction heat", () => {
+  test("quota fraction outranks raw burn and renders stable learned-window evidence", () => {
+    // Raw burn is FIRST=185 vs SECOND=1,200, which would route to FIRST. Learned fractions are
+    // FIRST=85/100=85% vs SECOND=200/1,000=20%, so quota headroom routes to SECOND.
+    const result = inferDefaultSeat(learnedQuotaRecords(100, 85, 1_000, 200));
+
+    expect(result).toEqual({
+      seat: SECOND,
+      reason:
+        "learned quota fraction: " + FIRST + " at ~85% of learned window; " +
+        SECOND + " at ~20% of learned window; routing to " + SECOND,
+    });
+    expect(result?.reason).toContain(FIRST + " at ~85% of learned window");
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  test("quota ranking is symmetric when the other lane has more learned headroom", () => {
+    expect(inferDefaultSeat(learnedQuotaRecords(1_000, 100, 100, 80))?.seat).toBe(FIRST);
+  });
+
+  test("equal learned fractions stay unrouted even when absolute burn differs", () => {
+    // Both are at 50%, while raw ledger burn differs by 10x.
+    expect(inferDefaultSeat(learnedQuotaRecords(100, 50, 1_000, 500))).toBeNull();
+  });
+
+  test("one unlearned lane preserves the exact relative-burn fallback", () => {
+    const result = inferDefaultSeat([
+      quotaRecord(FIRST, 0, {}, true),
+      quotaRecord(FIRST, 100, { input_tokens: 300 }, true),
+      inputBurn(SECOND, 100),
+    ]);
+
+    expect(result).toEqual({
+      seat: SECOND,
+      reason:
+        "recent cost-weighted burn (last 100 records): " + FIRST + "=300 vs " +
+        SECOND + "=100; 3x hotter",
+    });
+  });
+
+  test("over-cap fractions remain unclamped for ranking and provenance", () => {
+    const result = inferDefaultSeat(learnedQuotaRecords(100, 120, 100, 100));
+
+    expect(result?.seat).toBe(SECOND);
+    expect(result?.reason).toContain(FIRST + " at ~120% of learned window");
+    expect(result?.reason).toContain(SECOND + " at ~100% of learned window");
   });
 });

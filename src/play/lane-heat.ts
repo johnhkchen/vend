@@ -1,12 +1,17 @@
-// Pure lane-heat reader (T-071-02-01) — infer a default routing seat from recent,
-// cost-weighted ledger burn without loading the ledger or inventing provider quota facts.
+// Pure lane-heat reader (T-071-02-01, T-082-02-02) — infer a default routing seat
+// from local ledger evidence without loading the ledger or inventing provider quota facts.
 //
-// The append-ordered record tail is the only sourced recency signal in this slice. Heat is
-// RELATIVE: a lane must have decisively more observed burn than the coolest known alternative.
-// Absolute reset-window quotas and cap/429 signals are deliberately deferred by S-071-02.
+// Complete learned reset-window facts rank lanes by current quota fraction. Until every known
+// lane has that denominator, the append-ordered record tail retains E-071's byte-compatible
+// relative-burn fallback.
 
 import { totalTokens, type RunRecord } from "../log/run-log.ts";
 import { KNOWN_SEATS, type AgentSeat } from "./agent-seat.ts";
+import {
+  learnLaneCapacities,
+  type LaneCapacity,
+  type LearnedLaneCapacity,
+} from "./lane-capacity.ts";
 
 /** Number of append-ordered ledger records considered recent. Mirrors the repository's
  * established bounded-tail recency convention without claiming a provider reset duration. */
@@ -41,18 +46,8 @@ function heatReason(hottest: LaneBurn, coolest: LaneBurn): string {
   );
 }
 
-/**
- * Infer the uniquely coolest known routing seat from recent per-lane ledger burn.
- *
- * PURE/TOTAL — callers supply already-loaded records; this function uses no fs, clock,
- * executor, or mutable shared state. Records with absent or currently unknown raw
- * seatOfExecution values do not contribute. Both the lane vocabulary and the cost
- * definition remain single-sourced through KNOWN_SEATS and run-log's totalTokens.
- *
- * Returns null for an empty/unattributed ledger, tied lanes, an ambiguous coolest or
- * hottest lane, or a non-decisive imbalance. This keeps a both-cool mint unrouted.
- */
-export function inferDefaultSeat(records: readonly RunRecord[]): InferredSeat | null {
+/** E-071's byte-compatible fallback over relative recent cost-weighted burn. */
+function inferByRelativeBurn(records: readonly RunRecord[]): InferredSeat | null {
   const burns: LaneBurn[] = KNOWN_SEATS.map((seat) => ({ seat, burn: 0 }));
 
   for (const record of records.slice(-LANE_HEAT_WINDOW)) {
@@ -77,3 +72,57 @@ export function inferDefaultSeat(records: readonly RunRecord[]): InferredSeat | 
   return Object.freeze({ seat: coolest.seat, reason: heatReason(hottest, coolest) });
 }
 
+function isLearned(capacity: LaneCapacity): capacity is LearnedLaneCapacity {
+  return capacity.status === "learned";
+}
+
+/** Stable, locale-independent display only; the ranking retains the unclamped fraction. */
+function quotaPercentage(quotaFraction: number): string {
+  return String(Math.round(quotaFraction * 100));
+}
+
+function quotaReason(
+  capacities: readonly LearnedLaneCapacity[],
+  selected: AgentSeat,
+): string {
+  const evidence = capacities.map(({ seat, quotaFraction }) =>
+    seat + " at ~" + quotaPercentage(quotaFraction) + "% of learned window"
+  ).join("; ");
+  return "learned quota fraction: " + evidence + "; routing to " + selected;
+}
+
+/** Choose the unique known lane with the most learned reset-window headroom. */
+function inferByQuotaFraction(
+  capacities: readonly LearnedLaneCapacity[],
+): InferredSeat | null {
+  if (capacities.length < 2) return null;
+
+  const ranked = capacities.slice().sort((a, b) => a.quotaFraction - b.quotaFraction);
+  const coolest = ranked[0]!;
+
+  // Registry order must never break an equal-headroom tie. A unique minimum is sufficient:
+  // hotter lanes may tie without making the coolest routing choice ambiguous.
+  if (ranked[1]!.quotaFraction === coolest.quotaFraction) return null;
+
+  return Object.freeze({
+    seat: coolest.seat,
+    reason: quotaReason(capacities, coolest.seat),
+  });
+}
+
+/**
+ * Infer the uniquely coolest known routing seat from local per-lane ledger evidence.
+ *
+ * PURE/TOTAL — callers supply already-loaded records; this function uses no fs, current clock,
+ * executor, or mutable shared state. When every known lane has learned reset-window capacity,
+ * the unique lowest current quota fraction wins. If any lane is unlearned, the function preserves
+ * E-071's relative recent-burn policy and exact provenance bytes rather than inventing a quota.
+ *
+ * Records with absent or currently unknown raw seatOfExecution values do not contribute to known
+ * lanes. The registry and cost definition remain single-sourced through KNOWN_SEATS and totalTokens.
+ */
+export function inferDefaultSeat(records: readonly RunRecord[]): InferredSeat | null {
+  const capacities = learnLaneCapacities(records);
+  if (!capacities.every(isLearned)) return inferByRelativeBurn(records);
+  return inferByQuotaFraction(capacities);
+}
