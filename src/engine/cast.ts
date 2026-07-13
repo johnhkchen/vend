@@ -27,7 +27,7 @@ import type { Executor } from "../executor/executor.ts";
 import { executorFor } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
-import type { CastContext, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
+import type { CastContext, EffectResult, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
 import {
   accumulateCastProgress,
   classify,
@@ -43,6 +43,7 @@ import {
   toolFlags,
 } from "./cast-core.ts";
 import { readProjectMcpServers } from "./mcp-registry.ts";
+import { captureEffectDiff } from "./cast-diff.ts";
 
 // Re-export the pure core so callers (T-007-03) have one engine entry for the cast surface.
 export * from "./cast-core.ts";
@@ -132,6 +133,9 @@ export interface RunSummary {
    * surface nothing threadable). A `castChain` halts rather than thread an `undefined`.
    */
   readonly produced?: string;
+  /** Repository-relative reference to the non-empty Git patch a landed effect produced.
+   *  Omitted when no effect ran, the effect failed, or its reported artifacts have no diff. */
+  readonly capturedDiff?: string;
   /**
    * The cast's measured cost (T-024-02). Populated on every REAL cast (`castPlay` always meters
    * both denominations); optional only so a hand-built `RunSummary` fake (chain-core.test.ts)
@@ -299,11 +303,21 @@ export async function castPlay<I, O>(
   // clean outcome, mirroring the seam's non-timeout handling above.
   let materialized = false;
   let produced: string | undefined;
+  let capturedDiff: string | undefined;
   let seatDefaulted: SeatDefaulted | undefined;
   let seatInferred: SeatInferred | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
-    const eff = await play.effect(output, ctx);
+    const reported = await play.effect(output, ctx);
+    // The effect reports the files it wrote; the generic impure shell owns Git capture. Enriching
+    // the result here keeps capturedDiff on the EffectResult → RunRecord path without requiring
+    // every concrete play to know about Git or `.vend` storage.
+    const effectDiff = reported.ok
+      ? await captureEffectDiff({ projectRoot: root, runId, artifacts: reported.artifacts })
+      : undefined;
+    const eff: EffectResult = effectDiff === undefined
+      ? reported
+      : { ...reported, capturedDiff: effectDiff };
     materialized = eff.ok;
     // Preserve the effect's authoritative routing disposition. The generic cast loop does not
     // inspect play-specific inputs or re-run seat policy; it only surfaces and records the report.
@@ -312,6 +326,7 @@ export async function castPlay<I, O>(
     // Surface the produced reference ONLY when the effect actually landed — a chain threads it
     // into the next play (T-011-01); a failed (e.g. id-collision) effect surfaces nothing.
     produced = eff.ok ? eff.produced : undefined;
+    capturedDiff = eff.capturedDiff;
     if (eff.outcome) outcome = eff.outcome;
     process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
   } else if (verdict.outcome !== "success") {
@@ -393,6 +408,9 @@ export async function castPlay<I, O>(
       // executor-id mapping; spread only when known so an unmapped/lane-less executor leaves the
       // key off, exactly like `turnsUsed`, rather than fabricating provenance.
       ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+      // Durable patch evidence (T-073-01-01): only a landed effect with a non-empty Git diff
+      // supplies a reference. The ledger stays compact; the reviewing seat loads the artifact.
+      ...(capturedDiff !== undefined ? { capturedDiff } : {}),
       // The reduced-grounding marker (T-060-01-02, E-060 #3) — one-way, spread only when the cast
       // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
       // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
@@ -428,6 +446,7 @@ export async function castPlay<I, O>(
     materialized,
     ...(verdict.overEnvelope ? { overEnvelope: true } : {}),
     produced,
+    capturedDiff,
     actuals: { usage, wallMs },
   };
 }

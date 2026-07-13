@@ -122,6 +122,10 @@ export interface EffectResult {
   readonly outcome?: RunOutcome;
   readonly detail?: string;
   readonly artifacts?: readonly string[];
+  /** Repository-relative reference to the durable, non-empty Git patch over `artifacts`.
+   *  Concrete effects report `artifacts`; the generic cast shell enriches a landed result with
+   *  this reference after capture (T-073-01-01). */
+  readonly capturedDiff?: string;
   /** Successful routing degradation, absent when no default was applied. */
   readonly seatDefaulted?: SeatDefaulted;
   /** Automatic routing provenance, absent when the caller chose a seat or evidence was ambiguous. */

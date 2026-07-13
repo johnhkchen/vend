@@ -39,6 +39,24 @@ async function tmp(): Promise<string> {
   return d;
 }
 
+async function git(root: string, args: readonly string[]): Promise<void> {
+  const process = Bun.spawn(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const [exitCode, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stderr).text(),
+  ]);
+  if (exitCode !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr.trim()}`);
+}
+
+/** Give a temp project a real HEAD without depending on the developer's global Git identity. */
+async function initGitRepo(root: string): Promise<void> {
+  await git(root, ["init", "--quiet"]);
+  await git(root, [
+    "-c", "user.name=Vend Test", "-c", "user.email=vend-test@example.invalid",
+    "commit", "--allow-empty", "--quiet", "-m", "baseline",
+  ]);
+}
+
 /** A high envelope so nothing exhausts — the cast clears on the gate, not the budget. */
 const BIG_BUDGET: Budget = { timeMs: 60_000, tokens: 1_000_000 };
 
@@ -273,6 +291,63 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.model).toBe("stub-model-1");
   expect(rec.seatOfExecution).toBe("claude");
   expect(rec.overEnvelope).toBeUndefined();
+});
+
+test("castPlay: a file-writing effect captures a routable Git diff reference on summary and record (T-073-01-01 AC)", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const runId = "captured-diff-fixture";
+  const plan: BoardPlanFixture = {
+    story: { id: "S-073-99", title: "captured diff fixture" },
+    ticket: { id: "T-073-99-01", story: "S-073-99", title: "route this patch" },
+  };
+
+  const summary = await castPlay(boardPlanPlay(), { epic: "E-073" }, BIG_BUDGET, {
+    subject: "T-073-01-01",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId,
+    executor: stubExecutor([], JSON.stringify(plan)),
+  });
+
+  expect(summary.outcome).toBe("success");
+  expect(summary.materialized).toBe(true);
+  expect(summary.capturedDiff).toBe(join(".vend", "artifacts", `${runId}.diff`));
+
+  const patch = await readFile(join(root, summary.capturedDiff!), "utf8");
+  expect(patch.length).toBeGreaterThan(0);
+  expect(patch).toContain("docs/active/stories/S-073-99.md");
+  expect(patch).toContain("docs/active/tickets/T-073-99-01.md");
+
+  const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(raw.capturedDiff).toBe(summary.capturedDiff);
+  expect(reviveRecord(raw)?.capturedDiff).toBe(summary.capturedDiff);
+});
+
+test("castPlay: a no-op effect omits captured diff evidence (T-073-01-01 AC)", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const runId = "empty-diff-fixture";
+
+  const summary = await castPlay(echoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-073-01-01-no-op",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId,
+    executor: stubExecutor([]),
+  });
+
+  expect(summary.outcome).toBe("success");
+  expect(summary.materialized).toBe(true);
+  expect(summary.capturedDiff).toBeUndefined();
+  const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect("capturedDiff" in raw).toBe(false);
+  expect(reviveRecord(raw)?.capturedDiff).toBeUndefined();
+  expect(await Bun.file(join(root, ".vend", "artifacts", `${runId}.diff`)).exists()).toBe(false);
 });
 
 test("castPlay: stub stream refreshes one progress line and preserves every raw transcript message (T-072-02-02 AC)", async () => {

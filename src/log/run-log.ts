@@ -193,6 +193,9 @@ export interface RunRecordInput {
    *  entirely. The log preserves a supplied non-empty string verbatim and deliberately does
    *  not police it against the routing layer's known-seat registry. */
   readonly seatOfExecution?: string;
+  /** Repository-relative reference to the non-empty patch captured from a completed cast's
+   *  reported artifacts. Absent means no routable diff was captured. */
+  readonly capturedDiff?: string;
   /** ISO-8601, stamped by the runner — the log keeps no clock (purity). */
   readonly startedAt: string;
   readonly endedAt: string;
@@ -256,6 +259,8 @@ export interface RunRecord {
    *  (T-071-01-01). Absence remains unknown rather than being defaulted to a lane.
    *  {@link reviveRecord} preserves the raw string without applying routing policy. */
   readonly seatOfExecution?: string;
+  /** Present only when a completed cast supplied a non-empty patch artifact reference. */
+  readonly capturedDiff?: string;
   readonly startedAt: string;
   readonly endedAt: string;
 }
@@ -401,6 +406,11 @@ function normalizeSeatOfExecution(value: unknown): string | undefined {
   return isNonEmptyString(value) ? value : undefined;
 }
 
+/** Keep a usable patch artifact reference; absence/malformed optional metadata stays omitted. */
+function normalizeCapturedDiff(value: unknown): string | undefined {
+  return isNonEmptyString(value) ? value : undefined;
+}
+
 /** Normalize gate results: absent ⇒ `[]`; otherwise a defensively-copied array of
  *  the three logged fields (drops any extra keys the runner attached). */
 function normalizeGates(g: readonly GateResult[] | undefined): readonly GateResult[] {
@@ -437,6 +447,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
   const seatInferred = normalizeSeatInferred(input.seatInferred);
   const seatOfExecution = normalizeSeatOfExecution(input.seatOfExecution);
+  const capturedDiff = normalizeCapturedDiff(input.capturedDiff);
 
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
@@ -458,6 +469,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+    ...(capturedDiff !== undefined ? { capturedDiff } : {}),
     startedAt: input.startedAt,
     endedAt: input.endedAt,
   });
@@ -595,6 +607,10 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // historical absence or malformed optional metadata is omitted without losing the record.
   const seatOfExecution = normalizeSeatOfExecution(r.seatOfExecution);
 
+  // Captured patch evidence (T-073-01-01) follows the optional raw-fact contract: a non-empty
+  // string survives; absence or malformed metadata cannot make a historical record unreadable.
+  const capturedDiff = normalizeCapturedDiff(r.capturedDiff);
+
   return Object.freeze({
     v: RUN_LOG_SCHEMA_VERSION,
     runId: r.runId,
@@ -615,6 +631,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+    ...(capturedDiff !== undefined ? { capturedDiff } : {}),
     startedAt: r.startedAt,
     endedAt: r.endedAt,
   });

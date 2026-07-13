@@ -793,6 +793,30 @@ describe("seatOfExecution — raw round-trip, byte compatibility, malformed, leg
   });
 });
 
+describe("capturedDiff — artifact-reference round-trip and omission (T-073-01-01)", () => {
+  test("a non-empty reference round-trips through build, serialize, and revive", () => {
+    const reference = ".vend/artifacts/run-diff.diff";
+    const built = buildRunRecord(baseInput({ runId: "diff1", capturedDiff: reference }));
+    expect(built.capturedDiff).toBe(reference);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(built)));
+    expect(revived?.capturedDiff).toBe(reference);
+  });
+
+  test("absent and empty references are omitted", () => {
+    const absent = buildRunRecord(baseInput({ runId: "diff2" }));
+    const empty = buildRunRecord(baseInput({ runId: "diff3", capturedDiff: "" }));
+    expect("capturedDiff" in absent).toBe(false);
+    expect("capturedDiff" in empty).toBe(false);
+  });
+
+  test("malformed optional metadata is dropped without losing the record", () => {
+    const raw = JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "diff4" }))));
+    const revived = reviveRecord({ ...raw, capturedDiff: 42 });
+    expect(revived).not.toBeNull();
+    expect("capturedDiff" in revived!).toBe(false);
+  });
+});
+
 describe("forPlay — group a play's runs by project (T-013-03 AC #1)", () => {
   const { records } = readRuns(
     ledgerOf(
