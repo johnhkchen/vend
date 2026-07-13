@@ -21,7 +21,7 @@ import type { PlayTools } from "../engine/play.ts";
 import { AUTONOMOUS_DENY } from "./autonomous-deny.ts";
 import { buildGraph, GraphIntegrityError, GraphParseError, type RawNode } from "../graph/model.ts";
 import { snapshotCharterCodes } from "./charter-snapshot.ts";
-import { classifyCharterCite } from "./degrade-disposition.ts";
+import { classifyCharterCite, type DegradeDisposition } from "./degrade-disposition.ts";
 import type { WorkPlan } from "../../baml_client/index.ts";
 
 /**
@@ -206,24 +206,54 @@ export const isNonGoalAdvance = (claim: string): boolean => /^N\d+$/.test(claim.
  * reports it as advancing nothing, the honest verdict for a ticket that named only editorial noise.
  * Only tickets that actually lose an entry are re-allocated.
  */
-export function stripNonGoalAdvances(plan: WorkPlan, charter?: string): WorkPlan {
+/** The normalized plan plus occurrence-level evidence for every editorial cite it stripped. */
+export interface AdvanceNormalization {
+  readonly plan: WorkPlan;
+  readonly degrades: readonly DegradeDisposition[];
+}
+
+/**
+ * The report-producing form of {@link stripNonGoalAdvances}. The plan transformation is unchanged,
+ * but every removed occurrence now retains the exact disposition the terminal run record needs.
+ * Records follow ticket/entry order and are never deduplicated.
+ */
+export function stripNonGoalAdvancesWithDispositions(
+  plan: WorkPlan,
+  charter?: string,
+): AdvanceNormalization {
   const snapshot = charter === undefined ? undefined : snapshotCharterCodes(charter);
+  const degrades: DegradeDisposition[] = [];
   const tickets = plan.tickets.map((t) => {
     if (!Array.isArray(t.advances)) return t;
     const locationId = t.id.trim() || "<ticket>";
     const stripped = t.advances.map((claim, index) => {
-      if (isNonGoalAdvance(claim)) return true;
+      const location = `${locationId}.advances[${index}]`;
+      if (isNonGoalAdvance(claim)) {
+        degrades.push({ code: claim.trim(), location, action: "strip" });
+        return true;
+      }
       if (snapshot === undefined) return false;
-      return classifyCharterCite(
-        { code: claim, location: `${locationId}.advances[${index}]`, action: "strip" },
+      const classification = classifyCharterCite(
+        { code: claim, location, action: "strip" },
         snapshot,
-      ).classification === "degradable";
+      );
+      if (classification.classification !== "degradable") return false;
+      degrades.push(classification.disposition);
+      return true;
     });
     return stripped.some(Boolean)
       ? { ...t, advances: t.advances.filter((_, index) => !stripped[index]) }
       : t;
   });
-  return { ...plan, tickets };
+  return { plan: { ...plan, tickets }, degrades };
+}
+
+/**
+ * Backward-compatible plan-only projection used by direct callers that do not settle a cast.
+ * The real DecomposeEpic play uses the report-producing form so its effect can persist evidence.
+ */
+export function stripNonGoalAdvances(plan: WorkPlan, charter?: string): WorkPlan {
+  return stripNonGoalAdvancesWithDispositions(plan, charter).plan;
 }
 
 // ── born-blocked mint: --after <ticket> (honey-kitchen field fix #3) ─────────────────────────────

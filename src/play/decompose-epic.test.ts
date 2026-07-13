@@ -17,6 +17,7 @@ import {
   renumberPlanToEpic,
   resolveLoggedModel,
   stripNonGoalAdvances,
+  stripNonGoalAdvancesWithDispositions,
 } from "./decompose-epic-core.ts";
 // TYPE-ONLY import (erased under verbatimModuleSyntax) — value-importing baml_client would load the
 // native addon into this `bun test` process and trip the once-per-process reactor hang this whole
@@ -243,6 +244,36 @@ describe("isNonGoalAdvance — the shape test that identifies a non-goal claim",
 });
 
 describe("stripNonGoalAdvances — degrade editorial advances cites before the gates run", () => {
+  test("reports every stripped occurrence in ticket/index order without deduplicating", () => {
+    const source: WorkPlan = {
+      stories: [story("S-061-01", ["T-061-01-01", "T-061-01-02"])],
+      tickets: [
+        ticketAdv("T-061-01-01", ["P3", "N2", "P9", "P9"]),
+        ticketAdv("T-061-01-02", ["K1", "K9"]),
+      ],
+    };
+
+    const out = stripNonGoalAdvancesWithDispositions(source, ADVANCES_CHARTER);
+
+    expect(out.plan.tickets.map((ticket) => ticket.advances)).toEqual([["P3"], ["K1"]]);
+    expect(out.degrades).toEqual([
+      { code: "N2", location: "T-061-01-01.advances[1]", action: "strip" },
+      { code: "P9", location: "T-061-01-01.advances[2]", action: "strip" },
+      { code: "P9", location: "T-061-01-01.advances[3]", action: "strip" },
+      { code: "K9", location: "T-061-01-02.advances[1]", action: "strip" },
+    ]);
+    expect(source.tickets[0]!.advances).toEqual(["P3", "N2", "P9", "P9"]);
+    expect(source.tickets[1]!.advances).toEqual(["K1", "K9"]);
+  });
+  test("a clean report is empty and the plan-only wrapper remains compatible", () => {
+    const source: WorkPlan = {
+      stories: [story("S-061-01", ["T-061-01-01"])],
+      tickets: [ticketAdv("T-061-01-01", ["P3", "P7"])],
+    };
+    const report = stripNonGoalAdvancesWithDispositions(source, ADVANCES_CHARTER);
+    expect(report.degrades).toEqual([]);
+    expect(stripNonGoalAdvances(source, ADVANCES_CHARTER)).toEqual(report.plan);
+  });
   test("the common case: a ticket advancing [P4, N2] keeps P4, loses N2", () => {
     const out = stripNonGoalAdvances({
       stories: [story("S-061-01", ["T-061-01-01"])],

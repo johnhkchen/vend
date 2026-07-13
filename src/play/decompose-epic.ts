@@ -42,11 +42,12 @@ import { castPlay } from "../engine/cast.ts";
 import {
   DECOMPOSE_MAX_TURNS,
   DECOMPOSE_TOOLS,
-  stripNonGoalAdvances,
+  stripNonGoalAdvancesWithDispositions,
 } from "./decompose-epic-core.ts";
 import type { Budget } from "../budget/budget.ts";
 import { assembleInputs, contextSourcesForRun, type DecomposeInputs } from "./project-context.ts";
 import { decomposeEffect } from "./decompose-effect.ts";
+import type { DegradeDisposition } from "./degrade-disposition.ts";
 
 export { lisaValidate, type ValidateResult } from "./decompose-effect.ts";
 
@@ -112,7 +113,13 @@ export function epicIdOf(epic: string, epicPath: string): string {
  *                play from depending UP onto the shelf — that edge would cycle (press → play).
  *  - `card`    : Azorius (WU) permanent, mythic — the keystone planning play (card-model.md).
  */
-export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
+/** Parsed plan plus editorial advances dispositions retained for terminal settlement. */
+interface DecomposeOutput {
+  readonly plan: WorkPlan;
+  readonly degrades: readonly DegradeDisposition[];
+}
+
+export const decomposeEpicPlay: Play<DecomposeInputs, DecomposeOutput> = {
   name: PLAY,
   summary: "clear an epic into ready stories and tickets",
   // Render FOLLOWS the executor selection (T-036-02): `VEND_EXECUTOR=openai-compat` ⇒ render via
@@ -137,9 +144,20 @@ export const decomposeEpicPlay: Play<DecomposeInputs, WorkPlan> = {
   // Parse, then NORMALIZE: strip non-goal (`N\d+`) codes and well-shaped codes unresolved by this
   // run's charter before anything gates or materializes. The cast loop feeds this one parsed plan
   // to both `gates` and `effect`, so editorial cite noise degrades instead of discarding the board.
-  parse: (text, ctx) => stripNonGoalAdvances(b.parse.DecomposeEpic(text), ctx.inputs.charter),
-  gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
-  effect: decomposeEffect,
+  parse: (text, ctx) => stripNonGoalAdvancesWithDispositions(
+    b.parse.DecomposeEpic(text),
+    ctx.inputs.charter,
+  ),
+  gates: ({ plan }, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
+  effect: async ({ plan, degrades: advancesDegrades }, ctx) => {
+    const result = await decomposeEffect(plan, ctx);
+    if (!result.ok) return result;
+    const degrades = [...advancesDegrades, ...(result.degrades ?? [])];
+    return {
+      ...result,
+      ...(degrades.length > 0 ? { degrades } : {}),
+    };
+  },
   // RE-recalibrated 2026-06-30 from a SUSTAINED real drive (honey-kitchen, 14 epics / 38 casts —
   // tooling-feedback #4). The budget meters TOTAL tokens (input + output + cache reads), and the
   // "go-and-see" read tail scales with the project: the prior 250k (tuned 2026-06-29 to the vend
