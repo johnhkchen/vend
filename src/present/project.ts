@@ -118,6 +118,9 @@ function groupKeyFor(ticket: TicketNode, graph: WorkGraph, spec: PresentationSpe
     case "story":
       return ticket.storyId;
     case "status":
+      // Status is a true partition over normalized state: if every ticket has the same `stateKey`,
+      // one group is expected. Stable subgroups on such a board require a separately designed
+      // compound/secondary grouping policy, not invented status keys here.
       return stateKey(ticket);
     case "leverage":
       return ticket.priority;
