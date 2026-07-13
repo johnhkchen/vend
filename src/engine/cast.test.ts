@@ -29,6 +29,10 @@ import { DECOMPOSE_MAX_TURNS } from "../play/decompose-epic-core.ts";
 import type { DecomposeInputs } from "../play/project-context.ts";
 import type { ExecutorRegistry } from "../executor/select.ts";
 import { dispenseOpenAICompat, OPENAI_BASE_URL_ENV } from "../executor/openai-compat.ts";
+import {
+  DEFAULT_DECOMPOSE_DRAFT_PATH,
+  loadDecomposeDrafts,
+} from "./decompose-draft.ts";
 
 // Integration proof for the executor seam (T-035-01, AC#3): a STUB executor injected through
 // `castPlay` casts a play end to end — onMessage fires, a ResultMessage flows back, and the
@@ -854,6 +858,67 @@ test("castPlay: stub stream refreshes one progress line and preserves every raw 
   expect(rawLines.map((line) => JSON.parse(line))).toEqual(SAMPLE_STREAM);
 });
 
+test("castPlay: a gate-failed decompose leaves its parsed draft readable under .vend (T-077-04-01 AC)", async () => {
+  const root = await tmp();
+  const runId = "decompose-failed-checkpoint";
+  const parsedDraft = {
+    stories: [{ id: "S-077-99", title: "resumable fixture" }],
+    tickets: [{ id: "T-077-99-01", story: "S-077-99" }],
+  };
+  const gateFindings = {
+    status: "stop",
+    gate: "structural",
+    unit: "T-077-99-01",
+    reason: "missing required field `phase`",
+  } as const;
+  const effects: string[] = [];
+  const play: Play<{ epic: string }, typeof parsedDraft> = {
+    name: "decompose-epic",
+    summary: "leave a resumable fixture when decompose gates stop",
+    render: ({ epic }) => `decompose fixture: ${epic}`,
+    parse: () => parsedDraft,
+    gates: () => gateFindings,
+    effect: async () => {
+      effects.push("called");
+      return { ok: true };
+    },
+    budget: BIG_BUDGET,
+    card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
+  };
+
+  const summary = await castPlay(play, { epic: "E-077" }, BIG_BUDGET, {
+    subject: "E-077",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath: join(root, "runs.jsonl"),
+    runId,
+    executor: stubExecutor([]),
+  });
+
+  expect(summary.outcome).toBe("gate-failed");
+  expect(summary.materialized).toBe(false);
+  expect(effects).toEqual([]);
+
+  const drafts = await loadDecomposeDrafts({ path: join(root, DEFAULT_DECOMPOSE_DRAFT_PATH) });
+  expect(drafts.skipped).toBe(0);
+  expect(drafts.records).toHaveLength(1);
+  expect(drafts.records[0]).toEqual({
+    v: 1,
+    runId,
+    epic: "E-077",
+    parsedDraft,
+    gateFindings,
+    nextRepairAction: {
+      kind: "repair-gate",
+      gate: "structural",
+      unit: "T-077-99-01",
+      reason: "missing required field `phase`",
+      cause: "gate-stop",
+    },
+    createdAt: expect.any(String),
+  });
+});
+
 test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn units at the live seam (T-077-01-01 AC)", async () => {
   const root = await tmp();
   const runId = "decompose-max-turns-cap-hit";
@@ -956,6 +1021,13 @@ test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn un
   expect(record.play).toBe("decompose-epic");
   expect(record.turnsUsed).toBe(23);
   expect(record.outcome).toBe("success");
+
+  const drafts = await loadDecomposeDrafts({ path: join(root, DEFAULT_DECOMPOSE_DRAFT_PATH) });
+  expect(drafts.records).toHaveLength(1);
+  expect(drafts.records[0]?.nextRepairAction).toEqual({
+    kind: "resume-at-gates",
+    cause: "executor-max-turns",
+  });
 });
 
 test("castPlay: a lane-less executor omits seatOfExecution like other unknown facts", async () => {

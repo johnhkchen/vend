@@ -59,6 +59,12 @@ import {
 } from "./cast-core.ts";
 import { readProjectMcpServers } from "./mcp-registry.ts";
 import { captureEffectDiff } from "./cast-diff.ts";
+import {
+  appendDecomposeDraft,
+  DEFAULT_DECOMPOSE_DRAFT_PATH,
+  nextDecomposeRepairAction,
+  RESUMABLE_DECOMPOSE_PLAY,
+} from "./decompose-draft.ts";
 
 // Re-export the pure core so callers (T-007-03) have one engine entry for the cast surface.
 export * from "./cast-core.ts";
@@ -88,6 +94,9 @@ export interface CastOptions {
   readonly transcriptDir?: string;
   /** Override the run-log ledger path (default `appendRunLog`'s `.vend/runs.jsonl`). */
   readonly runLogPath?: string;
+  /** Override the resumable decompose checkpoint ledger (default
+   *  `<root>/.vend/decompose-drafts.jsonl`). Ignored by every other play. */
+  readonly decomposeDraftPath?: string;
   /** The E1 trust bit (T-014-01): did the author step in mid-run (`true`) or let it clear
    *  (`false`)? Self-reported at the cast command; threaded straight to the single end-of-cast
    *  append (pass-through data, exactly like `project`). Absent ⇒ field omitted ⇒ unknown. */
@@ -354,6 +363,23 @@ export async function castPlay<I, O>(
     output = play.parse(result.result ?? "", ctx);
     if (opts.skipGates) process.stdout.write("· gates skipped (--no-gates)\n");
     gateVerdict = opts.skipGates ? null : play.gates(output, ctx);
+    // A decompose checkpoint lands at the first point where all recovery facts exist and before
+    // classification/effect can fail or be interrupted. Keep the generic engine independent of
+    // the concrete BAML play by keying on its stable registry identity. Ungated casts have no gate
+    // findings and therefore cannot claim a resumable post-gate checkpoint.
+    if (gateVerdict !== null && play.name === RESUMABLE_DECOMPOSE_PLAY) {
+      await appendDecomposeDraft(
+        {
+          runId,
+          epic: opts.subject,
+          parsedDraft: output as object,
+          gateFindings: gateVerdict,
+          nextRepairAction: nextDecomposeRepairAction(gateVerdict, result.subtype),
+          createdAt: new Date().toISOString(),
+        },
+        { path: opts.decomposeDraftPath ?? join(root, DEFAULT_DECOMPOSE_DRAFT_PATH) },
+      );
+    }
   }
 
   const verdict = classify({ executorProbe, timedOut, budgetOutcome, gateVerdict });
