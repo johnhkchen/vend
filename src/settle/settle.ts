@@ -335,11 +335,7 @@ export function renderSettleResult(
   }
   const deltaIds = result.delta.newlyDoneTicketIds.join(", ");
   if (result.delta.firstSettle) {
-    lines.push(
-      deltaIds.length > 0
-        ? `delta: first settle — ${deltaIds}`
-        : "delta: first settle — no completed tickets",
-    );
+    lines.push("delta: first settle — no baseline");
   } else {
     lines.push(deltaIds.length > 0 ? `delta: ${deltaIds}` : "delta: none since last settle");
   }

@@ -205,28 +205,31 @@ export function serializeLastSettleMarker(marker: LastSettleMarker): string {
 }
 
 /**
- * Derive phase-done board state once. Epic completion follows canonical containment, while the
- * global done frontier follows the graph's flat ticket index. Empty epics never clear vacuously.
+ * Derive non-done epic clearance and the whole-board phase-done ticket frontier once. Epic
+ * completion follows canonical containment, while durable history follows the graph's flat ticket
+ * index. Empty epics never clear vacuously.
  */
 export function deriveEpicClearance(graph: WorkGraph): EpicClearanceResult {
-  const epics = graph.epics.map((epic): EpicClearance => {
-    const ticketsById = new Map(
-      epic.stories.flatMap((story) => story.tickets).map((ticket) => [ticket.id, ticket] as const),
-    );
-    const tickets = [...ticketsById.values()].sort((a, b) => a.id.localeCompare(b.id));
-    const clearedTicketIds = tickets
-      .filter((ticket) => ticket.phase === "done")
-      .map((ticket) => ticket.id);
-    const total = tickets.length;
-    return {
-      epicId: epic.id,
-      title: epic.title,
-      cleared: clearedTicketIds.length,
-      total,
-      clearedTicketIds,
-      allDone: total > 0 && clearedTicketIds.length === total,
-    };
-  });
+  const epics = graph.epics
+    .filter((epic) => epic.status !== "done")
+    .map((epic): EpicClearance => {
+      const ticketsById = new Map(
+        epic.stories.flatMap((story) => story.tickets).map((ticket) => [ticket.id, ticket] as const),
+      );
+      const tickets = [...ticketsById.values()].sort((a, b) => a.id.localeCompare(b.id));
+      const clearedTicketIds = tickets
+        .filter((ticket) => ticket.phase === "done")
+        .map((ticket) => ticket.id);
+      const total = tickets.length;
+      return {
+        epicId: epic.id,
+        title: epic.title,
+        cleared: clearedTicketIds.length,
+        total,
+        clearedTicketIds,
+        allDone: total > 0 && clearedTicketIds.length === total,
+      };
+    });
 
   const doneTicketIds = graph.tickets
     .filter((ticket) => ticket.phase === "done")
@@ -340,7 +343,9 @@ export function computeSettleVerdict(input: ComputeSettleInput): SettleResult {
   const reviewConcerns = copyReviewConcerns(input.reviewConcerns);
   const clearance = deriveEpicClearance(input.graph);
   const priorDone = new Set(marker.marker?.doneTicketIds ?? []);
-  const newlyDoneTicketIds = clearance.doneTicketIds.filter((id) => !priorDone.has(id));
+  const newlyDoneTicketIds = marker.firstSettle
+    ? []
+    : clearance.doneTicketIds.filter((id) => !priorDone.has(id));
   const doneTicketIds = [...clearance.doneTicketIds];
 
   return {

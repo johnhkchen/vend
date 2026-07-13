@@ -17,15 +17,20 @@ function node(file: string, data: Record<string, unknown>): RawNode {
   return { file, data, body: `fixture body for ${String(data.id)}` };
 }
 
-/** Canonical graph fixture: one all-done epic, one partial epic, and one empty epic. */
+/** Canonical graph fixture: one historical epic plus open all-done, partial, and empty epics. */
 function fixtureGraph(): WorkGraph {
   return buildGraph(
     [
+      node("E-050.md", { id: "E-050", title: "historical epic", status: "done", advances: [], serves: "fixture" }),
       node("E-300.md", { id: "E-300", title: "empty", status: "open", advances: [], serves: "fixture" }),
       node("E-100.md", { id: "E-100", title: "cleared epic", status: "open", advances: [], serves: "fixture" }),
       node("E-200.md", { id: "E-200", title: "partial epic", status: "open", advances: [], serves: "fixture" }),
     ],
     [
+      node("S-050-01.md", {
+        id: "S-050-01", title: "historical story", status: "done", priority: "high",
+        tickets: ["T-050-01"],
+      }),
       node("S-200-01.md", {
         id: "S-200-01", title: "partial story", status: "open", priority: "high",
         tickets: ["T-200-01", "T-200-02"],
@@ -36,6 +41,10 @@ function fixtureGraph(): WorkGraph {
       }),
     ],
     [
+      node("T-050-01.md", {
+        id: "T-050-01", story: "S-050-01", title: "historical cleared", type: "task",
+        status: "done", priority: "high", phase: "done", depends_on: [],
+      }),
       // Phase is authoritative: this counts despite status still being open.
       node("T-100-01.md", {
         id: "T-100-01", story: "S-100-01", title: "first cleared", type: "task",
@@ -71,14 +80,18 @@ function input(overrides: Partial<ComputeSettleInput> = {}): ComputeSettleInput 
     loopSettledContents: null,
     lastSettleContents: null,
     gate: greenGate(),
-    presweep: { ok: true, doneIds: ["T-100-01", "T-100-02", "T-200-01"], offenders: [] },
+    presweep: {
+      ok: true,
+      doneIds: ["T-100-01", "T-050-01", "T-100-02", "T-200-01"],
+      offenders: [],
+    },
     reviewConcerns: [],
     ...overrides,
   };
 }
 
 describe("deriveEpicClearance — the shared phase-done source", () => {
-  test("returns per-epic counts, a non-vacuous all-done set, and the sorted board frontier", () => {
+  test("returns non-done epic counts and a whole-board sorted ticket frontier", () => {
     expect(deriveEpicClearance(fixtureGraph())).toEqual({
       epics: [
         {
@@ -106,7 +119,7 @@ describe("deriveEpicClearance — the shared phase-done source", () => {
           allDone: false,
         },
       ],
-      doneTicketIds: ["T-100-01", "T-100-02", "T-200-01"],
+      doneTicketIds: ["T-050-01", "T-100-01", "T-100-02", "T-200-01"],
       allDoneEpicIds: ["E-100"],
     });
   });
@@ -167,7 +180,7 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     const verdict = computeSettleVerdict(input({
       lastSettleContents: serializeLastSettleMarker({
         version: LAST_SETTLE_MARKER_VERSION,
-        doneTicketIds: ["T-100-01", "T-200-01"],
+        doneTicketIds: ["T-050-01", "T-100-01", "T-200-01"],
       }),
       gate: {
         ok: false,
@@ -177,7 +190,7 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
       },
       presweep: {
         ok: false,
-        doneIds: ["T-200-01", "T-100-02", "T-100-01"],
+        doneIds: ["T-200-01", "T-050-01", "T-100-02", "T-100-01"],
         offenders,
       },
       reviewConcerns,
@@ -187,7 +200,12 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
     expect(verdict.loop).toBeNull();
     expect(verdict.delta).toEqual({ firstSettle: false, newlyDoneTicketIds: ["T-100-02"] });
-    expect(verdict.doneTicketIds).toEqual(["T-100-01", "T-100-02", "T-200-01"]);
+    expect(verdict.doneTicketIds).toEqual([
+      "T-050-01",
+      "T-100-01",
+      "T-100-02",
+      "T-200-01",
+    ]);
     expect(verdict.allDoneEpicIds).toEqual(["E-100"]);
     expect(verdict.epics.map(({ epicId, cleared, total, allDone }) => ({ epicId, cleared, total, allDone })))
       .toEqual([
@@ -203,7 +221,7 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     });
     expect(verdict.presweep).toEqual({
       ok: false,
-      doneIds: ["T-100-01", "T-100-02", "T-200-01"],
+      doneIds: ["T-050-01", "T-100-01", "T-100-02", "T-200-01"],
       offenders: ["docs/active/tickets/T-200-02.md", "src/z.ts"],
     });
     expect(verdict.reviewConcerns).toEqual([
@@ -244,7 +262,7 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     ]);
     expect(verdict.nextMarker).toEqual({
       version: LAST_SETTLE_MARKER_VERSION,
-      doneTicketIds: ["T-100-01", "T-100-02", "T-200-01"],
+      doneTicketIds: ["T-050-01", "T-100-01", "T-100-02", "T-200-01"],
     });
     expect(verdict.exceptions.every(({ nextAction }) => nextAction.trim().length > 0)).toBe(true);
     // Sorting/copying is internal; caller-owned arrays stay in their original order.
@@ -252,13 +270,14 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     expect(reviewConcerns.map(({ ticketId }) => ticketId)).toEqual(["T-200-02", "T-100-02"]);
   });
 
-  test("no prior marker is a full-board first-settle summary with no invented exceptions", () => {
+  test("no prior marker has no measured delta but seeds the full future baseline", () => {
     const verdict = computeSettleVerdict(input());
     expect(verdict.kind).toBe("verdict");
     if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
-    expect(verdict.delta).toEqual({
-      firstSettle: true,
-      newlyDoneTicketIds: ["T-100-01", "T-100-02", "T-200-01"],
+    expect(verdict.delta).toEqual({ firstSettle: true, newlyDoneTicketIds: [] });
+    expect(verdict.nextMarker).toEqual({
+      version: LAST_SETTLE_MARKER_VERSION,
+      doneTicketIds: ["T-050-01", "T-100-01", "T-100-02", "T-200-01"],
     });
     expect(verdict.loop).toBeNull();
     expect(verdict.exceptions).toEqual([]);

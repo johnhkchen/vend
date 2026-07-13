@@ -67,7 +67,7 @@ function completeVerdict(): SettleResult {
       ticketsDone: 1,
       durationSecs: 41,
     },
-    delta: { firstSettle: true, newlyDoneTicketIds: ["T-900-01"] },
+    delta: { firstSettle: true, newlyDoneTicketIds: [] },
     epics: [
       {
         epicId: "E-900",
@@ -137,7 +137,7 @@ describe("renderSettleResult — one-screen terminal contract", () => {
   test("prints every verdict field, preserves actions, and colors each exception red", () => {
     const rendered = renderSettleResult(completeVerdict());
     expect(rendered).toContain("loop: vend — 1 ticket done in 41s");
-    expect(rendered).toContain("delta: first settle — T-900-01");
+    expect(rendered).toContain("delta: first settle — no baseline");
     expect(rendered).toContain("epic: E-900 — 1/2 cleared");
     expect(rendered).toContain("epic: E-901 — 1/1 cleared — sweep ready");
     expect(rendered).toContain("gate: red — repository gate: typecheck failed");
@@ -250,13 +250,25 @@ async function createSettleFixtureRoot(): Promise<string> {
     mkdir(join(root, ".vend"), { recursive: true }),
   ]);
   await Promise.all([
+    writeFile(join(root, "docs", "active", "epic", "E-899.md"), [
+      "---", "id: E-899", "title: historical-epic", "status: done", "advances: [P3]",
+      "serves: fixture", "---", "",
+    ].join("\n")),
     writeFile(join(root, "docs", "active", "epic", "E-900.md"), [
       "---", "id: E-900", "title: fixture-epic", "status: open", "advances: [P4]",
       "serves: fixture", "---", "",
     ].join("\n")),
+    writeFile(join(root, "docs", "active", "stories", "S-899-01.md"), [
+      "---", "id: S-899-01", "title: historical-story", "type: story", "status: done",
+      "priority: high", "tickets: [T-899-01]", "---", "",
+    ].join("\n")),
     writeFile(join(root, "docs", "active", "stories", "S-900-01.md"), [
       "---", "id: S-900-01", "title: fixture-story", "type: story", "status: open",
       "priority: high", "tickets: [T-900-01]", "---", "",
+    ].join("\n")),
+    writeFile(join(root, "docs", "active", "tickets", "T-899-01.md"), [
+      "---", "id: T-899-01", "story: S-899-01", "title: historical-ticket", "type: task",
+      "status: done", "priority: high", "phase: done", "depends_on: []", "---", "",
     ].join("\n")),
     writeFile(join(root, "docs", "active", "tickets", "T-900-01.md"), [
       "---", "id: T-900-01", "story: S-900-01", "title: fixture-ticket", "type: task",
@@ -308,8 +320,17 @@ describe("runSettle — Lisa loop marker lifecycle", () => {
       expect(first.kind).toBe("verdict");
       if (first.kind !== "verdict") throw new Error("expected first verdict");
       expect(first.loop).toMatchObject({ project: "fixture-project", ticketsDone: 1, durationSecs: 12 });
-      expect(renderSettleResult(first, { color: false })).toContain(
-        "loop: fixture-project — 1 ticket done in 12s",
+      const firstRendered = renderSettleResult(first, { color: false });
+      expect(firstRendered).toContain("loop: fixture-project — 1 ticket done in 12s");
+      expect(firstRendered).toContain("delta: first settle — no baseline");
+      expect(firstRendered).not.toContain("epic: E-899");
+      expect(firstRendered).toContain("epic: E-900 — 1/1 cleared — sweep ready");
+      expect(first.nextMarker).toEqual({
+        version: LAST_SETTLE_MARKER_VERSION,
+        doneTicketIds: ["T-899-01", "T-900-01"],
+      });
+      expect(await readFile(join(root, LAST_SETTLE_MARKER_PATH), "utf8")).toBe(
+        '{"version":1,"doneTicketIds":["T-899-01","T-900-01"]}\n',
       );
       expect(await exists(markerPath)).toBe(false);
 

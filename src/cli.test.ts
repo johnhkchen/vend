@@ -870,7 +870,7 @@ describe("vend settle — fixture repository acceptance (T-079-01-02)", () => {
       const first = await invoke();
       expect(first.exitCode).toBe(0);
       expect(first.stderr).toBe("");
-      expect(first.stdout).toContain("delta: first settle — T-900-01");
+      expect(first.stdout).toContain("delta: first settle — no baseline");
       expect(first.stdout).toContain("epic: E-900 — 1/2 cleared");
       expect(first.stdout).toContain("gate: green — repository gate: 7 tests");
       expect(first.stdout).toContain("presweep: green — 1 done ticket, source + board committed");
