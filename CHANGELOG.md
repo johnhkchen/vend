@@ -3,6 +3,16 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0 — 2026-07-13
+
+The release-candidate series below, made final. If you're coming from 0.3.0, what 0.4.0 means:
+
+- **The meter measures true cost** — cached context is priced at its real weight, so big boards clear on default budgets, and the live line shows spend against plan while a cast runs.
+- **Two seats, one board** — route work to claude or codex per ticket (`--agent`), or leave it off and vend picks the cooler lane from recent burn; the board now learns per-lane quota from history. One seat's work can be reviewed by the other lab's seat before it settles — when you've set that up; it stays quietly out of the way when you haven't.
+- **Failures are named, cheap, and recoverable** — never a stack trace: unreachable executors, thin budgets, unlabeled charters, and interrupted decomposes all land as plain-words verdicts with the fix, and a stopped decompose resumes from its draft.
+- **The loop closes itself** — `vend settle` answers "how did the loop go?" on one screen and fires itself when a lisa loop finishes (ntfy pages you); `vend sweep` closes cleared epics on a "y". Your day is: steer, chain, read the ping, confirm.
+- **Everything speaks plain English** — help is complete and always free, budgets accept `40m,350k`, and every face a person reads passed the kitchen-table test.
+
 ## 0.4.0-rc.8 — 2026-07-13
 
 - Asking for help is free, everywhere: `--help`/`-h` on any command prints usage and exits — previously `vend chain --help` treated `--help` as your signal and ran a real paid cast.
