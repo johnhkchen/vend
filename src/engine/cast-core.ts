@@ -361,6 +361,43 @@ export function formatCastProgress(state: CastProgress, opts: CastProgressFormat
   return `elapsed ${humanElapsed(opts.elapsedMs)} · ${humanProgressTokens(state.weightedTokens)}/${humanProgressTokens(opts.tokenEnvelope)} · turn ${turn}`;
 }
 
+/** Plain facts available when the cast settles and renders its final turn accounting. */
+export interface TurnSummaryFormat {
+  /** Distinct assistant/model responses observed on the stream — the unit `--max-turns` bounds. */
+  readonly agentTurns?: number;
+  /** Effective Claude agent-loop cap passed as `--max-turns`; absent means uncapped. */
+  readonly maxTurns?: number;
+  /** Claude result `num_turns`, which counts conversation events rather than agent-loop turns. */
+  readonly executorReportedTurns?: number;
+}
+
+/**
+ * Render final turn accounting without comparing unlike counters. PURE and TOTAL over optional
+ * facts. Claude's `--max-turns` bounds model-loop iterations, while terminal `num_turns` starts at
+ * one and advances for emitted user/tool-result messages; one model response can issue several
+ * tools, so the latter may legitimately exceed the former. The cap therefore pairs only with the
+ * distinct-assistant count. A defensive over-cap observation is labeled as two facts rather than
+ * rendered as a misleading fraction; the raw executor count is never clamped or reinterpreted.
+ */
+export function formatTurnSummary(values: TurnSummaryFormat): string | undefined {
+  const parts: string[] = [];
+  if (values.agentTurns !== undefined) {
+    if (values.maxTurns === undefined) {
+      parts.push(`agent turns: ${values.agentTurns}`);
+    } else if (values.agentTurns <= values.maxTurns) {
+      parts.push(`agent turns: ${values.agentTurns} / ${values.maxTurns} cap`);
+    } else {
+      parts.push(`agent turns observed: ${values.agentTurns}`, `configured agent-turn cap: ${values.maxTurns}`);
+    }
+  } else if (values.maxTurns !== undefined) {
+    parts.push(`configured agent-turn cap: ${values.maxTurns}`);
+  }
+  if (values.executorReportedTurns !== undefined) {
+    parts.push(`executor conversation events: ${values.executorReportedTurns}`);
+  }
+  return parts.length > 0 ? `· ${parts.join("; ")}` : undefined;
+}
+
 /**
  * Format one stream-json message into a compact human line for the live surface. PURE and
  * TOTAL — never throws on an unknown `type` (the stream is external JSON; tolerate noise).

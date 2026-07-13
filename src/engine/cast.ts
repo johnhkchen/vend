@@ -33,6 +33,7 @@ import {
   classify,
   EMPTY_CAST_PROGRESS,
   formatCastProgress,
+  formatTurnSummary,
   makeStreamSink,
   resolveLoggedModel,
   resolveMaxTurns,
@@ -341,11 +342,18 @@ export async function castPlay<I, O>(
   // `result` is null and this falls back cleanly.
   const loggedModel = resolveLoggedModel(result?.model, opts.model);
 
-  // Harvest the agentic turns the run took off the terminal result's `num_turns` (T-015-02):
-  // the signal the warranted turn cap is calibrated from. Absent on a timed-out run (no
-  // result) or a stream that named none ⇒ the run-log field is omitted (reads unknown).
+  // Preserve the terminal result's `num_turns` (T-015-02) as raw executor evidence. Claude's
+  // value counts conversation events (initial event + emitted user/tool-result messages), NOT
+  // the model-loop iterations bounded by `--max-turns`; parallel tool calls can therefore make
+  // it exceed that cap without an enforcement failure. The final formatter pairs the cap only
+  // with the stream's distinct-assistant count and labels this external counter separately.
   const turnsUsed = resolveTurnsUsed(result?.num_turns);
-  if (turnsUsed !== undefined) process.stdout.write(`· turns: ${turnsUsed}${maxTurns ? ` / ${maxTurns} cap` : ""}\n`);
+  const turnSummary = formatTurnSummary({
+    ...(progress.turns > 0 ? { agentTurns: progress.turns } : {}),
+    ...(maxTurns !== undefined ? { maxTurns } : {}),
+    ...(turnsUsed !== undefined ? { executorReportedTurns: turnsUsed } : {}),
+  });
+  if (turnSummary !== undefined) process.stdout.write(`${turnSummary}\n`);
 
   // The honest reduced-grounding signal (E-060 #3, T-060-01-02): `resolved.reducedGrounding` exists
   // only on the strict variant, so the `in` check narrows the resolved union and the `&&` collapses

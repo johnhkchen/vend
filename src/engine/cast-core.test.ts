@@ -14,6 +14,7 @@ import {
   EMPTY_CAST_PROGRESS,
   formatCastProgress,
   formatMessage,
+  formatTurnSummary,
   makeStreamSink,
   resolveLoggedModel,
   resolveMaxTurns,
@@ -202,6 +203,34 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
     expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 3_723_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
       "elapsed 1h02m03s · 0/500k · turn 0/15",
     );
+  });
+});
+
+describe("formatTurnSummary — cap honesty across unlike Claude counters (T-072-04-01)", () => {
+  test("characterizes num_turns as conversation events separate from the capped agent turns", () => {
+    const line = formatTurnSummary({ agentTurns: 9, maxTurns: 15, executorReportedTurns: 18 });
+
+    expect(line).toBe("· agent turns: 9 / 15 cap; executor conversation events: 18");
+    expect(line).not.toContain("18 / 15 cap");
+  });
+
+  test("an anomalous over-cap agent observation renders separate facts, never an over-cap fraction", () => {
+    const line = formatTurnSummary({ agentTurns: 18, maxTurns: 15, executorReportedTurns: 18 });
+
+    expect(line).toBe(
+      "· agent turns observed: 18; configured agent-turn cap: 15; executor conversation events: 18",
+    );
+    expect(line).not.toContain("18 / 15 cap");
+  });
+
+  test("uncapped, unobserved, and empty shapes remain explicit and total", () => {
+    expect(formatTurnSummary({ agentTurns: 3, executorReportedTurns: 4 })).toBe(
+      "· agent turns: 3; executor conversation events: 4",
+    );
+    expect(formatTurnSummary({ maxTurns: 15, executorReportedTurns: 1 })).toBe(
+      "· configured agent-turn cap: 15; executor conversation events: 1",
+    );
+    expect(formatTurnSummary({})).toBeUndefined();
   });
 });
 
