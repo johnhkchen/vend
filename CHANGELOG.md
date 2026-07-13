@@ -3,6 +3,13 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.4 — 2026-07-12
+
+- `vend doctor` now proves your executor can actually run from where you are — not just that it's installed. A sandbox blocking credential access (the macOS Keychain case) shows up as a named red check with the fix, before any tokens are spent.
+- If that failure happens mid-cast anyway, it lands as a clean named stop with the cause and the fix — never a raw error dump.
+- Funding a cast far below what it's measured to need gets a warning at the counter ("steer measures ~400k; you funded 12.5k") — you can still proceed deliberately, but never by accident.
+- Cross-vendor review: one seat's finished work can be reviewed by the other lab's seat before it settles — a second, independent pair of eyes as a real gate, with an honest refusal path when the reviewer says no.
+
 ## 0.4.0-rc.3 — 2026-07-12
 
 - `vend help` (and `--help`) finally answers — every command listed, grouped free vs metered, with a pointer to `vend user-guide` for newcomers; a typo'd command now suggests the nearest real one (`sterr` → "did you mean steer?").
