@@ -71,7 +71,7 @@ function groundedEchoPlay(effectLog: string[]): Play<{ topic: string }, { text: 
 
 const SAMPLE_STREAM: StreamMessage[] = [
   { type: "system", subtype: "init", session_id: "s1" },
-  { type: "assistant", message: { role: "assistant", model: "stub-model-1", usage: { input_tokens: 7 } } },
+  { type: "assistant", message: { id: "stub-turn-1", role: "assistant", model: "stub-model-1", usage: { input_tokens: 7 } } },
   { type: "result", subtype: "success", result: "hello from stub", usage: { input_tokens: 7, output_tokens: 3 } },
 ];
 
@@ -273,6 +273,40 @@ test("castPlay: a stub executor injected through castPlay casts a play end to en
   expect(rec.model).toBe("stub-model-1");
   expect(rec.seatOfExecution).toBe("claude");
   expect(rec.overEnvelope).toBeUndefined();
+});
+
+test("castPlay: stub stream refreshes one progress line and preserves every raw transcript message (T-072-02-02 AC)", async () => {
+  const root = await tmp();
+  const runId = "live-progress-fixture";
+  const clock = [1_000, 13_999, 35_000, 57_000];
+  let clockIndex = 0;
+
+  const captured = await captureStdout(() => castPlay(echoPlay([]), { topic: "vend" }, BIG_BUDGET, {
+    subject: "T-072-02-02-live-line",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath: join(root, "runs.jsonl"),
+    runId,
+    executor: stubExecutor([]),
+    now: () => clock[clockIndex++] ?? clock.at(-1)!,
+  }));
+
+  expect(captured.result.outcome).toBe("success");
+  const live = captured.stdout.split("· effect", 1)[0]!;
+  expect(live).toBe(
+    "\r\x1b[2Kelapsed 12s · 0/1000k · turn 0" +
+      "\r\x1b[2Kelapsed 34s · 7/1000k · turn 1" +
+      "\r\x1b[2Kelapsed 56s · 7/1000k · turn 1\n",
+  );
+  expect(live.match(/\n/g)).toHaveLength(1);
+  expect(captured.stdout).not.toContain("· system");
+  expect(captured.stdout).not.toContain("· assistant");
+  expect(captured.stdout).not.toContain("· result");
+
+  const transcript = await readFile(join(root, `${runId}.jsonl`), "utf8");
+  const rawLines = transcript.trimEnd().split("\n");
+  expect(rawLines).toEqual(SAMPLE_STREAM.map((message) => JSON.stringify(message)));
+  expect(rawLines.map((line) => JSON.parse(line))).toEqual(SAMPLE_STREAM);
 });
 
 test("castPlay: a lane-less executor omits seatOfExecution like other unknown facts", async () => {

@@ -29,7 +29,10 @@ import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from
 import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
 import type { CastContext, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
 import {
+  accumulateCastProgress,
   classify,
+  EMPTY_CAST_PROGRESS,
+  formatCastProgress,
   makeStreamSink,
   resolveLoggedModel,
   resolveMaxTurns,
@@ -95,6 +98,12 @@ export interface CastOptions {
    * `VEND_EXECUTOR` ⇒ Claude (so no opt and no env ⇒ Claude ⇒ byte-identical to today).
    */
   readonly executorId?: string;
+  /**
+   * Millisecond clock for the live progress line. Omitted ⇒ {@link Date.now}. Injected by the
+   * stub-executor harness so elapsed refreshes are deterministic; durable run-log timestamps keep
+   * their established wall-clock path.
+   */
+  readonly now?: () => number;
 }
 
 /** The cast's MEASURED actuals (T-024-02) — what it actually cost, surfaced so the macro-wallet
@@ -194,21 +203,39 @@ export async function castPlay<I, O>(
   // Render the prompt from the play's typed inputs — never the transport, just the text.
   const prompt = play.render(inputs);
 
-  // Both surfaces: live stdout + a durable per-run transcript.
-  const transcriptPath = join(opts.transcriptDir ?? join(root, ".vend", "transcripts"), `${runId}.jsonl`);
-  await mkdir(dirname(transcriptPath), { recursive: true });
-  const onMessage = makeStreamSink({
-    write: (line) => process.stdout.write(`${line}\n`),
-    // fire-and-forget append; ordering within a run is preserved by the seam's in-order
-    // onMessage and append's O_APPEND.
-    sink: (raw) => void appendFile(transcriptPath, `${raw}\n`, "utf8"),
-  });
-
   // The effective turn cap (T-015-02): the per-cast override (T-015-01) wins, else the play's
   // warranted default (`play.maxTurns`), else undefined ⇒ the seam omits `--max-turns` ⇒ turns
-  // bounded only by the wall-clock latch + token budget. The number is calibrated from data
-  // (turnsUsed, logged below), not frozen.
+  // bounded only by the wall-clock latch + token budget. Resolve it before the live sink because
+  // the refreshing line carries the same effective cap handed to the executor.
   const maxTurns = resolveMaxTurns(opts.maxTurns, play.maxTurns);
+
+  // Both surfaces: ONE refreshing stdout line + a durable per-run transcript. The executor-facing
+  // wrapper owns the impure clock/terminal control while the existing pure sink remains the single
+  // raw-JSON serializer. Appends are chained so callback order is preserved and an awaited cast has
+  // durably finished every transcript write before returning.
+  const transcriptPath = join(opts.transcriptDir ?? join(root, ".vend", "transcripts"), `${runId}.jsonl`);
+  await mkdir(dirname(transcriptPath), { recursive: true });
+  let transcriptWrites: Promise<void> = Promise.resolve();
+  const transcriptSink = makeStreamSink({
+    // The wrapper below replaces the legacy per-event label with the progress row. Keeping this
+    // edge suppressed lets makeStreamSink retain ownership of exact raw serialization.
+    write: () => {},
+    sink: (raw) => {
+      transcriptWrites = transcriptWrites.then(() => appendFile(transcriptPath, `${raw}\n`, "utf8"));
+    },
+  });
+  const now = opts.now ?? Date.now;
+  const progressStartedAt = now();
+  let progress = EMPTY_CAST_PROGRESS;
+  let progressLineWritten = false;
+  const onMessage = (message: Parameters<typeof transcriptSink>[0]): void => {
+    progress = accumulateCastProgress(progress, message);
+    const elapsedMs = Math.max(0, now() - progressStartedAt);
+    const line = formatCastProgress(progress, { elapsedMs, tokenEnvelope: budget.tokens, maxTurns });
+    process.stdout.write(`\r\x1b[2K${line}`);
+    progressLineWritten = true;
+    transcriptSink(message);
+  };
 
   // Resolve the executor for this cast (T-035-01): an explicit instance wins; else the
   // selector picks by id/env, defaulting to Claude. No instance, no id, no env ⇒
@@ -237,6 +264,10 @@ export async function castPlay<I, O>(
     // `ExecutorTimeoutError` subclass, so keying on the base catches every executor's timeout.
     if (e instanceof ExecutorTimeoutError) timedOut = true;
     else throw e; // a genuine launch/absent-result failure is not a clean outcome
+  } finally {
+    await transcriptWrites;
+    // End the single refreshing row exactly once before any existing post-run surface writes.
+    if (progressLineWritten) process.stdout.write("\n");
   }
 
   // The context both gates and effect receive — assembled once.
