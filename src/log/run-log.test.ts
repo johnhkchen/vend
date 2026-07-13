@@ -462,8 +462,8 @@ describe("intervention provenance — attested back-fill vs forward (T-028-01 AC
   });
 });
 
-describe("turnsUsed — round-trip, absence, normalization, malformed (T-015-02 AC #2)", () => {
-  test("turnsUsed round-trips through build → serialize → revive", () => {
+describe("turn fields — capped agent unit, executor telemetry, and historical compatibility (E-081)", () => {
+  test("turnsUsed round-trips in the capped deduplicated-agent unit", () => {
     const rec = buildRunRecord(baseInput({ runId: "tu1", turnsUsed: 7 }));
     expect(rec.turnsUsed).toBe(7);
     const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
@@ -501,6 +501,64 @@ describe("turnsUsed — round-trip, absence, normalization, malformed (T-015-02 
     expect(rec!.runId).toBe("tu7");
   });
 
+  test("executorReportedTurns round-trips without replacing turnsUsed", () => {
+    const rec = buildRunRecord(
+      baseInput({ runId: "ert1", turnsUsed: 7, executorReportedTurns: 11 }),
+    );
+    expect(rec.turnsUsed).toBe(7);
+    expect(rec.executorReportedTurns).toBe(11);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect(revived!.turnsUsed).toBe(7);
+    expect(revived!.executorReportedTurns).toBe(11);
+  });
+
+  test("executorReportedTurns: 0 is a VALUE, written and round-tripped", () => {
+    const rec = buildRunRecord(baseInput({ runId: "ert2", executorReportedTurns: 0 }));
+    expect("executorReportedTurns" in rec).toBe(true);
+    expect(rec.executorReportedTurns).toBe(0);
+    const revived = reviveRecord(JSON.parse(serializeRunRecord(rec)));
+    expect("executorReportedTurns" in revived!).toBe(true);
+    expect(revived!.executorReportedTurns).toBe(0);
+  });
+
+  test("an unknown executorReportedTurns is omitted from build and serialization", () => {
+    const rec = buildRunRecord(baseInput({ runId: "ert3" }));
+    expect("executorReportedTurns" in rec).toBe(false);
+    expect(rec.executorReportedTurns).toBeUndefined();
+    expect(serializeRunRecord(rec).includes("executorReportedTurns")).toBe(false);
+  });
+
+  test("invalid executorReportedTurns values are omitted on build", () => {
+    expect("executorReportedTurns" in buildRunRecord(baseInput({ runId: "ert4", executorReportedTurns: NaN }))).toBe(false);
+    expect("executorReportedTurns" in buildRunRecord(baseInput({ runId: "ert5", executorReportedTurns: -1 }))).toBe(false);
+    expect("executorReportedTurns" in buildRunRecord(baseInput({ runId: "ert6", executorReportedTurns: 2.5 }))).toBe(false);
+  });
+
+  test("a malformed executorReportedTurns is dropped on revive without losing the row", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "ert7", turnsUsed: 4 })))),
+      executorReportedTurns: "many",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.turnsUsed).toBe(4);
+    expect(rec!.executorReportedTurns).toBeUndefined();
+  });
+
+  test("a pre-E-081 line revives byte-identically with old-unit turnsUsed and no inferred new key", () => {
+    const preE081Line =
+      '{"v":1,"runId":"legacy-turn-unit","play":"decompose-epic","epic":"E-077",' +
+      '"model":"claude-cli-default","outcome":"success","usage":{"input_tokens":1,' +
+      '"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4},' +
+      '"costUsd":0.1,"gateResults":[],"turnsUsed":23,' +
+      '"startedAt":"2026-07-01T12:00:00.000Z","endedAt":"2026-07-01T12:01:00.000Z"}\n';
+    const { records, skipped } = readRuns(preE081Line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.turnsUsed).toBe(23);
+    expect("executorReportedTurns" in records[0]!).toBe(false);
+    expect(serializeRunRecord(records[0]!)).toBe(preE081Line);
+  });
+
   test("a pre-T-015-02 line (no turnsUsed field) parses, with turnsUsed === undefined", () => {
     const legacyLine =
       '{"v":1,"runId":"L2","play":"decompose-epic","epic":"E-001","model":"claude-cli-default",' +
@@ -510,6 +568,7 @@ describe("turnsUsed — round-trip, absence, normalization, malformed (T-015-02 
     const { records, skipped } = readRuns(legacyLine);
     expect(skipped).toBe(0);
     expect(records[0]!.turnsUsed).toBeUndefined();
+    expect(records[0]!.executorReportedTurns).toBeUndefined();
   });
 });
 

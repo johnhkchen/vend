@@ -204,11 +204,16 @@ export interface RunRecordInput {
    *  only `true` is meaningful, so `false`/absent are identical (both not-attested) and `false`
    *  is never written — keeping a forward record byte-identical to a pre-T-028-01 one. */
   readonly intervenedAttested?: boolean;
-  /** Agentic turns the cast took (T-015-02), harvested off the seam's `result.num_turns`.
-   *  Absent ⇒ field omitted (unknown) — back-compat, exactly like {@link intervened}. The
-   *  forward-looking signal the warranted turn cap is calibrated from (the cap is a judgment,
-   *  not a frozen guess; logging turns is what lets data refine it). */
+  /** Distinct agent turns the cast observed (E-081), in the same deduplicated-assistant unit the
+   *  summary prints and `--max-turns` caps. Absent ⇒ field omitted (unknown), while zero is a real
+   *  observed value. SCHEMA NOTE: pre-E-081 rows used this key for terminal `result.num_turns`, an
+   *  unlike executor conversation-event count. {@link reviveRecord} preserves those historical
+   *  numbers verbatim rather than laundering them into the new unit. */
   readonly turnsUsed?: number;
+  /** Optional turn/event count reported by the executor at termination (E-081). For Claude this is
+   *  `result.num_turns`, retained as diagnostic telemetry under an honest name rather than compared
+   *  with the agent-turn cap. Absent means unreported/unknown; zero is a real reported value. */
+  readonly executorReportedTurns?: number;
   /** One-way honest marker (T-060-01-02, E-060 #3): `true` ⇒ this cast ran with REDUCED
    *  grounding — a declared `optionalMcp` server (e.g. `codebase-memory-mcp`) was absent and so
    *  dropped from the scoped tool set (`resolveTools`' `reducedGrounding`). Absent ⇒ fully
@@ -294,10 +299,13 @@ export interface RunRecord {
    *  existing back-fill records reclassify with NO ledger rewrite. The forward count is the one
    *  a verdict cites — this is what keeps attested back-fill from being mistaken for it. */
   readonly intervenedAttested?: boolean;
-  /** Present ONLY when the cast supplied one — absence is meaningful (unknown), so it is
-   *  omitted rather than written, exactly like {@link RunRecord.intervened}. The signal the
-   *  warranted turn cap (T-015-02) is calibrated from. */
+  /** Present ONLY when the cast supplied the deduplicated agent-turn count (E-081) — the unit the
+   *  summary prints and `--max-turns` caps. Historical pre-E-081 rows retain their old terminal
+   *  executor-count value under this key byte-for-byte; revival never reinterprets or migrates it. */
   readonly turnsUsed?: number;
+  /** Present ONLY when the executor supplied its distinct terminal turn/event count. This optional
+   *  telemetry is never the numerator for `--max-turns`; absence remains unknown and zero is kept. */
+  readonly executorReportedTurns?: number;
   /** Present ONLY when `true` (T-060-01-02) — this cast ran with reduced grounding (a declared
    *  optional MCP server was absent). A ONE-WAY marker like {@link intervenedAttested}: `false` is
    *  never written, so a fully-grounded record stays byte-identical to a pre-T-060-01-02 one.
@@ -419,11 +427,10 @@ function normalizeIntervenedAttested(v: boolean | undefined): true | undefined {
   return v === true ? true : undefined;
 }
 
-/** Normalize turns-used (T-015-02): a finite, non-negative integer is taken verbatim;
- *  anything else (absent, non-finite, negative, or non-integer from a torn caller) ⇒
- *  `undefined`, so the field is omitted and reads as unknown. Like {@link normalizeIntervened},
- *  absence is LEGAL back-compat — coerce, don't assert. */
-function normalizeTurnsUsed(v: number | undefined): number | undefined {
+/** Normalize an optional turn count: a finite, non-negative integer is taken verbatim; anything
+ *  else (absent, non-finite, negative, or non-integer from a torn caller) ⇒ `undefined`, so the
+ *  field is omitted and reads as unknown. Zero is deliberately retained as an observed value. */
+function normalizeTurnCount(v: number | undefined): number | undefined {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
 }
 
@@ -596,7 +603,8 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const project = normalizeProject(input.project);
   const intervened = normalizeIntervened(input.intervened);
   const intervenedAttested = normalizeIntervenedAttested(input.intervenedAttested);
-  const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
+  const turnsUsed = normalizeTurnCount(input.turnsUsed);
+  const executorReportedTurns = normalizeTurnCount(input.executorReportedTurns);
   const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
   const degrades = normalizeDegrades(input.degrades);
   const overEnvelope = normalizeOverEnvelope(input.overEnvelope);
@@ -623,6 +631,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(intervened !== undefined ? { intervened } : {}),
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+    ...(executorReportedTurns !== undefined ? { executorReportedTurns } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(degrades !== undefined ? { degrades } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
@@ -729,10 +738,13 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   const attestedByFlag = r.intervenedAttested === true;
   const intervenedAttested = attestedByMarker || attestedByFlag ? true : undefined;
 
-  // turns-used (T-015-02) is kept only when it is a finite non-negative integer; anything
-  // else (absent — a pre-T-015-02 record — or a malformed value) is dropped (field omitted,
-  // reads unknown) rather than admitted or used to reject the record. Mirrors `intervened`.
-  const turnsUsed = normalizeTurnsUsed(typeof r.turnsUsed === "number" ? r.turnsUsed : undefined);
+  // Both turn facts are kept only when finite non-negative integers. `turnsUsed` is preserved
+  // verbatim even for pre-E-081 rows whose historical unit was terminal `result.num_turns`; the
+  // reader cannot and must not relabel old bytes. The new executor key is never inferred from it.
+  const turnsUsed = normalizeTurnCount(typeof r.turnsUsed === "number" ? r.turnsUsed : undefined);
+  const executorReportedTurns = normalizeTurnCount(
+    typeof r.executorReportedTurns === "number" ? r.executorReportedTurns : undefined,
+  );
 
   // The reduced-grounding marker (T-060-01-02) is kept only when it is the boolean `true`; anything
   // else (absent — a pre-T-060-01-02 record — `false`, or a malformed value) is dropped (field
@@ -810,6 +822,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(intervened !== undefined ? { intervened } : {}),
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+    ...(executorReportedTurns !== undefined ? { executorReportedTurns } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
     ...(degrades !== undefined ? { degrades } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
