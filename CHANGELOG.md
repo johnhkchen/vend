@@ -3,6 +3,12 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.6 — 2026-07-13
+
+- The board picture and the trust readouts now speak plain English: card faces carry no leftover technical tokens, and `vend audit` explains itself in words you'd say aloud ("26 finished · 3 hit budget or time limit · 1 stopped by a check") — same honest numbers, no decoder ring.
+- The shelf stops rounding down to zero: a playbook with a couple of real runs says "(default — 2 runs, measured at 3)" instead of claiming no runs yet.
+- An empty board tells you what to do next instead of printing a bare "(no actions)".
+
 ## 0.4.0-rc.5 — 2026-07-12
 
 - **Fixes rc.4's cast-killing bug — upgrade before running any metered command.** rc.4 tried to contact a local model server (port 11434) that nobody configured, crashing every `chain`/`steer`/`run` at its first step, leaving a half-minted epic and a spent cast missing from the ledger. Cross-vendor review now stays quietly out of the way unless you've actually set up a reviewer, and says so on the run record.
