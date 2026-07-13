@@ -1,6 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -25,6 +26,7 @@ import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultM
 import { decomposeEffect } from "../play/decompose-effect.ts";
 import type { DecomposeInputs } from "../play/project-context.ts";
 import type { ExecutorRegistry } from "../executor/select.ts";
+import { dispenseOpenAICompat, OPENAI_BASE_URL_ENV } from "../executor/openai-compat.ts";
 
 // Integration proof for the executor seam (T-035-01, AC#3): a STUB executor injected through
 // `castPlay` casts a play end to end — onMessage fires, a ResultMessage flows back, and the
@@ -57,6 +59,28 @@ async function initGitRepo(root: string): Promise<void> {
     "-c", "user.name=Vend Test", "-c", "user.email=vend-test@example.invalid",
     "commit", "--allow-empty", "--quiet", "-m", "baseline",
   ]);
+}
+
+/** Reserve an OS-selected loopback port, close it, and return its now-unreachable API base. */
+async function closedLoopbackOpenAIBaseUrl(): Promise<string> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => reject(error);
+    server.once("error", onError);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+  if (address === null || typeof address === "string") {
+    throw new Error("loopback test server did not receive an IP port");
+  }
+  return `http://127.0.0.1:${address.port}/v1`;
 }
 
 /** A high envelope so nothing exhausts — the cast clears on the gate, not the budget. */
@@ -149,6 +173,21 @@ function throwingCrossReviewRegistry(error: unknown, calls: DispenseOptions[]): 
       async dispense(opts: DispenseOptions): Promise<ResultMessage> {
         calls.push(opts);
         throw error;
+      },
+    }),
+  };
+}
+
+/** A provisioned reviewer that uses the real fetch transport against a known closed endpoint. */
+function unreachableOpenAIReviewRegistry(baseUrl: string, calls: DispenseOptions[]): ExecutorRegistry {
+  return {
+    claude: () => stubExecutor([], "unused author factory", "claude"),
+    "openai-compat": () => ({
+      id: "openai-compat",
+      async probe() { return { ok: true }; },
+      async dispense(opts: DispenseOptions): Promise<ResultMessage> {
+        calls.push(opts);
+        return dispenseOpenAICompat(opts, { [OPENAI_BASE_URL_ENV]: baseUrl });
       },
     }),
   };
@@ -639,35 +678,110 @@ test("castPlay: a passing complement verdict clears with verdict and gate eviden
   expect(raw.gateResults.at(-1)).toEqual({ gate: "cross-vendor-review", passed: true });
 });
 
-test("castPlay: a relevant default-config review records why complement resolution was inert", async () => {
+test("castPlay: default config needs no 11434 reviewer and records a consistent skipped-review clear (T-076-02-03 AC)", async () => {
   const root = await tmp();
   await initGitRepo(root);
   const runLogPath = join(root, "runs.jsonl");
+  const runId = "default-no-network-review";
+  const expectedReference = join(".vend", "artifacts", `${runId}.diff`);
   const plan: BoardPlanFixture = {
-    story: { id: "S-073-95", title: "single seat" },
-    ticket: { id: "T-073-95-01", story: "S-073-95", title: "ordinary clear" },
+    story: { id: "S-076-97", title: "default review stays inert" },
+    ticket: { id: "T-076-97-01", story: "S-076-97", title: "keep the offline clear" },
   };
 
-  const summary = await castPlay(boardPlanPlay(), { epic: "E-073" }, BIG_BUDGET, {
-    subject: "T-073-02-01-single-seat",
+  // No crossReviewRegistry: this is the shipped default resolver, not a reviewer/fetch mock.
+  const summary = await castPlay(boardPlanPlay(), { epic: "E-076" }, BIG_BUDGET, {
+    subject: "T-076-02-03-default",
     projectRoot: root,
     transcriptDir: root,
     runLogPath,
-    runId: "cross-review-inert",
+    runId,
     executor: stubExecutor([], JSON.stringify(plan), "claude"),
   });
 
   expect(summary.outcome).toBe("success");
   expect(summary.materialized).toBe(true);
-  const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(summary.capturedDiff).toBe(expectedReference);
+
+  const patch = await readFile(join(root, expectedReference), "utf8");
+  expect(patch).toContain("docs/active/stories/S-076-97.md");
+  expect(patch).toContain("docs/active/tickets/T-076-97-01.md");
+
+  const lines = (await readFile(runLogPath, "utf8")).trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const raw = JSON.parse(lines[0]!);
   expect(raw.outcome).toBe("success");
+  expect(raw.capturedDiff).toBe(summary.capturedDiff);
+  expect("artifactDiscrepancy" in raw).toBe(false);
   expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
   expect("crossVendorVerdict" in raw).toBe(false);
   expect(raw.crossReviewSkipped).toEqual({
     reason: "no-complement-reviewer-resolved",
     bindsWhen: "author-and-exactly-one-complement-reviewer-provisioned",
   });
-  expect(reviveRecord(raw)?.crossReviewSkipped).toEqual(raw.crossReviewSkipped);
+  const revived = reviveRecord(raw);
+  expect(revived?.capturedDiff).toBe(summary.capturedDiff);
+  expect(revived?.crossReviewSkipped).toEqual(raw.crossReviewSkipped);
+});
+
+test("castPlay: a provisioned unreachable reviewer uses real fetch and settles with ledger intact (T-076-02-03 AC)", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const baseUrl = await closedLoopbackOpenAIBaseUrl();
+  const runLogPath = join(root, "runs.jsonl");
+  const calls: DispenseOptions[] = [];
+  const runId = "real-fetch-review-unreachable";
+  const expectedReference = join(".vend", "artifacts", `${runId}.diff`);
+  const plan: BoardPlanFixture = {
+    story: { id: "S-076-96", title: "unreachable reviewer outcome" },
+    ticket: { id: "T-076-96-01", story: "S-076-96", title: "retain the settled evidence" },
+  };
+
+  // Awaiting the complete cast to a value proves the real fetch rejection is consumed inside
+  // reviewer settlement instead of escaping as a rejected cast or unhandled promise.
+  const { result: summary, stdout } = await captureStdout(() =>
+    castPlay(boardPlanPlay(), { epic: "E-076" }, BIG_BUDGET, {
+      subject: "T-076-02-03-unreachable",
+      projectRoot: root,
+      transcriptDir: root,
+      runLogPath,
+      runId,
+      executor: stubExecutor([], JSON.stringify(plan), "claude"),
+      crossReviewRegistry: unreachableOpenAIReviewRegistry(baseUrl, calls),
+    }));
+
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.prompt).toContain("docs/active/stories/S-076-96.md");
+  expect(calls[0]!.prompt).toContain("docs/active/tickets/T-076-96-01.md");
+  expect(calls[0]!.maxTurns).toBe(1);
+  expect(summary.outcome).toBe("missing-capability");
+  expect(summary.materialized).toBe(true);
+  expect(summary.capturedDiff).toBe(expectedReference);
+  expect(stdout).toContain("· andon: missing-capability");
+  expect(stdout).toContain("reviewer seat 'codex'");
+  expect(stdout).toContain("OpenAI-compatible endpoint");
+  expect(stdout).toContain(OPENAI_BASE_URL_ENV);
+  expect(stdout).toContain("run `vend doctor`");
+  expect(stdout).not.toContain("Error:");
+  expect(stdout).not.toContain("\n    at ");
+
+  const patch = await readFile(join(root, expectedReference), "utf8");
+  expect(patch).toContain("docs/active/stories/S-076-96.md");
+  expect(patch).toContain("docs/active/tickets/T-076-96-01.md");
+
+  const lines = (await readFile(runLogPath, "utf8")).trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const raw = JSON.parse(lines[0]!);
+  expect(raw.outcome).toBe("missing-capability");
+  expect(raw.capturedDiff).toBe(summary.capturedDiff);
+  expect(raw.usage.input_tokens).toBe(7);
+  expect(raw.usage.output_tokens).toBe(3);
+  expect(raw.costUsd).toBe(0.001);
+  expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
+  expect("artifactDiscrepancy" in raw).toBe(false);
+  expect("crossVendorVerdict" in raw).toBe(false);
+  expect("crossReviewSkipped" in raw).toBe(false);
+  expect(reviveRecord(raw)?.capturedDiff).toBe(summary.capturedDiff);
 });
 
 test("castPlay: a no-op effect omits captured diff evidence (T-073-01-01 AC)", async () => {
