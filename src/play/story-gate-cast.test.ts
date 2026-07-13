@@ -99,6 +99,7 @@ const CONTRACT_PLAN: WorkPlan = {
 function stubExecutor(resultText: string): Executor {
   return {
     id: "stub",
+    async probe() { return { ok: true }; },
     async dispense(opts: DispenseOptions): Promise<ResultMessage> {
       const result = {
         type: "result",

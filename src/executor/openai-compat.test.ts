@@ -4,9 +4,13 @@ import type { StreamMessage } from "./executor.ts";
 import {
   adaptChunk,
   buildChatRequest,
+  buildOpenAICompatProbeRequest,
+  classifyOpenAICompatProbe,
   DEFAULT_OPENAI_BASE_URL,
   makeSseConsumer,
   mapUsage,
+  OpenAICompatExecutor,
+  OPENAI_COMPAT_PROBE_HINT,
   OpenAICompatTimeoutError,
   parseSseData,
   synthesizeResult,
@@ -16,6 +20,47 @@ import {
 // No live `fetch` anywhere — `dispenseOpenAICompat` (the one impure verb) is intentionally not
 // unit-tested; its byte-handling is exactly these helpers, exercised here through a recorded SSE
 // fixture (free, deterministic — no live model).
+
+// ── dispensability probe (injected facts; no live fetch) ────────────────────
+
+test("buildOpenAICompatProbeRequest: targets /models and carries optional bearer auth", () => {
+  expect(buildOpenAICompatProbeRequest({ VEND_OPENAI_BASE_URL: "http://host:1/v1/" })).toEqual({
+    url: "http://host:1/v1/models",
+    headers: {},
+  });
+  expect(
+    buildOpenAICompatProbeRequest({
+      VEND_OPENAI_BASE_URL: "https://example.test/v1",
+      VEND_OPENAI_API_KEY: "secret",
+    }),
+  ).toEqual({
+    url: "https://example.test/v1/models",
+    headers: { Authorization: "Bearer secret" },
+  });
+});
+
+test("classifyOpenAICompatProbe: reachable endpoint/auth is dispensable", () => {
+  expect(classifyOpenAICompatProbe({ reachable: true }, "http://host/v1/models")).toEqual({ ok: true });
+});
+
+test("classifyOpenAICompatProbe: rejected auth is a structured failure", () => {
+  expect(classifyOpenAICompatProbe({ reachable: false, status: 401 }, "https://host/v1/models")).toEqual({
+    ok: false,
+    reason: "OpenAI-compatible endpoint https://host/v1/models rejected the probe (HTTP 401)",
+    hint: OPENAI_COMPAT_PROBE_HINT,
+  });
+});
+
+test("OpenAICompatExecutor.probe: classifies injected facts without fetching or dispensing", async () => {
+  const readFacts = async () => ({
+    endpoint: "http://host/v1/models",
+    facts: { reachable: false as const, detail: "connection refused" },
+  });
+  const result = await new OpenAICompatExecutor(readFacts).probe();
+  expect(result.ok).toBe(false);
+  expect(result.reason).toContain("connection refused");
+  expect(result.hint).toBe(OPENAI_COMPAT_PROBE_HINT);
+});
 
 // ── buildChatRequest ──────────────────────────────────────────────────────────
 

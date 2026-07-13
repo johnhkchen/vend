@@ -103,6 +103,7 @@ const SAMPLE_STREAM: StreamMessage[] = [
 function stubExecutor(): Executor {
   return {
     id: "stub",
+    async probe() { return { ok: true }; },
     async dispense(opts: DispenseOptions): Promise<ResultMessage> {
       for (const m of SAMPLE_STREAM) opts.onMessage?.(m);
       return {

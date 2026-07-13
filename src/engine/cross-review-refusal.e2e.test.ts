@@ -91,6 +91,7 @@ function refusalProofPlay(): Play<{ readonly case: string }, ProofOutput> {
 function authorExecutor(quality: ProofOutput["quality"]): Executor {
   return {
     id: "claude",
+    async probe() { return { ok: true }; },
     dispense(): Promise<ResultMessage> {
       return Promise.resolve({
         type: "result",
@@ -117,6 +118,7 @@ function primedReviewRegistry(replies: readonly string[]): PrimedReviewFixture {
     claude: () => authorExecutor("good"),
     "openai-compat": () => ({
       id: "openai-compat",
+      async probe() { return { ok: true }; },
       dispense(opts: DispenseOptions): Promise<ResultMessage> {
         calls.push(opts);
         const reply = replies[replyIndex++];

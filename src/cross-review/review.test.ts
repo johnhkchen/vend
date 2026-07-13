@@ -25,6 +25,7 @@ function recordingStub(id: string, reply: string): RecordingStub {
     terminal,
     executor: {
       id,
+      async probe() { return { ok: true }; },
       dispense(opts: DispenseOptions): Promise<ResultMessage> {
         calls.push(opts);
         return Promise.resolve(terminal);

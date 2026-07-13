@@ -3,6 +3,9 @@ import {
   awaitChildClose,
   buildArgs,
   type ChildLike,
+  classifyClaudeProbe,
+  ClaudeExecutor,
+  CLAUDE_PROBE_HINT,
   ClaudeTimeoutError,
   createLineBuffer,
   extractModelId,
@@ -15,6 +18,40 @@ import {
 // live `claude` spawn anywhere — the timeout latch is exercised with a fake child
 // and the stream parsing with sample stream-json lines. `dispense` (the one impure,
 // process-spawning function) is intentionally not unit-tested.
+
+// ── dispensability probe (injected facts; no auth subprocess) ───────────────
+
+test("classifyClaudeProbe: readable config store + logged in is dispensable", () => {
+  expect(classifyClaudeProbe({ configStoreReadable: true, loggedIn: true })).toEqual({ ok: true });
+});
+
+test("classifyClaudeProbe: config-store/Keychain denied is named and actionable", () => {
+  const result = classifyClaudeProbe({
+    configStoreReadable: false,
+    detail: "operation not permitted",
+  });
+  expect(result.ok).toBe(false);
+  expect(result.reason).toContain("config store/Keychain is not readable");
+  expect(result.reason).toContain("operation not permitted");
+  expect(result.hint).toBe(CLAUDE_PROBE_HINT);
+  expect(result.hint).toContain("claude login");
+  expect(result.hint).toContain("Keychain access");
+});
+
+test("classifyClaudeProbe: readable but logged-out store names login state", () => {
+  expect(classifyClaudeProbe({ configStoreReadable: true, loggedIn: false })).toEqual({
+    ok: false,
+    reason: "Claude is not logged in",
+    hint: CLAUDE_PROBE_HINT,
+  });
+});
+
+test("ClaudeExecutor.probe: classifies injected facts without spawning or dispensing", async () => {
+  const readFacts = mock(async () => ({ configStoreReadable: true as const, loggedIn: true }));
+  const executor = new ClaudeExecutor(readFacts);
+  expect(await executor.probe()).toEqual({ ok: true });
+  expect(readFacts).toHaveBeenCalledTimes(1);
+});
 
 // ── buildArgs ───────────────────────────────────────────────────────────────
 

@@ -98,6 +98,7 @@ const SAMPLE_STREAM: StreamMessage[] = [
 function stubExecutor(seen: StreamMessage[], resultText = "hello from stub", id = "stub"): Executor {
   return {
     id,
+    async probe() { return { ok: true }; },
     async dispense(opts: DispenseOptions): Promise<ResultMessage> {
       for (const m of SAMPLE_STREAM) {
         seen.push(m);
@@ -121,6 +122,7 @@ function crossReviewRegistry(resultText: string, calls: DispenseOptions[]): Exec
     claude: () => stubExecutor([], "unused author factory", "claude"),
     "openai-compat": () => ({
       id: "openai-compat",
+      async probe() { return { ok: true }; },
       async dispense(opts: DispenseOptions): Promise<ResultMessage> {
         calls.push(opts);
         return {
@@ -839,6 +841,7 @@ test("castPlay: an executor that throws ExecutorTimeoutError classifies as timed
   const runLogPath = join(root, "runs.jsonl");
   const timeoutExecutor: Executor = {
     id: "stub-timeout",
+    async probe() { return { ok: true }; },
     dispense(_opts: DispenseOptions): Promise<ResultMessage> {
       return Promise.reject(new ExecutorTimeoutError(5, "stub executor timed out"));
     },

@@ -20,7 +20,7 @@
 
 import { createLineBuffer } from "./claude.ts";
 import { ExecutorTimeoutError } from "./executor.ts";
-import type { DispenseOptions, Executor, ResultMessage, StreamMessage } from "./executor.ts";
+import type { DispenseOptions, Executor, ExecutorProbeResult, ResultMessage, StreamMessage } from "./executor.ts";
 
 // ── Config (env, local-first, no committed secret) ──────────────────────────────────
 
@@ -34,6 +34,78 @@ export const OPENAI_API_KEY_ENV = "VEND_OPENAI_API_KEY";
 export const DEFAULT_OPENAI_BASE_URL = "http://localhost:11434/v1";
 /** The stable selector id ({@link executorFor}) and run-log handle for this executor. */
 export const OPENAI_EXECUTOR_ID = "openai-compat";
+/** Actionable repair for an endpoint/auth reachability failure. */
+export const OPENAI_COMPAT_PROBE_HINT =
+  `verify ${OPENAI_BASE_URL_ENV} is reachable and ${OPENAI_API_KEY_ENV} contains valid bearer auth when required`;
+
+/** Plain endpoint/auth facts, injected in unit tests so no live fetch is required. */
+export interface OpenAICompatProbeFacts {
+  readonly reachable: boolean;
+  readonly status?: number;
+  readonly detail?: string;
+}
+
+/** A fact read includes the endpoint so the returned failure can name what was checked. */
+export interface OpenAICompatProbeRead {
+  readonly endpoint: string;
+  readonly facts: OpenAICompatProbeFacts;
+}
+
+/** Injectable source of OpenAI-compatible endpoint/auth facts. */
+export type OpenAICompatProbeFactsReader = () => Promise<OpenAICompatProbeRead>;
+
+/** Build the shallow authenticated discovery request. PURE; never includes a request body. */
+export function buildOpenAICompatProbeRequest(
+  env: Record<string, string | undefined> = process.env,
+): { url: string; headers: Record<string, string> } {
+  const base = (env[OPENAI_BASE_URL_ENV] || DEFAULT_OPENAI_BASE_URL).replace(/\/+$/, "");
+  const headers: Record<string, string> = {};
+  const key = env[OPENAI_API_KEY_ENV];
+  if (key) headers.Authorization = `Bearer ${key}`;
+  return { url: `${base}/models`, headers };
+}
+
+/** Map endpoint/auth facts to the executor-neutral probe result. PURE and total. */
+export function classifyOpenAICompatProbe(
+  facts: OpenAICompatProbeFacts,
+  endpoint: string,
+): ExecutorProbeResult {
+  if (facts.reachable) return { ok: true };
+  const cause = facts.status
+    ? `rejected the probe (HTTP ${facts.status})`
+    : `is not reachable${facts.detail?.trim() ? `: ${facts.detail.trim()}` : ""}`;
+  return {
+    ok: false,
+    reason: `OpenAI-compatible endpoint ${endpoint} ${cause}`,
+    hint: OPENAI_COMPAT_PROBE_HINT,
+  };
+}
+
+/**
+ * Exercise endpoint and bearer authentication with an unmetered `GET /models`. The response body
+ * is deliberately ignored: reachability/auth status is the complete shallow fact needed here.
+ */
+export async function readOpenAICompatProbeFacts(
+  env: Record<string, string | undefined> = process.env,
+  fetcher: (input: string, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<OpenAICompatProbeRead> {
+  const { url, headers } = buildOpenAICompatProbeRequest(env);
+  try {
+    const response = await fetcher(url, { method: "GET", headers });
+    return {
+      endpoint: url,
+      facts: response.ok ? { reachable: true } : { reachable: false, status: response.status },
+    };
+  } catch (error) {
+    return {
+      endpoint: url,
+      facts: {
+        reachable: false,
+        detail: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
 
 // ── Local structural types (external JSON — open records over the fields we read) ────
 
@@ -303,6 +375,21 @@ export async function dispenseOpenAICompat(
  */
 export class OpenAICompatExecutor implements Executor {
   readonly id = OPENAI_EXECUTOR_ID;
+  constructor(
+    private readonly readProbeFacts: OpenAICompatProbeFactsReader = () => readOpenAICompatProbeFacts(),
+  ) {}
+  async probe(): Promise<ExecutorProbeResult> {
+    try {
+      const { endpoint, facts } = await this.readProbeFacts();
+      return classifyOpenAICompatProbe(facts, endpoint);
+    } catch (error) {
+      const { url } = buildOpenAICompatProbeRequest();
+      return classifyOpenAICompatProbe(
+        { reachable: false, detail: error instanceof Error ? error.message : String(error) },
+        url,
+      );
+    }
+  }
   dispense(opts: DispenseOptions): Promise<ResultMessage> {
     return dispenseOpenAICompat(opts);
   }

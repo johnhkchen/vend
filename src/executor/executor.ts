@@ -34,6 +34,17 @@ export class ExecutorTimeoutError extends Error {
 }
 
 /**
+ * The shallow, unmetered answer to "can this executor dispense from this environment?".
+ * Expected environment failures are returned data: callers can surface the named reason and
+ * actionable hint without turning a preflight into a raw stack.
+ */
+export interface ExecutorProbeResult {
+  readonly ok: boolean;
+  readonly reason?: string;
+  readonly hint?: string;
+}
+
+/**
  * An executor: the one boundary `castPlay` uses to turn a prompt into a metered
  * `ResultMessage`. Implementations dispense a prompt, stream every `StreamMessage` to
  * `opts.onMessage` IN ORDER (before any throw), and **throw {@link ExecutorTimeoutError}
@@ -52,6 +63,11 @@ export class ExecutorTimeoutError extends Error {
 export interface Executor {
   /** Stable id for selection ({@link executorFor}) and the run-log record. */
   readonly id: string;
+  /**
+   * Check config/auth/endpoint reachability without dispensing or spending tokens. This is a
+   * shallow capability probe, not proof of a live metered model turn.
+   */
+  probe(): Promise<ExecutorProbeResult>;
   /**
    * Dispense one prompt and return the terminal `result` message. Streams to
    * `opts.onMessage` in order; throws {@link ExecutorTimeoutError} if the wall-clock budget

@@ -14,6 +14,7 @@ import { builtinExecutors, DEFAULT_EXECUTOR_ID, executorFor, type ExecutorRegist
 function stubExecutor(id = "stub"): Executor {
   return {
     id,
+    async probe() { return { ok: true }; },
     dispense(_opts: DispenseOptions): Promise<ResultMessage> {
       return Promise.resolve({ type: "result", subtype: "success" } as ResultMessage);
     },

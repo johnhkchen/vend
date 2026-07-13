@@ -21,10 +21,74 @@
 
 import { spawn } from "node:child_process";
 import { ExecutorTimeoutError } from "./executor.ts";
-import type { Executor } from "./executor.ts";
+import type { Executor, ExecutorProbeResult } from "./executor.ts";
 
 /** The Claude headless CLI binary; overridable for tests / non-standard installs. */
 export const CLAUDE_CLI = process.env.CLAUDE_CLI || "claude";
+
+/** Actionable repair shared by every non-dispensable Claude probe result. */
+export const CLAUDE_PROBE_HINT = "run `claude login`; if sandboxed, allow Claude Code Keychain access";
+
+/** Plain facts gathered by the auth-status shell, injectable for hermetic tests. */
+export interface ClaudeProbeFacts {
+  readonly configStoreReadable: boolean;
+  readonly loggedIn?: boolean;
+  readonly detail?: string;
+}
+
+/** Injectable source of Claude auth/config-store facts. */
+export type ClaudeProbeFactsReader = () => Promise<ClaudeProbeFacts>;
+
+/** Map Claude auth/config facts to the executor-neutral probe contract. PURE and total. */
+export function classifyClaudeProbe(facts: ClaudeProbeFacts): ExecutorProbeResult {
+  if (!facts.configStoreReadable) {
+    const suffix = facts.detail?.trim() ? `: ${facts.detail.trim()}` : "";
+    return {
+      ok: false,
+      reason: `Claude config store/Keychain is not readable${suffix}`,
+      hint: CLAUDE_PROBE_HINT,
+    };
+  }
+  if (!facts.loggedIn) {
+    return { ok: false, reason: "Claude is not logged in", hint: CLAUDE_PROBE_HINT };
+  }
+  return { ok: true };
+}
+
+/**
+ * Read Claude authentication state through the CLI's unmetered status command. This crosses the
+ * same config-store/Keychain boundary as a normal Claude session but never invokes `claude -p`.
+ * Account fields in stdout are parsed only for `loggedIn` and are never surfaced.
+ */
+export async function readClaudeProbeFacts(cli = CLAUDE_CLI): Promise<ClaudeProbeFacts> {
+  try {
+    const proc = Bun.spawn([cli, "auth", "status", "--json"], { stdout: "pipe", stderr: "pipe" });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    // A logged-out CLI may use a non-zero status while still returning a readable, valid auth
+    // record. Prefer that explicit fact over the process code; denial/launch failures emit no
+    // usable JSON and fall through to the config-store failure below.
+    try {
+      const parsed = JSON.parse(stdout) as { loggedIn?: unknown };
+      if (typeof parsed.loggedIn === "boolean") {
+        return { configStoreReadable: true, loggedIn: parsed.loggedIn };
+      }
+    } catch {
+      // Classified below with the command's safe stderr/exit detail.
+    }
+    const detail = stderr.trim() ||
+      (exitCode === 0 ? "`claude auth status` returned invalid JSON" : `\`claude auth status\` exited ${exitCode}`);
+    return { configStoreReadable: false, detail };
+  } catch (error) {
+    return {
+      configStoreReadable: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 /** One parsed stream-json message. External JSON: a known `type` discriminant over an open record. */
 export type StreamMessage = { type: string } & Record<string, unknown>;
@@ -351,6 +415,17 @@ export async function dispense({ prompt, model, effort, system, maxTurns, mcpCon
  */
 export class ClaudeExecutor implements Executor {
   readonly id = "claude";
+  constructor(private readonly readProbeFacts: ClaudeProbeFactsReader = () => readClaudeProbeFacts()) {}
+  async probe(): Promise<ExecutorProbeResult> {
+    try {
+      return classifyClaudeProbe(await this.readProbeFacts());
+    } catch (error) {
+      return classifyClaudeProbe({
+        configStoreReadable: false,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   dispense(opts: DispenseOptions): Promise<ResultMessage> {
     return dispense(opts);
   }

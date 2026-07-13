@@ -7,6 +7,7 @@ import { resolveComplementExecutor } from "./resolve-complement.ts";
 function stubExecutor(id: string): Executor {
   return {
     id,
+    async probe() { return { ok: true }; },
     dispense(_opts: DispenseOptions): Promise<ResultMessage> {
       return Promise.resolve({ type: "result", subtype: "success" } as ResultMessage);
     },
