@@ -811,6 +811,7 @@ describe("help command and grouped usage (T-072-01-01)", () => {
         env: {
           ...process.env,
           CLAUDE_CLI: sentinelPath,
+          VEND_EXECUTOR: "claude",
           VEND_EXECUTOR_MARKER: markerPath,
         },
         stdout: "pipe",
