@@ -233,7 +233,7 @@ function subWalk(s: InterventionSubStat): string {
 
 /**
  * Render a {@link WalkAwayReport} as the plain trust findings block printed by `vend audit`.
- * PURE. Honest labels (IA-8): "not recorded yet" when no run says whether anyone stepped in,
+ * PURE. Honest labels (IA-8): "not recorded yet" when no one says whether anyone stepped in,
  * "no planned cost data" when no cost pair exists — a guess never reads as an earned number.
  * "Finished without help" is `1 − intervention rate` (finished untouched).
  */
@@ -246,7 +246,7 @@ export function formatWalkAwayFindings(report: WalkAwayReport): string {
   lines.push(`run trust · ${scope} · ${report.total} run${report.total === 1 ? "" : "s"} [${report.tier}]`);
 
   if (iv.reported === 0) {
-    lines.push(`  finished without help: not recorded yet (${report.total} runs did not say whether anyone stepped in)`);
+    lines.push(`  finished without help: not recorded yet (no one said whether anyone stepped in during ${report.total} run${report.total === 1 ? "" : "s"})`);
   } else {
     const walkAway = iv.rate === null ? null : 1 - iv.rate;
     const trendWalk = (r: number | null) => (r === null ? "—" : pct(1 - r));

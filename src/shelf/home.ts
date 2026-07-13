@@ -65,7 +65,7 @@ function subPct(s: InterventionSubStat): string {
  * `vend audit` read identically.
  *
  * Honest-empty (read-never-invent, E-026 / IA-8): with no runs at all it says "no runs yet"; with
- * runs but no recorded answer it says the runs did not say whether anyone stepped in — NEVER a
+ * runs but no recorded answer it says no one reported whether anyone stepped in — NEVER a
  * fabricated trust percentage. A populated line reads, e.g.:
  *   `ledger   finished without help 87% (13/15)   └ recorded at the time 50% · filled in later 92%`
  */
@@ -74,7 +74,7 @@ export function homeLedgerLine(report: WalkAwayReport): string {
 
   if (report.total === 0) return "ledger   finished without help — no runs yet";
   if (iv.reported === 0) {
-    return `ledger   finished without help — not recorded yet (${report.total} run${report.total === 1 ? "" : "s"} did not say whether anyone stepped in)`;
+    return `ledger   finished without help — not recorded yet (no one said whether anyone stepped in during ${report.total} run${report.total === 1 ? "" : "s"})`;
   }
 
   const walkAway = iv.rate === null ? null : 1 - iv.rate;

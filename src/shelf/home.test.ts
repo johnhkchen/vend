@@ -108,12 +108,12 @@ describe("homeLedgerLine — honest-empty, no fabricated trust number (AC #1, E-
 
   test("runs present but no help answer → says what was not recorded, with no percentage", () => {
     const line = homeLedgerLine(reportOf([recordOf(), recordOf(), recordOf()]));
-    expect(line).toBe("ledger   finished without help — not recorded yet (3 runs did not say whether anyone stepped in)");
+    expect(line).toBe("ledger   finished without help — not recorded yet (no one said whether anyone stepped in during 3 runs)");
     expect(line).not.toContain("%");
   });
 
   test("a single run reads singular `1 run`", () => {
-    expect(homeLedgerLine(reportOf([recordOf()]))).toContain("(1 run did not say whether anyone stepped in)");
+    expect(homeLedgerLine(reportOf([recordOf()]))).toContain("(no one said whether anyone stepped in during 1 run)");
   });
 });
 

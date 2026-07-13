@@ -157,10 +157,15 @@ describe("formatWalkAwayFindings — plain operator trust lines", () => {
 
   test("honest fallbacks say what was not recorded and never invent planned cost data", () => {
     const out = formatWalkAwayFindings(auditWalkAway([rec(), rec()]));
-    expect(out).toContain("finished without help: not recorded yet (2 runs did not say whether anyone stepped in)");
+    expect(out).toContain("finished without help: not recorded yet (no one said whether anyone stepped in during 2 runs)");
     expect(out).toContain("cost compared with plan: no planned cost data");
     expect(out).not.toContain("finished without help: 0%");
     expect(out).not.toMatch(forbidden);
+  });
+
+  test("the honest fallback uses singular `1 run`", () => {
+    const out = formatWalkAwayFindings(auditWalkAway([rec()]));
+    expect(out).toContain("(no one said whether anyone stepped in during 1 run)");
   });
 });
 
