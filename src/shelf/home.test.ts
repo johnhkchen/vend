@@ -144,9 +144,10 @@ describe("renderHome — composes the three DL-6 regions (AC #2/#3, DL-1/DL-9)",
     expect(out).toContain(`${board}\n\n`);
   });
 
-  test("empty board → the renderMenu guidance line passes through untouched", () => {
+  test("empty board → the plain renderMenu line leads Home with no legacy jargon", () => {
     const out = renderHome({ boardMenu: renderMenu([]), shelfRows: rows, ledger });
-    expect(out).toContain("(no actions)");
+    expect(out.split("\n\n")[0]).toBe("No work on the board yet.");
+    expect(out).not.toContain("(no actions)");
   });
 
   test("empty ledger → the honest `no runs yet` foot, no fabricated number", () => {

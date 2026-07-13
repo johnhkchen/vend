@@ -153,7 +153,7 @@ export function renderMenu(actions: readonly Action[], opts?: RenderOpts): strin
   const shown = visibleActions(actions, all);
 
   if (shown.length === 0) {
-    return actions.length === 0 ? "(no actions)" : "(no salient actions — vend --all)";
+    return actions.length === 0 ? "No work on the board yet." : "(no salient actions — vend --all)";
   }
 
   const rows = shown.map(

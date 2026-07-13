@@ -18,9 +18,9 @@
 // transitive cost of carrying the real play literals) — so it is kept OFF every pure-test path and is
 // proven by smoke (the AC#3 live proof: `bun run src/cli.ts`), exactly like its siblings. All the real
 // work is the pure browseShelf / shelfRows / homeLedgerLine / renderHome it composes; this only wires
-// the I/O around them. Degrades gracefully: no demand.md → the board's `(no actions)` guidance line;
-// no run log → every shelf row `default` + the honest "no runs yet" foot. Instant, deterministic, no
-// LLM — nothing is cast.
+// the I/O around them. Degrades gracefully: no demand.md → the board's plain empty-state guidance
+// line; no run log → every shelf row `default` + the honest "no runs yet" foot. Instant,
+// deterministic, no LLM — nothing is cast.
 
 import { browseShelf, type BrowseOpts } from "./gather.ts";
 import { loadRunLog } from "../log/run-log.ts";

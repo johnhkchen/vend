@@ -171,8 +171,10 @@ describe("renderMenu — numbered rows, hidden behavior, render format", () => {
     expect(out).not.toContain("hidden");
   });
 
-  test("empty input → (no actions)", () => {
-    expect(renderMenu([])).toBe("(no actions)");
+  test("empty input → plain board line, no legacy jargon", () => {
+    const out = renderMenu([]);
+    expect(out).toBe("No work on the board yet.");
+    expect(out).not.toContain("(no actions)");
   });
 
   test("all rows hidden → guidance line", () => {
