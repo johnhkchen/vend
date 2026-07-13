@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatSvgWriteLine, parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
+import { formatRunSummaryLine, formatSvgWriteLine, parseArgs, parseBudgetArg, splitAfter, suggestCommand, USAGE } from "./cli.ts";
 
 // T-002-03 CLI: the PURE arg parsers. The `import.meta.main` dispatch (which imports
 // the impure runner and exits the process) does not run on import, so this test never
@@ -28,6 +28,27 @@ describe("parseBudgetArg", () => {
     const malformed = () => parseBudgetArg("40x,350k");
     expect(malformed).toThrow(RangeError);
     expect(malformed).toThrow(/integers/);
+  });
+});
+
+describe("formatRunSummaryLine — honest editorial degradation marker", () => {
+  test("a degraded clear states the exact occurrence count", () => {
+    expect(formatRunSummaryLine({
+      runId: "run-degraded",
+      outcome: "success",
+      materialized: true,
+      degrades: [
+        { code: "P9", location: "T-1.advances[1]", action: "strip" },
+        { code: "N4", location: "T-1.md#purpose", action: "annotate" },
+      ],
+    })).toBe("run run-degraded: cleared; 2 cite(s) degraded (materialized: true)\n");
+  });
+
+  test("clean success and refusal lines retain the established outcome copy", () => {
+    expect(formatRunSummaryLine({ runId: "run-clean", outcome: "success", materialized: true }))
+      .toBe("run run-clean: success (materialized: true)\n");
+    expect(formatRunSummaryLine({ runId: "run-stop", outcome: "gate-failed", materialized: false }))
+      .toBe("run run-stop: gate-failed (materialized: false)\n");
   });
 });
 

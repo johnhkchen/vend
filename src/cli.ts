@@ -11,6 +11,7 @@
 // (E-003) — this is just enough surface to dispense one real run from a shell/CI.
 
 import type { Budget } from "./budget/budget.ts";
+import type { RunSummary } from "./engine/cast.ts";
 import type { ValueTier } from "./shelf/menu.ts";
 import { formatBudget } from "./shelf/menu.ts";
 import type { Seat } from "./present/presets.ts";
@@ -275,6 +276,15 @@ export function formatSvgWriteLine(
   linkCount: number,
 ): string {
   return `wrote ${path} — ${countedNoun(groupCount, "group")}, ${countedNoun(cardCount, "card")}, ${countedNoun(linkCount, "link")}\n`;
+}
+
+/** Format one terminal cast receipt. A successful editorial degrade is still a clear, but its
+ * occurrence count must be visible rather than hidden behind the generic `success` label. PURE. */
+export function formatRunSummaryLine(summary: RunSummary): string {
+  const result = summary.outcome === "success" && summary.degrades !== undefined && summary.degrades.length > 0
+    ? `cleared; ${summary.degrades.length} cite(s) degraded`
+    : summary.outcome;
+  return `run ${summary.runId}: ${result} (materialized: ${summary.materialized})\n`;
 }
 
 /**
@@ -862,7 +872,7 @@ if (import.meta.main) {
         break;
       case "dispatched": {
         for (const s of result.runs) {
-          process.stdout.write(`run ${s.runId}: ${s.outcome} (materialized: ${s.materialized})\n`);
+          process.stdout.write(formatRunSummaryLine(s));
         }
         process.exit(result.runs.every((s) => s.outcome === "success") ? 0 : 1);
       }
@@ -882,7 +892,7 @@ if (import.meta.main) {
       agent: parsed.agent,
     });
     for (const s of result.steps) {
-      process.stdout.write(`run ${s.runId}: ${s.outcome} (materialized: ${s.materialized})\n`);
+      process.stdout.write(formatRunSummaryLine(s));
     }
     if (result.halted) process.stderr.write(`chain halted: ${result.haltReason}\n`);
     process.exit(result.outcome === "success" && !result.halted ? 0 : 1);
@@ -898,7 +908,7 @@ if (import.meta.main) {
     const budget = parsed.budget ?? expandFragmentPlay.budget;
     if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const summary = await castExpandFragment({ fragment: parsed.fragment, budget });
-    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.stdout.write(formatRunSummaryLine(summary));
     process.exit(summary.outcome === "success" ? 0 : 1);
   }
 
@@ -918,7 +928,7 @@ if (import.meta.main) {
       budget: expandFragmentPlay.budget,
       annotation: { text: parsed.feedback, nodeId: parsed.nodeId, seat: parsed.seat },
     });
-    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.stdout.write(formatRunSummaryLine(summary));
     process.exit(summary.outcome === "success" ? 0 : 1);
   }
 
@@ -932,7 +942,7 @@ if (import.meta.main) {
     const budget = parsed.budget ?? surveyPlay.budget;
     if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const summary = await castSurvey({ budget });
-    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.stdout.write(formatRunSummaryLine(summary));
     process.exit(summary.outcome === "success" ? 0 : 1);
   }
 
@@ -948,7 +958,7 @@ if (import.meta.main) {
     const budget = parsed.budget ?? steerProjectPlay.budget;
     if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const summary = await withFundingCounter(steerProjectPlay, budget, async () => await castSteer({ budget }));
-    process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+    process.stdout.write(formatRunSummaryLine(summary));
     process.exit(summary.outcome === "success" ? 0 : 1);
   }
 
@@ -1127,6 +1137,6 @@ if (import.meta.main) {
     process.exit(2);
   }
   const summary = res.summary;
-  process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
+  process.stdout.write(formatRunSummaryLine(summary));
   process.exit(summary.outcome === "success" ? 0 : 1);
 }

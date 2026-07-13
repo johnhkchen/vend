@@ -5,11 +5,14 @@ import { join } from "node:path";
 import type { DraftPhase, DraftPriority, DraftStatus, DraftType, TicketDraft, WorkPlan } from "../../baml_client/index.ts";
 import { castPlay } from "../engine/cast.ts";
 import type { Play } from "../engine/play.ts";
+import { formatRunSummaryLine } from "../cli.ts";
+import { loadRunLog } from "../log/run-log.ts";
 import type { Budget } from "../budget/budget.ts";
 import type { DispenseOptions, Executor, ResultMessage } from "../executor/executor.ts";
 import { clear } from "../gate/gates.ts";
 import { BareCodeError, materialize } from "./materialize.ts";
 import type { DegradeDisposition } from "./degrade-disposition.ts";
+import { stripNonGoalAdvancesWithDispositions, type AdvanceNormalization } from "./decompose-epic-core.ts";
 
 // T-077-02-02 AC — the cast-level degrade-not-discard proof, both sides:
 //
@@ -86,6 +89,7 @@ const EDITORIAL_PLAN: WorkPlan = {
   stories: [storyOf(["T-900-01"])],
   tickets: [ticket({
     purpose: "Vend is N4 — Not an executor; the shelf is N2 — Not a babysitting dashboard.",
+    advances: ["P1", "P9"],
   })],
 };
 
@@ -139,24 +143,32 @@ function stubExecutor(resultText: string): Executor {
   };
 }
 
-/** A decompose-SHAPED fixture play: REAL `clear`, REAL `materialize`, and the retained
- *  BareCodeError relabel arm. The callback observes materializer dispositions before the generic
- *  cast-summary/run-log join lands in T-077-02-04. */
+/** A decompose-SHAPED fixture play: REAL advances normalization, `clear`, `materialize`, and the
+ *  retained BareCodeError relabel arm. The callback observes the exact merged dispositions. */
 function decomposeShapedPlay(
   dirs: { storiesDir: string; ticketsDir: string },
   onDegrades?: (degrades: readonly DegradeDisposition[]) => void,
-): Play<{ epic: string; charter: string }, WorkPlan> {
+): Play<{ epic: string; charter: string }, AdvanceNormalization> {
   return {
     name: "bare-code-fixture",
     summary: "cast a canned WorkPlan through the real gates, materializer, and write guard (test fixture)",
     render: (i) => `decompose (fixture): ${i.epic}`,
-    parse: (text) => JSON.parse(text) as WorkPlan,
-    gates: (plan, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
-    effect: async (plan, ctx) => {
+    parse: (text, ctx) => stripNonGoalAdvancesWithDispositions(
+      JSON.parse(text) as WorkPlan,
+      ctx.inputs.charter,
+    ),
+    gates: ({ plan }, ctx) => clear(plan, { epic: ctx.inputs.epic, charter: ctx.inputs.charter }),
+    effect: async ({ plan, degrades: advancesDegrades }, ctx) => {
       try {
-        const { storyFiles, ticketFiles, degrades } = await materialize(plan, dirs, ctx.inputs.charter);
+        const { storyFiles, ticketFiles, degrades: inlineDegrades } = await materialize(plan, dirs, ctx.inputs.charter);
+        const degrades = [...advancesDegrades, ...inlineDegrades];
         onDegrades?.(degrades);
-        return { ok: true, detail: "materialized (fixture)", artifacts: [...storyFiles, ...ticketFiles] };
+        return {
+          ok: true,
+          detail: "materialized (fixture)",
+          artifacts: [...storyFiles, ...ticketFiles],
+          ...(degrades.length > 0 ? { degrades } : {}),
+        };
       } catch (e) {
         if (e instanceof BareCodeError) {
           const where = e.hits.map((h) => `${h.file}: ${h.codes.join(", ")}`).join("; ");
@@ -192,10 +204,14 @@ test("unresolved inline prose cites annotate and materialize with ordered degrad
 
   expect(summary.outcome).toBe("success");
   expect(summary.materialized).toBe(true);
-  expect(observedDegrades).toEqual([
+  const expectedDegrades = [
+    { code: "P9", location: "T-900-01.advances[1]", action: "strip" },
     { code: "N4", location: "T-900-01.md#purpose", action: "annotate" },
     { code: "N2", location: "T-900-01.md#purpose", action: "annotate" },
-  ]);
+  ] as const;
+  expect(observedDegrades).toEqual(expectedDegrades);
+  expect(summary.degrades).toEqual(expectedDegrades);
+  expect(formatRunSummaryLine(summary)).toContain("cleared; 3 cite(s) degraded");
   expect(await readdir(dirs.storiesDir)).toEqual(["S-900.md"]);
   expect(await readdir(dirs.ticketsDir)).toEqual(["T-900-01.md"]);
 
@@ -206,10 +222,13 @@ test("unresolved inline prose cites annotate and materialize with ordered degrad
   expect(ticketBody).not.toContain("N4");
   expect(ticketBody).not.toContain("N2");
 
-  // The ledger join is T-077-02-04; for now it truthfully records successful clearance and every
-  // real gate while the fixture callback proves the disposition returned at the effect seam.
-  const rec = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  // The occurrence data survives the actual append/read boundary, not only the effect callback.
+  const loaded = await loadRunLog({ path: runLogPath });
+  expect(loaded.skipped).toBe(0);
+  expect(loaded.records).toHaveLength(1);
+  const rec = loaded.records[0]!;
   expect(rec.outcome).toBe("success");
+  expect(rec.degrades).toEqual(expectedDegrades);
   expect(rec.gateResults).toEqual(
     ["value", "story-completeness", "allocation", "bounds", "structural"].map((gate) => ({ gate, passed: true })),
   );
@@ -233,12 +252,14 @@ test("a structural story-contract defect still refuses at the real gate with ZER
 
   expect(summary.outcome).toBe("gate-failed");
   expect(summary.materialized).toBe(false);
+  expect(summary.degrades).toBeUndefined();
   expect(effectObserved).toBe(false);
   expect(await readdir(dirs.storiesDir).catch(() => null)).toBeNull();
   expect(await readdir(dirs.ticketsDir).catch(() => null)).toBeNull();
 
   const rec = JSON.parse((await readFile(runLogPath, "utf8")).trim());
   expect(rec.outcome).toBe("gate-failed");
+  expect(rec.degrades).toBeUndefined();
   expect(rec.gateResults.find((row: { gate: string }) => row.gate === "story-completeness")).toMatchObject({
     gate: "story-completeness",
     passed: false,
