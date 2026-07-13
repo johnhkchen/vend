@@ -64,6 +64,7 @@ import {
   DEFAULT_DECOMPOSE_DRAFT_PATH,
   nextDecomposeRepairAction,
   RESUMABLE_DECOMPOSE_PLAY,
+  settleDecomposeDraft,
 } from "./decompose-draft.ts";
 
 // Re-export the pure core so callers (T-007-03) have one engine entry for the cast surface.
@@ -514,6 +515,21 @@ export async function castPlay<I, O>(
 
     if (reducedGrounding) {
       process.stdout.write("· reduced grounding — optional codebase-memory MCP absent; proceeding (degraded, recorded)\n");
+    }
+
+    // Reconcile the early post-gate checkpoint only after every terminal judgment says the
+    // decompose cast succeeded. A gate/reviewer/effect/settlement failure retains recovery state;
+    // an ungated control cannot clear a trusted gated draft it never re-entered.
+    if (
+      gateVerdict !== null &&
+      play.name === RESUMABLE_DECOMPOSE_PLAY &&
+      materialized &&
+      settledVerdict.outcome === "success"
+    ) {
+      await settleDecomposeDraft(
+        { runId, epic: opts.subject, settledAt: new Date().toISOString() },
+        { path: opts.decomposeDraftPath ?? join(root, DEFAULT_DECOMPOSE_DRAFT_PATH) },
+      );
     }
   } catch (error) {
     // Unexpected settlement defects remain visible to the caller, but no longer pre-empt the

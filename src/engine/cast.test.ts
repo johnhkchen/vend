@@ -30,6 +30,7 @@ import type { DecomposeInputs } from "../play/project-context.ts";
 import type { ExecutorRegistry } from "../executor/select.ts";
 import { dispenseOpenAICompat, OPENAI_BASE_URL_ENV } from "../executor/openai-compat.ts";
 import {
+  appendDecomposeDraft,
   DEFAULT_DECOMPOSE_DRAFT_PATH,
   loadDecomposeDrafts,
 } from "./decompose-draft.ts";
@@ -919,6 +920,72 @@ test("castPlay: a gate-failed decompose leaves its parsed draft readable under .
   });
 });
 
+test("castPlay: a timed-out decompose preserves an already-readable draft (T-077-04-02 AC)", async () => {
+  const root = await tmp();
+  const draftPath = join(root, DEFAULT_DECOMPOSE_DRAFT_PATH);
+  const parsedDraft = {
+    stories: [{ id: "S-077-98", title: "timeout recovery fixture" }],
+    tickets: [{ id: "T-077-98-01", story: "S-077-98" }],
+  };
+  await appendDecomposeDraft({
+    runId: "decompose-before-timeout",
+    epic: "E-077",
+    parsedDraft,
+    gateFindings: { status: "clear", cleared: ["structural"] },
+    nextRepairAction: { kind: "resume-at-gates", cause: "post-gate-interruption" },
+    createdAt: "2026-07-13T12:00:00.000Z",
+  }, { path: draftPath });
+
+  const calls: string[] = [];
+  const play: Play<{ epic: string }, typeof parsedDraft> = {
+    name: "decompose-epic",
+    summary: "retain an existing resumable fixture when a later dispense times out",
+    render: ({ epic }) => `decompose fixture: ${epic}`,
+    parse: () => {
+      calls.push("parse");
+      return parsedDraft;
+    },
+    gates: () => {
+      calls.push("gates");
+      return { status: "clear" };
+    },
+    effect: async () => {
+      calls.push("effect");
+      return { ok: true };
+    },
+    budget: BIG_BUDGET,
+    card: { color: ["blue", "white"], type: "sorcery", rarity: "common" },
+  };
+  const timeoutExecutor: Executor = {
+    id: "stub-timeout",
+    async probe() { return { ok: true }; },
+    async dispense(): Promise<ResultMessage> {
+      throw new ExecutorTimeoutError(5, "stub decompose executor timed out");
+    },
+  };
+
+  const summary = await castPlay(play, { epic: "E-077" }, BIG_BUDGET, {
+    subject: "E-077",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath: join(root, "runs.jsonl"),
+    runId: "decompose-timeout",
+    executor: timeoutExecutor,
+  });
+
+  expect(summary.outcome).toBe("timed-out");
+  expect(summary.materialized).toBe(false);
+  expect(calls).toEqual([]);
+  const drafts = await loadDecomposeDrafts({ path: draftPath });
+  expect(drafts.skipped).toBe(0);
+  expect(drafts.records).toHaveLength(1);
+  expect(drafts.records[0]).toMatchObject({
+    runId: "decompose-before-timeout",
+    epic: "E-077",
+    parsedDraft,
+  });
+});
+
 test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn units at the live seam (T-077-01-01 AC)", async () => {
   const root = await tmp();
   const runId = "decompose-max-turns-cap-hit";
@@ -1023,10 +1090,28 @@ test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn un
   expect(record.outcome).toBe("success");
 
   const drafts = await loadDecomposeDrafts({ path: join(root, DEFAULT_DECOMPOSE_DRAFT_PATH) });
-  expect(drafts.records).toHaveLength(1);
-  expect(drafts.records[0]?.nextRepairAction).toEqual({
-    kind: "resume-at-gates",
-    cause: "executor-max-turns",
+  expect(drafts).toEqual({ records: [], skipped: 0 });
+
+  const rawDraftRows = (await readFile(join(root, DEFAULT_DECOMPOSE_DRAFT_PATH), "utf8"))
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(rawDraftRows).toHaveLength(2);
+  expect(rawDraftRows[0]).toMatchObject({
+    v: 1,
+    runId,
+    epic: "E-077",
+    nextRepairAction: {
+      kind: "resume-at-gates",
+      cause: "executor-max-turns",
+    },
+  });
+  expect(rawDraftRows[1]).toEqual({
+    v: 1,
+    kind: "settled",
+    runId,
+    epic: "E-077",
+    settledAt: expect.any(String),
   });
 });
 
