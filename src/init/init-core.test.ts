@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { matchIds } from "../gate/gates.ts";
 import {
   availableTemplates,
   countDemandRows,
@@ -22,6 +23,12 @@ import {
 
 /** Every path the full manifest will create — a "fully scaffolded" filesystem listing. */
 const ALL_PATHS = SCAFFOLD_MANIFEST.map((e) => e.path);
+
+/** The exact generic charter bytes a bare `vend init` plans and writes. */
+const baseCharter = SCAFFOLD_MANIFEST.find(
+  (e): e is Extract<ScaffoldEntry, { kind: "file" }> =>
+    e.kind === "file" && e.path === "docs/knowledge/charter.md",
+);
 
 describe("planInit — create-vs-skip set (AC clause 1)", () => {
   test("empty listing → full scaffold (every entry creates)", () => {
@@ -129,6 +136,20 @@ describe("zero demand rows (AC clause 3)", () => {
   test("empty-state prose bullets do not false-positive", () => {
     // ordinary list bullets that are NOT cleared-epic rows must count as zero
     expect(countDemandRows("- a point\n- another point\n")).toBe(0);
+  });
+});
+
+describe("base charter teaches the P-label convention (T-078-02-03)", () => {
+  test("the shared gate detector resolves the scaffold's labeled invariants", () => {
+    expect(baseCharter).toBeDefined();
+    expect([...matchIds(baseCharter!.contents, "P")]).toEqual(["P1", "P2", "P3"]);
+  });
+
+  test("the scaffold pins the one-line note that casts cite the labels", () => {
+    expect(baseCharter).toBeDefined();
+    expect(baseCharter!.contents).toContain(
+      "<!-- Casts cite these labels in `advances`; keep each P-label stable once referenced. -->",
+    );
   });
 });
 
@@ -289,11 +310,6 @@ describe("STANDALONE_TEMPLATES / minimal (T-064-01)", () => {
 // — so a fresh seed is graded against the hackathon charter, where `vend steer` reads it. These pins
 // stay fs-free (the byte-equality-to-the-seed-file drift guard lives in the fs-capable effect test).
 
-/** The base scaffold's charter slot — bare `vend init` ships THIS (must stay the generic stub). */
-const baseCharter = SCAFFOLD_MANIFEST.find(
-  (e): e is Extract<ScaffoldEntry, { kind: "file" }> =>
-    e.kind === "file" && e.path === "docs/knowledge/charter.md",
-);
 /** The hackathon overlay's charter override entry. */
 const overlayCharter = resolveTemplate("hackathon")?.find(
   (e): e is Extract<ScaffoldEntry, { kind: "file" }> =>
@@ -331,8 +347,8 @@ describe("hackathon overlay — the tuned charter override (T-059-02)", () => {
     expect(countDemandRows(overlayCharter!.contents)).toBe(0);
   });
 
-  test("the BASE manifest still ships the generic stub (bare `vend init` unchanged)", () => {
-    // the override lives ONLY in the overlay; the base slot is untouched, so bare init is E-040-identical.
+  test("the BASE manifest still ships the generic stub", () => {
+    // The override lives ONLY in the overlay; the enriched base slot stays generic.
     expect(baseCharter!.contents).toContain("author your project's");
     expect(baseCharter!.contents).not.toContain("demonstrable runnable slice");
   });

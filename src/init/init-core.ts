@@ -116,6 +116,14 @@ const CHARTER_STUB = `# Vend — Charter
 
 _Stub — author your project's **value function** here: what is worth allocating on this
 project and why, so cleared work is valuable, not merely valid. See \`vision.md\`._
+
+## Invariants
+
+<!-- Casts cite these labels in \`advances\`; keep each P-label stable once referenced. -->
+
+- **P1 — Name the durable value.** Replace this with the first principle work must advance.
+- **P2 — State the hard boundary.** Replace this with a constraint work must not regress.
+- **P3 — Make success verifiable.** Replace this with how right work proves it landed.
 `;
 
 const VISION_STUB = `# Vend — Vision

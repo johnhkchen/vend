@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { matchIds } from "../gate/gates.ts";
 import {
   countDemandRows,
   isLisaProject,
@@ -53,6 +54,15 @@ describe("applyInitScaffold — a bare lisa project gets the full tree", () => {
           expect(await readFile(join(root, entry.path), "utf8")).toBe(entry.contents);
         }
       }
+      // The fresh workspace's actual charter teaches the same P-label convention the gates read.
+      const charter = await readFile(join(root, "docs/knowledge/charter.md"), "utf8");
+      const charterSeed = SCAFFOLD_MANIFEST.find(
+        (entry): entry is Extract<ScaffoldEntry, { kind: "file" }> =>
+          entry.kind === "file" && entry.path === "docs/knowledge/charter.md",
+      );
+      expect(charterSeed).toBeDefined();
+      expect(matchIds(charter, "P").size).toBeGreaterThan(0);
+      expect(charter).toBe(charterSeed!.contents);
       // the board + archive are honestly empty (zero demand rows).
       expect(countDemandRows(await readFile(join(root, "docs/active/demand.md"), "utf8"))).toBe(0);
       expect(
@@ -331,7 +341,7 @@ describe("runInit — tuned charter overlay (T-059-02)", () => {
   const tunedCharter = resolveTemplate("hackathon")?.find(
     (e): e is Extract<ScaffoldEntry, { kind: "file" }> => e.kind === "file" && e.path === CHARTER,
   )?.contents;
-  /** The base scaffold's generic stub — what bare `vend init` must still write there (E-040 parity). */
+  /** The base scaffold's generic labeled stub — what bare `vend init` writes there. */
   const stubCharter = SCAFFOLD_MANIFEST.find(
     (e): e is Extract<ScaffoldEntry, { kind: "file" }> => e.kind === "file" && e.path === CHARTER,
   )?.contents;
@@ -356,7 +366,7 @@ describe("runInit — tuned charter overlay (T-059-02)", () => {
     }
   });
 
-  test("bare runInit still writes the GENERIC stub there (bare `vend init` byte-identical to E-040)", async () => {
+  test("bare runInit writes the generic labeled stub there", async () => {
     const root = await seedBareLisa();
     try {
       await runInit(root);
