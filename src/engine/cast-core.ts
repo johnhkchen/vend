@@ -407,7 +407,9 @@ function humanElapsed(elapsedMs: number): string {
  */
 export function formatCastProgress(state: CastProgress, opts: CastProgressFormat): string {
   const turn = opts.maxTurns === undefined ? `${state.turns}` : `${state.turns}/${opts.maxTurns}`;
-  return `elapsed ${humanElapsed(opts.elapsedMs)} · ${humanProgressTokens(state.weightedTokens)}/${humanProgressTokens(opts.tokenEnvelope)} · turn ${turn}`;
+  const detectAfter = state.weightedTokens > opts.tokenEnvelope ? " (detect-after)" : "";
+  const tokens = `${humanProgressTokens(state.weightedTokens)}/${humanProgressTokens(opts.tokenEnvelope)} tokens${detectAfter}`;
+  return `elapsed ${humanElapsed(opts.elapsedMs)} · ${tokens} · turn ${turn}`;
 }
 
 /** Plain facts available when the cast settles and renders its final turn accounting. */

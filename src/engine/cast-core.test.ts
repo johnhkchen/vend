@@ -241,7 +241,7 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
       "turn-7",
     ]);
     expect(formatCastProgress(progress, { elapsedMs: 252_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
-      "elapsed 4m12s · 210k/500k · turn 7/15",
+      "elapsed 4m12s · 210k/500k tokens · turn 7/15",
     );
   });
 
@@ -268,11 +268,26 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
 
   test("formatter handles seconds, hours, small units, and an absent turn cap", () => {
     expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 12_999, tokenEnvelope: 999 })).toBe(
-      "elapsed 12s · 0/999 · turn 0",
+      "elapsed 12s · 0/999 tokens · turn 0",
     );
     expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 3_723_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
-      "elapsed 1h02m03s · 0/500k · turn 0/15",
+      "elapsed 1h02m03s · 0/500k tokens · turn 0/15",
     );
+  });
+
+  test("marks token spend detect-after only when it exceeds the envelope (T-077-03-01)", () => {
+    const overEnvelope = formatCastProgress(
+      { ...EMPTY_CAST_PROGRESS, weightedTokens: 392_000 },
+      { elapsedMs: 252_000, tokenEnvelope: 200_000, maxTurns: 15 },
+    );
+    const underEnvelope = formatCastProgress(
+      { ...EMPTY_CAST_PROGRESS, weightedTokens: 199_000 },
+      { elapsedMs: 252_000, tokenEnvelope: 200_000, maxTurns: 15 },
+    );
+
+    expect(overEnvelope).toBe("elapsed 4m12s · 392k/200k tokens (detect-after) · turn 0/15");
+    expect(underEnvelope).toBe("elapsed 4m12s · 199k/200k tokens · turn 0/15");
+    expect(underEnvelope).not.toContain("(detect-after)");
   });
 });
 

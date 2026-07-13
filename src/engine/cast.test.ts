@@ -831,9 +831,9 @@ test("castPlay: stub stream refreshes one progress line and preserves every raw 
   expect(captured.result.outcome).toBe("success");
   const live = captured.stdout.split("· effect", 1)[0]!;
   expect(live).toBe(
-    "\r\x1b[2Kelapsed 12s · 0/1000k · turn 0" +
-      "\r\x1b[2Kelapsed 34s · 7/1000k · turn 1" +
-      "\r\x1b[2Kelapsed 56s · 7/1000k · turn 1\n",
+    "\r\x1b[2Kelapsed 12s · 0/1000k tokens · turn 0" +
+      "\r\x1b[2Kelapsed 34s · 7/1000k tokens · turn 1" +
+      "\r\x1b[2Kelapsed 56s · 7/1000k tokens · turn 1\n",
   );
   expect(live.match(/\n/g)).toHaveLength(1);
   expect(captured.stdout).not.toContain("· system");
