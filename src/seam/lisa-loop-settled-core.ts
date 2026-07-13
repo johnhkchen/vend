@@ -9,12 +9,13 @@ export const LISA_LOOP_SETTLED_SCHEMA_VERSION = 1 as const;
 export const LISA_LOOP_SETTLED_KIND = "lisa-loop-settled" as const;
 export const DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH = ".vend/loop-settled.json" as const;
 
-const MARKER_KEYS = Object.freeze(["v", "kind", "project", "ticketsDone", "durationSecs"] as const);
+const REQUIRED_MARKER_KEYS = Object.freeze(["v", "kind", "project", "ticketsDone"] as const);
+const MARKER_KEYS = Object.freeze([...REQUIRED_MARKER_KEYS, "durationSecs"] as const);
 
 export interface LisaLoopSettledMarkerInput {
   readonly project: string;
   readonly ticketsDone: number;
-  readonly durationSecs: number;
+  readonly durationSecs?: number;
 }
 
 export interface LisaLoopSettledMarker {
@@ -22,7 +23,7 @@ export interface LisaLoopSettledMarker {
   readonly kind: typeof LISA_LOOP_SETTLED_KIND;
   readonly project: string;
   readonly ticketsDone: number;
-  readonly durationSecs: number;
+  readonly durationSecs?: number;
 }
 
 export interface LisaCompleteEventInput {
@@ -55,7 +56,12 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
 
 function hasExactMarkerKeys(value: Record<string, unknown>): boolean {
   const keys = Object.keys(value);
-  return keys.length === MARKER_KEYS.length && MARKER_KEYS.every((key) => Object.hasOwn(value, key));
+  return (
+    keys.length >= REQUIRED_MARKER_KEYS.length &&
+    keys.length <= MARKER_KEYS.length &&
+    REQUIRED_MARKER_KEYS.every((key) => Object.hasOwn(value, key)) &&
+    keys.every((key) => (MARKER_KEYS as readonly string[]).includes(key))
+  );
 }
 
 function parseEventQuantity(value: string | undefined): number | null {
@@ -72,7 +78,7 @@ export function buildLisaLoopSettledMarker(input: LisaLoopSettledMarkerInput): L
   if (!isNonNegativeSafeInteger(input.ticketsDone)) {
     throw new TypeError("lisa loop-settled ticketsDone must be a non-negative safe integer");
   }
-  if (!isNonNegativeSafeInteger(input.durationSecs)) {
+  if (input.durationSecs !== undefined && !isNonNegativeSafeInteger(input.durationSecs)) {
     throw new TypeError("lisa loop-settled durationSecs must be a non-negative safe integer");
   }
 
@@ -81,7 +87,7 @@ export function buildLisaLoopSettledMarker(input: LisaLoopSettledMarkerInput): L
     kind: LISA_LOOP_SETTLED_KIND,
     project: input.project,
     ticketsDone: input.ticketsDone,
-    durationSecs: input.durationSecs,
+    ...(input.durationSecs === undefined ? {} : { durationSecs: input.durationSecs }),
   });
 }
 
@@ -94,7 +100,7 @@ export function reviveLisaLoopSettledMarker(value: unknown): LisaLoopSettledMark
     value.kind !== LISA_LOOP_SETTLED_KIND ||
     !isNonEmptyString(value.project) ||
     !isNonNegativeSafeInteger(value.ticketsDone) ||
-    !isNonNegativeSafeInteger(value.durationSecs)
+    (Object.hasOwn(value, "durationSecs") && !isNonNegativeSafeInteger(value.durationSecs))
   ) {
     return null;
   }
@@ -102,7 +108,7 @@ export function reviveLisaLoopSettledMarker(value: unknown): LisaLoopSettledMark
   return buildLisaLoopSettledMarker({
     project: value.project,
     ticketsDone: value.ticketsDone,
-    durationSecs: value.durationSecs,
+    ...(Object.hasOwn(value, "durationSecs") ? { durationSecs: value.durationSecs as number } : {}),
   });
 }
 
@@ -137,7 +143,9 @@ export function classifyLisaCompleteEvent(input: LisaCompleteEventInput): Classi
   if (ticketsDone === null) {
     return Object.freeze({ kind: "refused", reason: "LISA_TICKETS_DONE must be a non-negative safe integer" });
   }
-  const durationSecs = parseEventQuantity(input.durationSecs);
+  const durationSecs = input.durationSecs === undefined
+    ? undefined
+    : parseEventQuantity(input.durationSecs);
   if (durationSecs === null) {
     return Object.freeze({ kind: "refused", reason: "LISA_DURATION_SECS must be a non-negative safe integer" });
   }

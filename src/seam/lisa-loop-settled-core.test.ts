@@ -9,11 +9,15 @@ import {
   serializeLisaLoopSettledMarker,
 } from "./lisa-loop-settled-core.ts";
 
-const expectedMarker = Object.freeze({
+const expectedUntrackedMarker = Object.freeze({
   v: 1,
   kind: "lisa-loop-settled",
   project: "vend",
   ticketsDone: 2,
+} as const);
+
+const expectedTrackedMarker = Object.freeze({
+  ...expectedUntrackedMarker,
   durationSecs: 41,
 } as const);
 
@@ -22,17 +26,34 @@ describe("lisa loop-settled v1 fixture", () => {
     const fixture = await readFile(join(import.meta.dir, "fixtures", "lisa-loop-settled.valid.json"), "utf8");
     const parsed = parseLisaLoopSettledMarker(fixture);
 
-    expect(parsed).toEqual({ kind: "valid", marker: expectedMarker });
+    expect(parsed).toEqual({ kind: "valid", marker: expectedUntrackedMarker });
     if (parsed.kind !== "valid") throw new Error("fixture unexpectedly malformed");
     expect(Object.isFrozen(parsed.marker)).toBe(true);
+    expect(Object.hasOwn(parsed.marker, "durationSecs")).toBe(false);
     expect(serializeLisaLoopSettledMarker(parsed.marker)).toBe(fixture);
+  });
+
+  test("the tracked shape validates and round-trips without changing its bytes", () => {
+    const bytes = `${JSON.stringify(expectedTrackedMarker)}\n`;
+    const parsed = parseLisaLoopSettledMarker(bytes);
+
+    expect(parsed).toEqual({ kind: "valid", marker: expectedTrackedMarker });
+    if (parsed.kind !== "valid") throw new Error("tracked marker unexpectedly malformed");
+    expect(Object.isFrozen(parsed.marker)).toBe(true);
+    expect(serializeLisaLoopSettledMarker(parsed.marker)).toBe(bytes);
   });
 });
 
 describe("buildLisaLoopSettledMarker", () => {
+  test("omits duration when lisa did not track it", () => {
+    const marker = buildLisaLoopSettledMarker({ project: "vend", ticketsDone: 2 });
+    expect(marker).toEqual(expectedUntrackedMarker);
+    expect(Object.hasOwn(marker, "durationSecs")).toBe(false);
+  });
+
   test("accepts zero as an honest count and duration", () => {
     expect(buildLisaLoopSettledMarker({ project: "vend", ticketsDone: 0, durationSecs: 0 })).toEqual({
-      ...expectedMarker,
+      ...expectedTrackedMarker,
       ticketsDone: 0,
       durationSecs: 0,
     });
@@ -58,15 +79,16 @@ describe("parseLisaLoopSettledMarker — closed malformed refusal", () => {
   test.each([
     ["null", null],
     ["array", []],
-    ["wrong version", { ...expectedMarker, v: 2 }],
+    ["wrong version", { ...expectedTrackedMarker, v: 2 }],
     ["missing kind", { v: 1, project: "vend", ticketsDone: 2, durationSecs: 41 }],
-    ["wrong kind", { ...expectedMarker, kind: "ticket-settled" }],
-    ["empty project", { ...expectedMarker, project: "" }],
-    ["string tickets", { ...expectedMarker, ticketsDone: "2" }],
-    ["negative tickets", { ...expectedMarker, ticketsDone: -1 }],
-    ["fractional duration", { ...expectedMarker, durationSecs: 1.5 }],
-    ["unsafe duration", { ...expectedMarker, durationSecs: Number.MAX_SAFE_INTEGER + 1 }],
-    ["extra key", { ...expectedMarker, completedAt: "2026-07-13T12:00:00Z" }],
+    ["wrong kind", { ...expectedTrackedMarker, kind: "ticket-settled" }],
+    ["empty project", { ...expectedTrackedMarker, project: "" }],
+    ["string tickets", { ...expectedTrackedMarker, ticketsDone: "2" }],
+    ["negative tickets", { ...expectedTrackedMarker, ticketsDone: -1 }],
+    ["null duration", { ...expectedUntrackedMarker, durationSecs: null }],
+    ["fractional duration", { ...expectedTrackedMarker, durationSecs: 1.5 }],
+    ["unsafe duration", { ...expectedTrackedMarker, durationSecs: Number.MAX_SAFE_INTEGER + 1 }],
+    ["extra key", { ...expectedUntrackedMarker, completedAt: "2026-07-13T12:00:00Z" }],
   ] as const)("refuses %s", (_label, value) => {
     expect(reviveLisaLoopSettledMarker(value)).toBeNull();
     expect(parseLisaLoopSettledMarker(JSON.stringify(value))).toEqual({
@@ -85,8 +107,37 @@ describe("classifyLisaCompleteEvent", () => {
       durationSecs: "41",
     })).toEqual({
       kind: "complete",
-      marker: expectedMarker,
+      marker: expectedTrackedMarker,
       projectRoot: "/Users/operator/work/vend/",
+    });
+  });
+
+  test("completes without inventing a duration when lisa did not track one", () => {
+    const classified = classifyLisaCompleteEvent({
+      event: "complete",
+      projectRoot: "/work/vend",
+      ticketsDone: "2",
+      durationSecs: undefined,
+    });
+
+    expect(classified).toEqual({
+      kind: "complete",
+      marker: expectedUntrackedMarker,
+      projectRoot: "/work/vend",
+    });
+    if (classified.kind !== "complete") throw new Error("untracked complete event was not admitted");
+    expect(Object.hasOwn(classified.marker, "durationSecs")).toBe(false);
+  });
+
+  test("refuses a present garbage duration", () => {
+    expect(classifyLisaCompleteEvent({
+      event: "complete",
+      projectRoot: "/work/vend",
+      ticketsDone: "2",
+      durationSecs: "41s",
+    })).toEqual({
+      kind: "refused",
+      reason: "LISA_DURATION_SECS must be a non-negative safe integer",
     });
   });
 
@@ -104,7 +155,6 @@ describe("classifyLisaCompleteEvent", () => {
     ["missing tickets", { projectRoot: "/work/vend", ticketsDone: undefined, durationSecs: "41" }],
     ["leading-zero tickets", { projectRoot: "/work/vend", ticketsDone: "02", durationSecs: "41" }],
     ["negative tickets", { projectRoot: "/work/vend", ticketsDone: "-1", durationSecs: "41" }],
-    ["partial duration", { projectRoot: "/work/vend", ticketsDone: "2", durationSecs: "41s" }],
     ["unsafe duration", {
       projectRoot: "/work/vend",
       ticketsDone: "2",

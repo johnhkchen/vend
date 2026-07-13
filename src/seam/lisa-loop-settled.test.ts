@@ -23,30 +23,32 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 describe("recordLisaLoopSettled — Vend-owned filesystem crossing", () => {
-  test("records a valid complete event only at the Vend marker path", async () => {
+  test("records an untracked-duration complete event only at the Vend marker path", async () => {
     const root = await tempRoot();
     try {
       const result = await recordLisaLoopSettled({
         event: "complete",
         projectRoot: root,
         ticketsDone: "3",
-        durationSecs: "90",
+        durationSecs: undefined,
       });
 
       expect(result.kind).toBe("recorded");
       if (result.kind !== "recorded") throw new Error("valid event was not recorded");
       expect(result.path).toBe(DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH);
       const bytes = await readFile(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH), "utf8");
-      expect(parseLisaLoopSettledMarker(bytes)).toEqual({
+      const parsed = parseLisaLoopSettledMarker(bytes);
+      expect(parsed).toEqual({
         kind: "valid",
         marker: {
           v: 1,
           kind: "lisa-loop-settled",
           project: basename(root),
           ticketsDone: 3,
-          durationSecs: 90,
         },
       });
+      if (parsed.kind !== "valid") throw new Error("untracked marker unexpectedly malformed");
+      expect(Object.hasOwn(parsed.marker, "durationSecs")).toBe(false);
       expect(await readdir(root)).toEqual([".vend"]);
       expect(await pathExists(join(root, ".lisa"))).toBe(false);
     } finally {

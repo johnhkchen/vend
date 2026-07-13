@@ -17,7 +17,7 @@ Lisa supplies these documented environment values on that event:
 - `LISA_EVENT=complete`;
 - `LISA_PROJECT`: absolute project root;
 - `LISA_TICKETS_DONE`: whole-loop completed ticket count;
-- `LISA_DURATION_SECS`: whole-loop wall-clock duration in seconds.
+- `LISA_DURATION_SECS`: whole-loop wall-clock duration in seconds, when tracked.
 
 The project-owned `.lisa/hooks/on-notify` is the producer entry. It invokes Vend's seam recorder
 before the hook resolves its optional ntfy topic. Marker delivery is therefore local and does not
@@ -40,10 +40,10 @@ The pending marker lives at this project-relative path:
 Canonical v1 fixture:
 
 ```json
-{"v":1,"kind":"lisa-loop-settled","project":"vend","ticketsDone":2,"durationSecs":41}
+{"v":1,"kind":"lisa-loop-settled","project":"vend","ticketsDone":2}
 ```
 
-The JSON object is closed and has exactly five fields:
+The JSON object is closed and has exactly four required fields plus one optional measurement:
 
 | Field | v1 constraint | Source |
 |---|---|---|
@@ -51,12 +51,13 @@ The JSON object is closed and has exactly five fields:
 | `kind` | literal string `lisa-loop-settled` | Vend schema identity |
 | `project` | non-empty basename of `LISA_PROJECT` | lisa complete event |
 | `ticketsDone` | non-negative safe integer | `LISA_TICKETS_DONE` |
-| `durationSecs` | non-negative safe integer | `LISA_DURATION_SECS` |
+| `durationSecs` | optional non-negative safe integer | `LISA_DURATION_SECS`, when tracked |
 
-Quantities are JSON numbers even though the hook receives environment strings. Missing, negative,
-fractional, non-decimal, leading-zero, or unsafe-integer values are not admitted. The project stores
-only the basename: the marker is already rooted in that project, and the absolute local path is not
-part of the provenance line.
+Quantities are JSON numbers even though the hook receives environment strings. `ticketsDone` is
+required. An absent duration is admitted by omitting `durationSecs`; a present duration that is
+empty, negative, fractional, non-decimal, leading-zero, or unsafe is not admitted. The project
+stores only the basename: the marker is already rooted in that project, and the absolute local path
+is not part of the provenance line. No other optional or additional key is admitted.
 
 The shape contains no completion timestamp because lisa's existing event does not supply one. The
 recorder does not mint a new clock fact that could be mistaken for lisa provenance.
@@ -81,10 +82,11 @@ bytes are never published at the stable marker name.
 `vend settle` is the consumer. Its marker reader must use the v1 schema check in
 `src/seam/lisa-loop-settled-core.ts`; it must not treat raw `JSON.parse` success as validity.
 
-On a valid pending marker, settle may print the provenance line using `project`, `ticketsDone`, and
-`durationSecs`. The marker is consumed only when that settle operation successfully reaches its
-terminal verdict. Consumption removes the one stable Vend-owned marker. An immediate second settle
-therefore reports no pending loop and cannot print the provenance again.
+On a valid pending marker, settle prints the provenance line using `project` and `ticketsDone`, plus
+`durationSecs` when that measurement is present. It never fabricates a duration for the four-field
+shape. The marker is consumed only when that settle operation successfully reaches its terminal
+verdict. Consumption removes the one stable Vend-owned marker. An immediate second settle therefore
+reports no pending loop and cannot print the provenance again.
 
 Malformed marker bytes are an andon, not “no pending loop” and not partial provenance. Settle must
 refuse the malformed marker visibly and leave it in place for diagnosis; it must not print invented
@@ -105,9 +107,11 @@ one-way observation, not reverse mutation.
 
 ## Version evolution
 
-Any field addition, removal, rename, semantic change, or relaxation of the closed key set requires a
-new numeric `v`. A v1 consumer refuses unknown versions. Producers and consumers must update this
-document and the committed canonical fixture together before emitting a new version.
+The current v1 agreement admits both the canonical four-field shape and the tracked-duration
+five-field shape. Any other field addition, removal, rename, semantic change, or relaxation of the
+closed key set requires a new numeric `v`. A v1 consumer refuses unknown versions. Producers and
+consumers must update this document and the committed canonical fixture together before emitting a
+new version.
 
 The executable contract is pinned by:
 

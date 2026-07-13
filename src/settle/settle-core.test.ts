@@ -286,11 +286,32 @@ describe("computeSettleVerdict — one complete machine-known result", () => {
     });
   });
 
+  test("a valid pending Lisa marker carries honestly absent duration", () => {
+    const verdict = computeSettleVerdict(input({
+      loopSettledContents: serializeLisaLoopSettledMarker({
+        v: 1,
+        kind: "lisa-loop-settled",
+        project: "vend",
+        ticketsDone: 3,
+      }),
+    }));
+
+    expect(verdict.kind).toBe("verdict");
+    if (verdict.kind !== "verdict") throw new Error("expected settle verdict");
+    expect(verdict.loop).toEqual({
+      v: 1,
+      kind: "lisa-loop-settled",
+      project: "vend",
+      ticketsDone: 3,
+    });
+    expect(Object.hasOwn(verdict.loop!, "durationSecs")).toBe(false);
+  });
+
   test.each([
     ["invalid JSON", "{", "not valid JSON"],
     [
       "schema mismatch",
-      '{"v":1,"kind":"lisa-loop-settled","project":"vend","ticketsDone":3}',
+      '{"v":1,"kind":"lisa-loop-settled","project":"vend","ticketsDone":3,"extra":true}',
       "closed v1",
     ],
   ] as const)("a malformed Lisa marker (%s) refuses without verdict claims", (_name, bytes, reason) => {
