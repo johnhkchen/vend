@@ -128,7 +128,7 @@ describe("learnLaneCapacities — honest unlearned branches", () => {
     }
   });
 
-  test("one cap cannot invent cadence, and zero observed burn cannot become a denominator", () => {
+  test("one cap cannot invent cadence, and empty repeated caps do not become windows", () => {
     expect(forSeat([record(FIRST, 0, { input_tokens: 100 }, true)], FIRST)).toEqual({
       seat: FIRST,
       status: "unlearned",
@@ -143,7 +143,7 @@ describe("learnLaneCapacities — honest unlearned branches", () => {
     ).toEqual({
       seat: FIRST,
       status: "unlearned",
-      reason: "non-positive-capacity",
+      reason: "insufficient-cap-evidence",
     });
   });
 

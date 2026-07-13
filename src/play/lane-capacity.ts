@@ -79,8 +79,10 @@ function burnBetween(
   return burn;
 }
 
-/** Each adjacent, positive-time cap pair is one directly observed reset-window sample.
- * The earlier cap is the exclusive boundary; the later cap row belongs to the window it
+/** Each adjacent, positive-time cap pair with positive finite intervening burn is one
+ * directly observed reset-window sample. An immediate repeated 429 with no burn does not
+ * prove that a reset happened and must not dilute the learned cadence or capacity. The
+ * earlier cap is the exclusive boundary; the later cap row belongs to the window it
  * exhausted and is included in that window's burn. */
 function windowSamples(records: readonly TimedRecord[]): readonly WindowSample[] {
   const caps = records.filter(({ record }) => record.capWindowExhausted !== undefined);
@@ -91,10 +93,9 @@ function windowSamples(records: readonly TimedRecord[]): readonly WindowSample[]
     const current = caps[index]!;
     const durationMs = current.at - previous.at;
     if (durationMs <= 0) continue;
-    samples.push({
-      durationMs,
-      burn: burnBetween(records, previous.at, current.at),
-    });
+    const burn = burnBetween(records, previous.at, current.at);
+    if (!Number.isFinite(burn) || burn <= 0) continue;
+    samples.push({ durationMs, burn });
   }
 
   return samples;
