@@ -8,12 +8,15 @@ import {
   CLAUDE_HINT,
   claudeCheck,
   EXECUTOR_CHECK,
+  EXECUTOR_DISPENSABLE_CHECK,
   executorConfigCheck,
+  executorDispensableCheck,
   LISA_CHECK,
   LISA_HINT,
   lisaCheck,
   probeDoctor,
 } from "./doctor-probe.ts";
+import { CLAUDE_PROBE_HINT } from "../executor/claude.ts";
 import {
   DEFAULT_OPENAI_BASE_URL,
   OPENAI_BASE_URL_ENV,
@@ -41,6 +44,7 @@ function onPathFor(present: readonly string[]): (binary: string) => Promise<bool
 }
 const yes = async () => true;
 const no = async () => false;
+const probeOk = async () => ({ ok: true } as const);
 
 /** Look one named check out of the returned set. */
 function byName(checks: readonly Check[], name: string): Check | undefined {
@@ -48,10 +52,15 @@ function byName(checks: readonly Check[], name: string): Check | undefined {
 }
 
 describe("probeDoctor — AC (1): all-ok in a wired env", () => {
-  test("every dependency check is green; all four checks are present; no hints", async () => {
-    const checks = await probeDoctor({ onPath: allOnPath, bamlLoadable: yes, env: {} });
+  test("every dependency check is green; all five checks are present; no hints", async () => {
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      env: {},
+    });
 
-    expect(checks.length).toBe(4);
+    expect(checks.length).toBe(5);
     expect(checks.every((c) => c.ok)).toBe(true);
     expect(checks.every((c) => c.hint === undefined)).toBe(true);
 
@@ -60,20 +69,70 @@ describe("probeDoctor — AC (1): all-ok in a wired env", () => {
     expect(checks[1]?.name).toBe(CLAUDE_CHECK);
     expect(checks[2]?.name).toBe(BAML_CHECK);
     expect(checks[3]?.name.startsWith(EXECUTOR_CHECK)).toBe(true);
+    expect(checks[4]?.name).toBe(`${EXECUTOR_DISPENSABLE_CHECK}: claude`);
     // empty env ⇒ default executor is claude, which needs no config.
     expect(checks[3]?.name).toContain("claude");
   });
 });
 
-describe("probeDoctor — AC (2): lisa off PATH", () => {
-  test("the lisa check fails with its hint; the probe RETURNS four checks (did not raise)", async () => {
+describe("probeDoctor — executor dispensability (T-074-01-02)", () => {
+  test("an ok injected probe fact emits a green named check", async () => {
+    let calls = 0;
     const checks = await probeDoctor({
-      onPath: onPathFor(["claude"]), // lisa missing, claude present
+      onPath: allOnPath,
       bamlLoadable: yes,
+      executorProbe: async () => {
+        calls += 1;
+        return { ok: true };
+      },
       env: {},
     });
 
-    expect(checks.length).toBe(4); // returned a result, not a raise
+    const check = byName(checks, EXECUTOR_DISPENSABLE_CHECK);
+    expect(calls).toBe(1);
+    expect(check).toEqual({ name: "executor dispensable: claude", ok: true });
+  });
+
+  test("a non-ok injected Claude fact emits red with login and sandbox Keychain fix-it", async () => {
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: async () => ({
+        ok: false,
+        reason: "Claude config store/Keychain is not readable: permission denied",
+        hint: CLAUDE_PROBE_HINT,
+      }),
+      env: {},
+    });
+
+    const check = byName(checks, EXECUTOR_DISPENSABLE_CHECK);
+    expect(check?.name).toBe("executor dispensable: claude");
+    expect(check?.ok).toBe(false);
+    expect(check?.hint).toContain("config store/Keychain is not readable");
+    expect(check?.hint).toContain("claude login");
+    expect(check?.hint).toContain("sandboxed");
+    expect(check?.hint).toContain("Keychain access");
+  });
+
+  test("the pure mapper falls back to actionable text for an incomplete failure", () => {
+    expect(executorDispensableCheck("custom", { ok: false })).toEqual({
+      name: "executor dispensable: custom",
+      ok: false,
+      hint: "check the custom executor's local configuration, authentication, and reachability",
+    });
+  });
+});
+
+describe("probeDoctor — AC (2): lisa off PATH", () => {
+  test("the lisa check fails with its hint; the probe RETURNS five checks (did not raise)", async () => {
+    const checks = await probeDoctor({
+      onPath: onPathFor(["claude"]), // lisa missing, claude present
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      env: {},
+    });
+
+    expect(checks.length).toBe(5); // returned a result, not a raise
     const lisa = byName(checks, LISA_CHECK);
     expect(lisa?.ok).toBe(false);
     expect(lisa?.hint).toBe(LISA_HINT);
@@ -82,14 +141,20 @@ describe("probeDoctor — AC (2): lisa off PATH", () => {
     expect(byName(checks, CLAUDE_CHECK)?.ok).toBe(true);
     expect(byName(checks, BAML_CHECK)?.ok).toBe(true);
     expect(byName(checks, EXECUTOR_CHECK)?.ok).toBe(true);
+    expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)?.ok).toBe(true);
   });
 });
 
 describe("probeDoctor — AC (3): BAML native addon unloadable", () => {
   test("the BAML check fails with its hint; the probe returns a result", async () => {
-    const checks = await probeDoctor({ onPath: allOnPath, bamlLoadable: no, env: {} });
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: no,
+      executorProbe: probeOk,
+      env: {},
+    });
 
-    expect(checks.length).toBe(4);
+    expect(checks.length).toBe(5);
     const baml = byName(checks, BAML_CHECK);
     expect(baml?.ok).toBe(false);
     expect(baml?.hint).toBe(BAML_HINT);
@@ -105,10 +170,11 @@ describe("probeDoctor — AC (4): open-model endpoint var unset", () => {
     const checks = await probeDoctor({
       onPath: allOnPath,
       bamlLoadable: yes,
+      executorProbe: probeOk,
       env: { [EXECUTOR_ENV]: OPENAI_EXECUTOR_ID }, // selected, but VEND_OPENAI_BASE_URL unset
     });
 
-    expect(checks.length).toBe(4);
+    expect(checks.length).toBe(5);
     const exec = byName(checks, EXECUTOR_CHECK);
     expect(exec?.ok).toBe(false);
     expect(exec?.name).toContain(OPENAI_EXECUTOR_ID);
@@ -166,13 +232,18 @@ describe("the individual binary check verbs (injected fact → Check)", () => {
 });
 
 describe("probeDoctor — NEVER THROWS (returned data, not a raise)", () => {
-  test("a throwing onPath backend degrades to red Checks; the probe still resolves to four", async () => {
+  test("a throwing onPath backend degrades to red Checks; the probe still resolves to five", async () => {
     const boom = async (): Promise<boolean> => {
       throw new Error("which exploded");
     };
-    const checks = await probeDoctor({ onPath: boom, bamlLoadable: yes, env: {} });
+    const checks = await probeDoctor({
+      onPath: boom,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      env: {},
+    });
 
-    expect(checks.length).toBe(4); // resolved, did not reject
+    expect(checks.length).toBe(5); // resolved, did not reject
     const lisa = byName(checks, LISA_CHECK);
     expect(lisa?.ok).toBe(false);
     expect(lisa?.hint).toContain("which exploded"); // the error message became the hint
@@ -185,19 +256,42 @@ describe("probeDoctor — NEVER THROWS (returned data, not a raise)", () => {
     const boom = async (): Promise<boolean> => {
       throw new Error("addon blew up");
     };
-    const checks = await probeDoctor({ onPath: allOnPath, bamlLoadable: boom, env: {} });
-    expect(checks.length).toBe(4);
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: boom,
+      executorProbe: probeOk,
+      env: {},
+    });
+    expect(checks.length).toBe(5);
     const baml = byName(checks, BAML_CHECK);
     expect(baml?.ok).toBe(false);
     expect(baml?.hint).toContain("addon blew up");
   });
+
+  test("a throwing executor probe becomes a named red check, not a rejection", async () => {
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: async () => {
+        throw new Error("probe backend exploded");
+      },
+      env: {},
+    });
+
+    expect(checks.length).toBe(5);
+    expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)).toEqual({
+      name: "executor dispensable: claude",
+      ok: false,
+      hint: "probe backend exploded",
+    });
+  });
 });
 
 describe("probeDoctor — guarded-live smoke (the REAL defaults compose without throwing)", () => {
-  test("real probeDoctor() resolves to four well-formed checks (shape, not host-specific verdict)", async () => {
+  test("real probeDoctor() resolves to five well-formed checks (shape, not host-specific verdict)", async () => {
     const checks = await probeDoctor(); // real envinfo which, real addon import, real process.env
 
-    expect(checks.length).toBe(4);
+    expect(checks.length).toBe(5);
     for (const c of checks) {
       expect(typeof c.name).toBe("string");
       expect(c.name.length).toBeGreaterThan(0);
@@ -206,10 +300,11 @@ describe("probeDoctor — guarded-live smoke (the REAL defaults compose without 
       if (!c.ok) expect(typeof c.hint).toBe("string");
       else expect(c.hint).toBeUndefined();
     }
-    // the four expected deps are all represented.
+    // the five expected deps are all represented.
     expect(byName(checks, LISA_CHECK)).toBeDefined();
     expect(byName(checks, CLAUDE_CHECK)).toBeDefined();
     expect(byName(checks, BAML_CHECK)).toBeDefined();
     expect(byName(checks, EXECUTOR_CHECK)).toBeDefined();
+    expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)).toBeDefined();
   });
 });

@@ -4,16 +4,17 @@
 //
 // THE CENTRAL RULE (mirrors src/init/init-effect.ts ↔ init-core.ts): the report/exit-code
 // *logic* lives in doctor-core.ts — addon-free, committed, unit-tested. THIS module is the
-// world-touching verb: it runs the ~3 vend-specific dependency checks — lisa & claude on PATH,
-// the BAML native addon loadable, the active executor's config present — and emits one `Check`
-// each. It decides NOTHING about exit codes (that is `renderDoctorReport`) and it does NOT
+// world-touching verb: it runs the vend-specific dependency checks — lisa & claude on PATH,
+// the BAML native addon loadable, the active executor's config present, and the active executor's
+// shallow dispensability probe — and emits one `Check` each. It decides NOTHING about exit codes
+// (that is `renderDoctorReport`) and it does NOT
 // print or `process.exit` (that is the CLI dispatch arm, T-042-03). It only produces the
 // `Check[]` the renderer consumes.
 //
 // IMPURE but NARROW: the only world it touches is (1) `envinfo.helpers.which` to resolve a
 // binary on PATH, (2) a dynamic `@boundaryml/baml` import to test the native addon loads, and
-// (3) `process.env` (injected) for the executor-config presence check. No `node:fs`, no
-// `Bun.spawn`, no clock, no `cli.ts`.
+// (3) `process.env` (injected) for executor selection/config, and (4) the selected executor's
+// unmetered `probe()` boundary. No direct model dispense, no clock, no `cli.ts`.
 //
 // NEVER THROWS (the headline AC): "a dependency check failed" is the EXPECTED outcome of a
 // preflight — modelled as a red `Check`, never an exception (the house "returned data, never
@@ -31,7 +32,13 @@
 
 import envinfo from "envinfo";
 import { failed, passed, type Check } from "./doctor-core.ts";
-import { DEFAULT_EXECUTOR_ID, EXECUTOR_ENV, resolveExecutorId } from "../executor/select.ts";
+import type { ExecutorProbeResult } from "../executor/executor.ts";
+import {
+  DEFAULT_EXECUTOR_ID,
+  EXECUTOR_ENV,
+  executorFor,
+  resolveExecutorId,
+} from "../executor/select.ts";
 import {
   DEFAULT_OPENAI_BASE_URL,
   OPENAI_BASE_URL_ENV,
@@ -56,6 +63,9 @@ export const BAML_HINT = "reinstall dependencies to rebuild the native addon: `b
  *  (e.g. `active executor config: openai-compat`) so the line names which executor was probed. */
 export const EXECUTOR_CHECK = "active executor config";
 
+/** The dispensability check's BASE name; the report suffixes the selected executor id. */
+export const EXECUTOR_DISPENSABLE_CHECK = "executor dispensable";
+
 // ── Injectable world-fact backends ───────────────────────────────────────────────────────────
 
 /**
@@ -70,6 +80,10 @@ export interface DoctorProbeDeps {
   readonly bamlLoadable: () => Promise<boolean>;
   /** Environment for the executor-config presence check. Default: `process.env`. */
   readonly env: Record<string, string | undefined>;
+  /** Shallow active-executor capability reader. It probes config/auth/reachability, never dispenses. */
+  readonly executorProbe: (
+    env: Record<string, string | undefined>,
+  ) => Promise<ExecutorProbeResult>;
 }
 
 /**
@@ -101,14 +115,22 @@ async function bamlAddonLoadable(): Promise<boolean> {
   }
 }
 
+/** Select the active executor through the canonical seam and run only its unmetered probe. */
+async function probeActiveExecutor(
+  env: Record<string, string | undefined>,
+): Promise<ExecutorProbeResult> {
+  return executorFor({}, env).probe();
+}
+
 /** The real backends: envinfo `which`, the addon import, and `process.env`. */
 export const DEFAULT_PROBE_DEPS: DoctorProbeDeps = {
   onPath: whichOnPath,
   bamlLoadable: bamlAddonLoadable,
   env: process.env,
+  executorProbe: probeActiveExecutor,
 };
 
-// ── The four check verbs (each returns a Check; total over its injected fact) ─────────────────
+// ── The check verbs (each returns a Check; total over its injected fact) ──────────────────────
 
 /** lisa-on-PATH → green when resolvable, else red with {@link LISA_HINT}. */
 export async function lisaCheck(onPath: DoctorProbeDeps["onPath"]): Promise<Check> {
@@ -156,6 +178,25 @@ export function executorConfigCheck(env: DoctorProbeDeps["env"]): Check {
   );
 }
 
+/**
+ * Map the active executor's shallow probe result to the doctor model. PURE. A provider's reason
+ * names what failed and its hint names the repair; both share `Check.hint` because that is the
+ * renderer's single failure-detail field. Defensive fallback text keeps malformed non-ok results
+ * actionable without weakening the executor-neutral boundary.
+ */
+export function executorDispensableCheck(id: string, result: ExecutorProbeResult): Check {
+  const name = `${EXECUTOR_DISPENSABLE_CHECK}: ${id}`;
+  if (result.ok) return passed(name);
+
+  const detail = [result.reason?.trim(), result.hint?.trim()].filter(
+    (part): part is string => Boolean(part),
+  ).join(" — ");
+  return failed(
+    name,
+    detail || `check the ${id} executor's local configuration, authentication, and reachability`,
+  );
+}
+
 // ── never-throw wrapper ──────────────────────────────────────────────────────────────────────
 
 /** The message of any thrown value, total (an `Error` → its message; anything else → `String`). */
@@ -182,16 +223,21 @@ async function safeCheck(name: string, run: () => Promise<Check> | Check): Promi
  * Run the vend doctor preflight checks against the injected (or real) world and return the
  * ordered {@link Check}[] for the core's `renderDoctorReport` to verdict. The checks run
  * concurrently (independent IO) but the result preserves a FIXED order — lisa, claude, BAML,
- * executor-config — because `Promise.all` preserves input order. NEVER REJECTS: every check is
+ * executor-config, executor-dispensable — because `Promise.all` preserves input order. NEVER
+ * REJECTS: every check is
  * wrapped by {@link safeCheck}. `deps` overrides individual backends ({@link DEFAULT_PROBE_DEPS}
- * supplies the rest), which is how the tests inject fabricated facts.
+ * supplies the rest), which is how the tests inject fabricated facts. The fifth check calls the
+ * executor's shallow `probe()` only; it never performs a token-spending dispense.
  */
 export async function probeDoctor(deps: Partial<DoctorProbeDeps> = {}): Promise<Check[]> {
   const d: DoctorProbeDeps = { ...DEFAULT_PROBE_DEPS, ...deps };
+  const executorId = resolveExecutorId({}, d.env);
   return Promise.all([
     safeCheck(LISA_CHECK, () => lisaCheck(d.onPath)),
     safeCheck(CLAUDE_CHECK, () => claudeCheck(d.onPath)),
     safeCheck(BAML_CHECK, () => bamlCheck(d.bamlLoadable)),
     safeCheck(EXECUTOR_CHECK, () => executorConfigCheck(d.env)),
+    safeCheck(`${EXECUTOR_DISPENSABLE_CHECK}: ${executorId}`, async () =>
+      executorDispensableCheck(executorId, await d.executorProbe(d.env))),
   ]);
 }

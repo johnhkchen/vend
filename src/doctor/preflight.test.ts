@@ -26,11 +26,18 @@ function onPathFor(present: readonly string[]): (binary: string) => Promise<bool
   return async (binary: string) => set.has(binary);
 }
 const yes = async () => true;
+/** A shallow executor probe fact; keeps deterministic preflight cases off the host's auth state. */
+const probeOk = async () => ({ ok: true } as const);
 
 describe("castPreflight — AC (1): a broken dep refuses the cast at the door", () => {
   test("lisa off PATH ⇒ not ok, exit 1, the report names the check + its fix-it hint", async () => {
     // claude present but lisa missing; addon + executor-config wired ⇒ exactly one red check.
-    const report = await castPreflight({ onPath: onPathFor(["claude"]), bamlLoadable: yes, env: {} });
+    const report = await castPreflight({
+      onPath: onPathFor(["claude"]),
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      env: {},
+    });
 
     // a NON-ZERO outcome — the refusal the CLI exits with (no budget spent, no metered run).
     expect(report.ok).toBe(false);
@@ -46,7 +53,12 @@ describe("castPreflight — AC (1): a broken dep refuses the cast at the door", 
 describe("castPreflight — AC (2): a wired env proceeds unchanged", () => {
   test("every dep green ⇒ ok, exit 0 (the gate is transparent, the cast proceeds)", async () => {
     // env: {} ⇒ executor resolves to the default ("claude") which needs no config ⇒ green.
-    const report = await castPreflight({ onPath: allOnPath, bamlLoadable: yes, env: {} });
+    const report = await castPreflight({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      env: {},
+    });
 
     expect(report.ok).toBe(true);
     expect(report.exitCode).toBe(EXIT_OK);
@@ -60,7 +72,12 @@ describe("castPreflight — never throws (a backend fault degrades to a red repo
       throw new Error("which exploded");
     };
     // The guard must RESOLVE (a red DoctorReport), not reject — it cannot crash the cast it guards.
-    const report = await castPreflight({ onPath: boom, bamlLoadable: yes, env: {} });
+    const report = await castPreflight({
+      onPath: boom,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      env: {},
+    });
     expect(report.ok).toBe(false);
     expect(report.exitCode).toBe(EXIT_FAILED);
     // the thrown message survives into the report (probeDoctor's safeCheck → failed(name, message)).
