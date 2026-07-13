@@ -7,6 +7,9 @@ import {
   CLAUDE_CHECK,
   CLAUDE_HINT,
   claudeCheck,
+  CROSS_REVIEW_DISPENSABLE_CHECK,
+  CROSS_REVIEW_INERT_CHECK,
+  crossReviewCheck,
   EXECUTOR_CHECK,
   EXECUTOR_DISPENSABLE_CHECK,
   executorConfigCheck,
@@ -15,14 +18,16 @@ import {
   LISA_HINT,
   lisaCheck,
   probeDoctor,
+  reviewerDispensableCheck,
 } from "./doctor-probe.ts";
+import type { Executor, ExecutorProbeResult } from "../executor/executor.ts";
 import { CLAUDE_PROBE_HINT } from "../executor/claude.ts";
 import {
   DEFAULT_OPENAI_BASE_URL,
   OPENAI_BASE_URL_ENV,
   OPENAI_EXECUTOR_ID,
 } from "../executor/openai-compat.ts";
-import { EXECUTOR_ENV } from "../executor/select.ts";
+import { EXECUTOR_ENV, type ExecutorRegistry } from "../executor/select.ts";
 
 // T-042-02: the IMPURE doctor probe. The world-facts (onPath / bamlLoadable / env) are INJECTED,
 // so the entire AC failure matrix is exercised DETERMINISTICALLY with fabricated facts — no
@@ -46,13 +51,27 @@ const yes = async () => true;
 const no = async () => false;
 const probeOk = async () => ({ ok: true } as const);
 
+/** A probe-controlled executor whose metered boundary fails loudly if doctor ever calls it. */
+function probeExecutor(
+  id: string,
+  probe: () => Promise<ExecutorProbeResult>,
+): Executor {
+  return {
+    id,
+    probe,
+    async dispense() {
+      throw new Error("doctor must not dispense");
+    },
+  };
+}
+
 /** Look one named check out of the returned set. */
 function byName(checks: readonly Check[], name: string): Check | undefined {
   return checks.find((c) => c.name === name || c.name.startsWith(`${name}:`));
 }
 
 describe("probeDoctor — AC (1): all-ok in a wired env", () => {
-  test("every dependency check is green; all five checks are present; no hints", async () => {
+  test("every dependency check is green; all six checks are present; no hints", async () => {
     const checks = await probeDoctor({
       onPath: allOnPath,
       bamlLoadable: yes,
@@ -60,7 +79,7 @@ describe("probeDoctor — AC (1): all-ok in a wired env", () => {
       env: {},
     });
 
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     expect(checks.every((c) => c.ok)).toBe(true);
     expect(checks.every((c) => c.hint === undefined)).toBe(true);
 
@@ -70,6 +89,7 @@ describe("probeDoctor — AC (1): all-ok in a wired env", () => {
     expect(checks[2]?.name).toBe(BAML_CHECK);
     expect(checks[3]?.name.startsWith(EXECUTOR_CHECK)).toBe(true);
     expect(checks[4]?.name).toBe(`${EXECUTOR_DISPENSABLE_CHECK}: claude`);
+    expect(checks[5]).toEqual({ name: CROSS_REVIEW_INERT_CHECK, ok: true });
     // empty env ⇒ default executor is claude, which needs no config.
     expect(checks[3]?.name).toContain("claude");
   });
@@ -123,8 +143,88 @@ describe("probeDoctor — executor dispensability (T-074-01-02)", () => {
   });
 });
 
+describe("probeDoctor — cross-review dispensability (T-076-03-01)", () => {
+  test("default config is visibly inert and green", async () => {
+    expect(await crossReviewCheck("claude", undefined)).toEqual({
+      name: CROSS_REVIEW_INERT_CHECK,
+      ok: true,
+    });
+  });
+
+  test("a provisioned reachable reviewer emits a green check naming the reviewer seat", async () => {
+    let authorFactories = 0;
+    let reviewerFactories = 0;
+    let reviewerProbes = 0;
+    const registry: ExecutorRegistry = {
+      claude: () => {
+        authorFactories += 1;
+        return probeExecutor("claude", probeOk);
+      },
+      "openai-compat": () => {
+        reviewerFactories += 1;
+        return probeExecutor("openai-compat", async () => {
+          reviewerProbes += 1;
+          return { ok: true };
+        });
+      },
+    };
+
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      crossReviewRegistry: registry,
+      env: {},
+    });
+
+    expect(byName(checks, CROSS_REVIEW_DISPENSABLE_CHECK)).toEqual({
+      name: "cross-review reviewer dispensable: codex",
+      ok: true,
+    });
+    expect(checks.every((check) => check.ok)).toBe(true);
+    expect(authorFactories).toBe(0);
+    expect(reviewerFactories).toBe(1);
+    expect(reviewerProbes).toBe(1);
+  });
+
+  test("a provisioned unreachable reviewer emits red with its seat and fix-it", async () => {
+    const registry: ExecutorRegistry = {
+      claude: () => probeExecutor("claude", probeOk),
+      "openai-compat": () => probeExecutor("openai-compat", async () => ({
+        ok: false,
+        reason: "review endpoint refused connection",
+        hint: "start or configure the reviewer endpoint",
+      })),
+    };
+
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      crossReviewRegistry: registry,
+      env: {},
+    });
+    const check = byName(checks, CROSS_REVIEW_DISPENSABLE_CHECK);
+    expect(check?.name).toBe("cross-review reviewer dispensable: codex");
+    expect(check?.ok).toBe(false);
+    expect(check?.hint).toContain("review endpoint refused connection");
+    expect(check?.hint).toContain("start or configure the reviewer endpoint");
+    const failures = checks.filter((candidate) => !candidate.ok);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toBe(check);
+  });
+
+  test("the pure mapper falls back to actionable reviewer text", () => {
+    expect(reviewerDispensableCheck("codex", { ok: false })).toEqual({
+      name: "cross-review reviewer dispensable: codex",
+      ok: false,
+      hint: "check the codex reviewer’s local configuration, authentication, and reachability",
+    });
+  });
+});
+
 describe("probeDoctor — AC (2): lisa off PATH", () => {
-  test("the lisa check fails with its hint; the probe RETURNS five checks (did not raise)", async () => {
+  test("the lisa check fails with its hint; the probe RETURNS six checks (did not raise)", async () => {
     const checks = await probeDoctor({
       onPath: onPathFor(["claude"]), // lisa missing, claude present
       bamlLoadable: yes,
@@ -132,7 +232,7 @@ describe("probeDoctor — AC (2): lisa off PATH", () => {
       env: {},
     });
 
-    expect(checks.length).toBe(5); // returned a result, not a raise
+    expect(checks.length).toBe(6); // returned a result, not a raise
     const lisa = byName(checks, LISA_CHECK);
     expect(lisa?.ok).toBe(false);
     expect(lisa?.hint).toBe(LISA_HINT);
@@ -142,6 +242,7 @@ describe("probeDoctor — AC (2): lisa off PATH", () => {
     expect(byName(checks, BAML_CHECK)?.ok).toBe(true);
     expect(byName(checks, EXECUTOR_CHECK)?.ok).toBe(true);
     expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)?.ok).toBe(true);
+    expect(byName(checks, CROSS_REVIEW_INERT_CHECK)?.ok).toBe(true);
   });
 });
 
@@ -154,7 +255,7 @@ describe("probeDoctor — AC (3): BAML native addon unloadable", () => {
       env: {},
     });
 
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     const baml = byName(checks, BAML_CHECK);
     expect(baml?.ok).toBe(false);
     expect(baml?.hint).toBe(BAML_HINT);
@@ -174,7 +275,7 @@ describe("probeDoctor — AC (4): open-model endpoint var unset", () => {
       env: { [EXECUTOR_ENV]: OPENAI_EXECUTOR_ID }, // selected, but VEND_OPENAI_BASE_URL unset
     });
 
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     const exec = byName(checks, EXECUTOR_CHECK);
     expect(exec?.ok).toBe(false);
     expect(exec?.name).toContain(OPENAI_EXECUTOR_ID);
@@ -232,7 +333,7 @@ describe("the individual binary check verbs (injected fact → Check)", () => {
 });
 
 describe("probeDoctor — NEVER THROWS (returned data, not a raise)", () => {
-  test("a throwing onPath backend degrades to red Checks; the probe still resolves to five", async () => {
+  test("a throwing onPath backend degrades to red Checks; the probe still resolves to six", async () => {
     const boom = async (): Promise<boolean> => {
       throw new Error("which exploded");
     };
@@ -243,7 +344,7 @@ describe("probeDoctor — NEVER THROWS (returned data, not a raise)", () => {
       env: {},
     });
 
-    expect(checks.length).toBe(5); // resolved, did not reject
+    expect(checks.length).toBe(6); // resolved, did not reject
     const lisa = byName(checks, LISA_CHECK);
     expect(lisa?.ok).toBe(false);
     expect(lisa?.hint).toContain("which exploded"); // the error message became the hint
@@ -262,7 +363,7 @@ describe("probeDoctor — NEVER THROWS (returned data, not a raise)", () => {
       executorProbe: probeOk,
       env: {},
     });
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     const baml = byName(checks, BAML_CHECK);
     expect(baml?.ok).toBe(false);
     expect(baml?.hint).toContain("addon blew up");
@@ -278,20 +379,44 @@ describe("probeDoctor — NEVER THROWS (returned data, not a raise)", () => {
       env: {},
     });
 
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)).toEqual({
       name: "executor dispensable: claude",
       ok: false,
       hint: "probe backend exploded",
     });
   });
+
+  test("a throwing reviewer probe becomes a named red check, not a rejection", async () => {
+    const registry: ExecutorRegistry = {
+      claude: () => probeExecutor("claude", probeOk),
+      "openai-compat": () => probeExecutor("openai-compat", async () => {
+        throw new Error("reviewer probe exploded");
+      }),
+    };
+    const checks = await probeDoctor({
+      onPath: allOnPath,
+      bamlLoadable: yes,
+      executorProbe: probeOk,
+      crossReviewRegistry: registry,
+      env: {},
+    });
+
+    expect(checks.length).toBe(6);
+    expect(byName(checks, CROSS_REVIEW_DISPENSABLE_CHECK)).toEqual({
+      name: CROSS_REVIEW_DISPENSABLE_CHECK,
+      ok: false,
+      hint: "reviewer probe exploded",
+    });
+    expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)?.ok).toBe(true);
+  });
 });
 
 describe("probeDoctor — guarded-live smoke (the REAL defaults compose without throwing)", () => {
-  test("real probeDoctor() resolves to five well-formed checks (shape, not host-specific verdict)", async () => {
+  test("real probeDoctor() resolves to six well-formed checks (shape, not host-specific verdict)", async () => {
     const checks = await probeDoctor(); // real envinfo which, real addon import, real process.env
 
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     for (const c of checks) {
       expect(typeof c.name).toBe("string");
       expect(c.name.length).toBeGreaterThan(0);
@@ -300,11 +425,15 @@ describe("probeDoctor — guarded-live smoke (the REAL defaults compose without 
       if (!c.ok) expect(typeof c.hint).toBe("string");
       else expect(c.hint).toBeUndefined();
     }
-    // the five expected deps are all represented.
+    // the six expected deps are all represented.
     expect(byName(checks, LISA_CHECK)).toBeDefined();
     expect(byName(checks, CLAUDE_CHECK)).toBeDefined();
     expect(byName(checks, BAML_CHECK)).toBeDefined();
     expect(byName(checks, EXECUTOR_CHECK)).toBeDefined();
     expect(byName(checks, EXECUTOR_DISPENSABLE_CHECK)).toBeDefined();
+    expect(byName(checks, CROSS_REVIEW_INERT_CHECK)).toEqual({
+      name: CROSS_REVIEW_INERT_CHECK,
+      ok: true,
+    });
   });
 });
