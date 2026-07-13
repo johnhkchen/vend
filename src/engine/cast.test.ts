@@ -358,6 +358,46 @@ async function writeLaneHeat(root: string, claudeTokens: number, codexTokens: nu
   );
 }
 
+/** Write cap-window evidence whose absolute burn and learned quota rankings disagree. */
+async function writeLaneQuota(root: string): Promise<void> {
+  const ledgerPath = join(root, DEFAULT_RUN_LOG_PATH);
+  const base = Date.parse("2026-07-13T00:00:00.000Z");
+  const capWindowExhausted = {
+    signal: "http-429",
+    reason: "provider reset-window capacity exhausted",
+  } as const;
+  await mkdir(join(root, ".vend"), { recursive: true });
+  const record = (
+    runId: string,
+    seatOfExecution: string,
+    minute: number,
+    inputTokens: number,
+    capped = false,
+  ) => {
+    const endedAt = new Date(base + minute * 60_000).toISOString();
+    return serializeRunRecord(buildRunRecord({
+      runId,
+      play: "quota-heat-fixture",
+      epic: "E-082",
+      model: "fixture",
+      outcome: capped ? "errored" : "success",
+      usage: { input_tokens: inputTokens },
+      seatOfExecution,
+      ...(capped ? { capWindowExhausted } : {}),
+      startedAt: endedAt,
+      endedAt,
+    }));
+  };
+  await writeFile(ledgerPath, [
+    record("quota-claude-start", "claude", 0, 0, true),
+    record("quota-codex-start", "codex", 0, 0, true),
+    record("quota-claude-cap", "claude", 100, 100, true),
+    record("quota-codex-cap", "codex", 100, 1_000, true),
+    record("quota-claude-current", "claude", 200, 85),
+    record("quota-codex-current", "codex", 200, 200),
+  ].join(""), "utf8");
+}
+
 /** First chain step: lands a threadable reference so the real decompose-shaped second step runs. */
 function producingPlay(): Play<{ signal: string }, string> {
   return {
@@ -1487,6 +1527,42 @@ test("castPlay: omitted agent infers the cooler seat, stamps every ticket, and r
   expect(record.seatInferred).toEqual({
     seat: "codex",
     reason: "recent cost-weighted burn (last 100 records): claude=300 vs codex=100; 3x hotter",
+  });
+  expect(reviveRecord(record)?.seatInferred).toEqual(record.seatInferred);
+  expect("seatDefaulted" in record).toBe(false);
+});
+
+test("castPlay: learned quota reason flows verbatim into the seatInferred ledger marker (T-082-02-02 AC)", async () => {
+  const root = await tmp();
+  await writeLaneQuota(root);
+  const outputLog = join(root, "cast-output.jsonl");
+
+  const summary = await castPlay(
+    seatDefaultPlay(),
+    { epic: "E-082 fixture", charter: SEAT_CHARTER, project: "fixture project" },
+    BIG_BUDGET,
+    {
+      subject: "E-082",
+      projectRoot: root,
+      transcriptDir: root,
+      runLogPath: outputLog,
+      executor: stubExecutor([], JSON.stringify(SEAT_PLAN)),
+    },
+  );
+
+  expect(summary.outcome).toBe("success");
+  for (const id of ["T-070-99-01", "T-070-99-02"]) {
+    const ticket = await readFile(join(root, "docs", "active", "tickets", `${id}.md`), "utf8");
+    expect(ticket).toContain("priority: high\nagent: codex\nphase: ready");
+    expect(ticket.match(/^agent: codex$/gm)).toHaveLength(1);
+  }
+
+  const record = JSON.parse((await readFile(outputLog, "utf8")).trim());
+  expect(record.seatInferred).toEqual({
+    seat: "codex",
+    reason:
+      "learned quota fraction: claude at ~85% of learned window; " +
+      "codex at ~20% of learned window; routing to codex",
   });
   expect(reviveRecord(record)?.seatInferred).toEqual(record.seatInferred);
   expect("seatDefaulted" in record).toBe(false);
