@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  appendDecomposeDraft,
+  nextDecomposeRepairAction,
+} from "../engine/decompose-draft.ts";
 
 // T-042-03 doctor-cli-command (story S-042-02, epic E-042 vend-doctor-preflight) — the
 // guarded-live PROOF of the AC's RUNTIME half: running `vend doctor` prints the rendered preflight
@@ -23,12 +29,12 @@ import { join } from "node:path";
 const CLI = join(import.meta.dir, "..", "cli.ts");
 
 /** Spawn `bun run src/cli.ts doctor` with `env`, returning the decoded result as data. */
-function runDoctor(env: Record<string, string | undefined>): {
+function runDoctor(env: Record<string, string | undefined>, cwd?: string): {
   exitCode: number;
   stdout: string;
   stderr: string;
 } {
-  const r = Bun.spawnSync(["bun", "run", CLI, "doctor"], { env });
+  const r = Bun.spawnSync(["bun", "run", CLI, "doctor"], { cwd, env });
   return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
 }
 
@@ -59,5 +65,33 @@ describe("vend doctor — guarded-live CLI smoke (T-042-03)", () => {
     expect(STACK_FRAME.test(stdout)).toBe(false);
     expect(STACK_FRAME.test(stderr)).toBe(false);
     expect(stderr).not.toContain("Unhandled");
+  });
+
+  test("a persisted decompose draft prints the epic's literal resume command", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-doctor-resumable-"));
+    const gateFindings = { status: "clear", cleared: ["value", "structural"] } as const;
+    try {
+      await appendDecomposeDraft(
+        {
+          runId: "doctor-smoke-run",
+          epic: "E-077",
+          parsedDraft: { stories: [{ id: "S-077-01" }], tickets: [] },
+          gateFindings,
+          nextRepairAction: nextDecomposeRepairAction(gateFindings),
+          createdAt: "2026-07-13T12:00:00.000Z",
+        },
+        { path: join(root, ".vend/decompose-drafts.jsonl") },
+      );
+
+      const { exitCode, stdout, stderr } = runDoctor(process.env, root);
+      expect(exitCode).toBe(1);
+      expect(stdout).toContain("✗ resumable-decompose: E-077");
+      expect(stdout).toContain("vend run decompose-epic E-077 --resume");
+      expect(STACK_FRAME.test(stdout)).toBe(false);
+      expect(STACK_FRAME.test(stderr)).toBe(false);
+      expect(stderr).not.toContain("Unhandled");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

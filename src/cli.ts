@@ -1035,9 +1035,10 @@ if (import.meta.main) {
     // The preflight gate (T-042-03), WORKSPACE-AWARE (T-062-02-02): doctor reports on "the
     // prerequisites for what you'd do HERE". In a build project that is the vend-specific deps
     // (lisa & claude on PATH, the BAML native addon loadable, the active executor's config) plus
-    // canonical-board hygiene. The dependency and board probes stay separate because the former
-    // also guards every cast; an orphan must make `vend doctor` red without blocking work that can
-    // repair the board. In a STANDALONE kitchen workspace (the EmDash+Astro seed `vend init
+    // canonical-board hygiene and local resumable-decompose state. The dependency, board, and
+    // recovery probes stay separate because the former also guards every cast; an orphan or draft
+    // must make `vend doctor` red without blocking work that can repair/resume it. In a STANDALONE
+    // kitchen workspace (the EmDash+Astro seed `vend init
     // --template kitchen` lays — no lisa marker) those build-engine deps are not what matters; the
     // app's are — bun, the Astro/Cloudflare storefront config, the EmDash Dish seed — probed by
     // `probeKitchen`. We dispatch on the cwd signature (`isKitchenWorkspace`); a readdir failure
@@ -1057,11 +1058,13 @@ if (import.meta.main) {
     } else {
       const { probeDoctor } = await import("./doctor/doctor-probe.ts");
       const { probeBoardHygiene } = await import("./doctor/board-hygiene-probe.ts");
-      const [dependencyChecks, boardChecks] = await Promise.all([
+      const { probeResumableDecompose } = await import("./doctor/resumable-decompose-probe.ts");
+      const [dependencyChecks, boardChecks, resumableChecks] = await Promise.all([
         probeDoctor(),
         probeBoardHygiene(),
+        probeResumableDecompose(),
       ]);
-      checks = [...dependencyChecks, ...boardChecks];
+      checks = [...dependencyChecks, ...boardChecks, ...resumableChecks];
     }
     const report = renderDoctorReport(checks);
     process.stdout.write(`${report.report}\n`);
