@@ -3,6 +3,14 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.8 — 2026-07-13
+
+- Asking for help is free, everywhere: `--help`/`-h` on any command prints usage and exits — previously `vend chain --help` treated `--help` as your signal and ran a real paid cast.
+- A charter without labeled invariants (P1…) now gets taught, not punished: the refusal names the fix, `vend doctor` checks the convention, and `vend init`'s charter template ships the labels.
+- New: `vend settle` — one free screen answering "how did the loop go?": what cleared, gate, board hygiene, review concerns, exceptions. When a lisa loop finishes, it fires on its own and the verdict reaches you (ntfy), so "checking in" stops being your job.
+- New: `vend sweep` — the closeout as one confirmation: computes which epics are done, shows you the commit, lands it with the loop's provenance on a "y".
+- The loop-finished wiring fails loud, not silent: if the completion event can't record, settle names the failure instead of nothing happening.
+
 ## 0.4.0-rc.7 — 2026-07-13
 
 - A decompose you interrupt (or that fails) no longer strands a half-minted epic: the draft, the findings, and the next step are kept, `vend doctor` names it and gives you the resume command, and `vend run decompose-epic` picks up from the draft instead of starting over.
