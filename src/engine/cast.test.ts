@@ -1092,7 +1092,7 @@ test("castPlay: resume gates and materializes the stored draft without a new exe
   });
 });
 
-test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn units at the live seam (T-077-01-01 AC)", async () => {
+test("castPlay: decompose cap-hit records capped agent turns separately from executor turns (T-077-01-01, E-081)", async () => {
   const root = await tmp();
   const runId = "decompose-max-turns-cap-hit";
   const runLogPath = join(root, "runs.jsonl");
@@ -1192,7 +1192,9 @@ test("castPlay: decompose cap-hit reaches Claude argv and records unlike turn un
   expect(effectLog).toEqual(["cap-hit fixture"]);
   const record = JSON.parse((await readFile(runLogPath, "utf8")).trim());
   expect(record.play).toBe("decompose-epic");
-  expect(record.turnsUsed).toBe(23);
+  expect(record.turnsUsed).toBe(new Set(assistantIds).size);
+  expect(record.turnsUsed).toBe(DECOMPOSE_MAX_TURNS);
+  expect(record.executorReportedTurns).toBe(23);
   expect(record.outcome).toBe("success");
 
   const drafts = await loadDecomposeDrafts({ path: join(root, DEFAULT_DECOMPOSE_DRAFT_PATH) });

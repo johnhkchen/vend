@@ -420,7 +420,11 @@ export async function castPlay<I, O>(
   // finally append so a later patch read, resolver, settlement, or presentation throw cannot erase
   // the spend from the ledger.
   const loggedModel = resolveLoggedModel(result?.model, opts.model);
-  const turnsUsed = resolveTurnsUsed(result?.num_turns);
+  // A cold cast's deduplicated assistant count is known even when it is zero or the executor times
+  // out. A resumed draft performs no new dispense, so omitting the field is more honest than
+  // fabricating a zero-turn cast. Keep the executor's unlike terminal counter separately named.
+  const turnsUsed = resumeDraft === undefined ? progress.turns : undefined;
+  const executorReportedTurns = resolveTurnsUsed(result?.num_turns);
   const usage = (result?.usage ?? {}) as Usage;
   const costUsd = typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0;
 
@@ -539,7 +543,7 @@ export async function castPlay<I, O>(
     const turnSummary = formatTurnSummary({
       ...(progress.turns > 0 ? { agentTurns: progress.turns } : {}),
       ...(maxTurns !== undefined ? { maxTurns } : {}),
-      ...(turnsUsed !== undefined ? { executorReportedTurns: turnsUsed } : {}),
+      ...(executorReportedTurns !== undefined ? { executorReportedTurns } : {}),
     });
     if (turnSummary !== undefined) process.stdout.write(`${turnSummary}\n`);
 
@@ -591,9 +595,13 @@ export async function castPlay<I, O>(
         // The E1 trust bit (T-014-01) — pass-through; spread only when supplied, so an
         // unreported cast (and every pre-T-014-01 record) leaves the field off, reading unknown.
         ...(opts.intervened !== undefined ? { intervened: opts.intervened } : {}),
-        // The agentic turns the cast took (T-015-02) — pass-through, spread only when known so a
-        // timed-out run (no result) leaves the field off, exactly like `intervened`.
+        // The deduplicated agent turns the cast observed (E-081), in the same unit the final summary
+        // prints and `--max-turns` caps. Zero is a known cold-cast value; only a resume (no new
+        // executor dispense) omits it.
         ...(turnsUsed !== undefined ? { turnsUsed } : {}),
+        // The executor's optional terminal turn/event counter is a separate fact. Preserve it under
+        // the same honest name used by the summary and omit it when no terminal value was reported.
+        ...(executorReportedTurns !== undefined ? { executorReportedTurns } : {}),
         // The resolved executor's accounting lane (T-071-01-02). The pure core owns the explicit
         // executor-id mapping; spread only when known so an unmapped/lane-less executor leaves the
         // key off, exactly like `turnsUsed`, rather than fabricating provenance.
