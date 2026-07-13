@@ -245,6 +245,27 @@ describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)"
     );
   });
 
+  test("pins the live turn fraction to deduped agent turns, never executor num_turns (T-077-03-02)", () => {
+    const maxTurns = 15;
+    const executorNumTurns = 23;
+    const fixture: StreamMessage[] = [
+      assistant("turn-1"),
+      assistant("turn-1"),
+      assistant("turn-2"),
+      { type: "result", subtype: "success", num_turns: executorNumTurns },
+    ];
+
+    const progress = fixture.reduce(accumulateCastProgress, EMPTY_CAST_PROGRESS);
+    const line = formatCastProgress(progress, { elapsedMs: 252_000, tokenEnvelope: 500_000, maxTurns });
+
+    expect(progress.turns).toBe(2);
+    expect(progress.turns).toBeLessThanOrEqual(maxTurns);
+    expect(executorNumTurns).toBeGreaterThan(maxTurns);
+    expect(line).toBe("elapsed 4m12s · 60k/500k tokens · turn 2/15");
+    expect(line).not.toContain(`${executorNumTurns}/${maxTurns}`);
+    expect(line).not.toContain(`${executorNumTurns} / ${maxTurns} cap`);
+  });
+
   test("usage-less, malformed, unknown, and duplicate messages are total no-ops", () => {
     const first = accumulateCastProgress(EMPTY_CAST_PROGRESS, assistant("only-turn"));
     const noops: StreamMessage[] = [
