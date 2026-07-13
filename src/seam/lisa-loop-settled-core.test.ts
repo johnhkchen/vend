@@ -6,6 +6,7 @@ import {
   classifyLisaCompleteEvent,
   parseLisaLoopSettledMarker,
   reviveLisaLoopSettledMarker,
+  serializeLisaLoopSettledFailure,
   serializeLisaLoopSettledMarker,
 } from "./lisa-loop-settled-core.ts";
 
@@ -68,6 +69,42 @@ describe("buildLisaLoopSettledMarker", () => {
     ["fractional duration", { project: "vend", ticketsDone: 1, durationSecs: 2.5 }],
   ] as const)("rejects %s", (_label, input) => {
     expect(() => buildLisaLoopSettledMarker(input)).toThrow(TypeError);
+  });
+});
+
+describe("serializeLisaLoopSettledFailure", () => {
+  test("writes one deterministic timestamp-and-reason JSONL record", () => {
+    const line = serializeLisaLoopSettledFailure({
+      timestamp: "2026-07-13T20:00:00.000Z",
+      reason: "LISA_PROJECT must be an absolute project root",
+    });
+
+    expect(line).toBe(
+      '{"timestamp":"2026-07-13T20:00:00.000Z","reason":"LISA_PROJECT must be an absolute project root"}\n',
+    );
+    expect(JSON.parse(line)).toEqual({
+      timestamp: "2026-07-13T20:00:00.000Z",
+      reason: "LISA_PROJECT must be an absolute project root",
+    });
+  });
+
+  test("keeps control characters inside one physical line and preserves the reason verbatim", () => {
+    const reason = "rename failed\nwith\ttemporary path";
+    const line = serializeLisaLoopSettledFailure({
+      timestamp: "2026-07-13T20:01:00.000Z",
+      reason,
+    });
+
+    expect(line.trimEnd().split("\n")).toHaveLength(1);
+    expect(JSON.parse(line).reason).toBe(reason);
+  });
+
+  test.each([
+    ["invalid timestamp", { timestamp: "not-a-date", reason: "failed" }],
+    ["noncanonical timestamp", { timestamp: "2026-07-13T13:00:00-07:00", reason: "failed" }],
+    ["blank reason", { timestamp: "2026-07-13T20:00:00.000Z", reason: "  " }],
+  ] as const)("rejects %s", (_label, failure) => {
+    expect(() => serializeLisaLoopSettledFailure(failure)).toThrow(TypeError);
   });
 });
 

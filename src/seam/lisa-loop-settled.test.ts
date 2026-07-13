@@ -3,10 +3,14 @@ import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import {
+  DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH,
   DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH,
   parseLisaLoopSettledMarker,
 } from "./lisa-loop-settled-core.ts";
 import { recordLisaLoopSettled } from "./lisa-loop-settled.ts";
+
+const FIRST_FAILURE_AT = new Date("2026-07-13T20:00:00.000Z");
+const SECOND_FAILURE_AT = new Date("2026-07-13T20:01:00.000Z");
 
 async function tempRoot(): Promise<string> {
   return mkdtemp(join(tmpdir(), "vend-loop-settled-"));
@@ -20,6 +24,11 @@ async function pathExists(path: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
+}
+
+async function readFailureLines(root: string): Promise<Array<{ timestamp: string; reason: string }>> {
+  const contents = await readFile(join(root, DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH), "utf8");
+  return contents.trimEnd().split("\n").map((line) => JSON.parse(line));
 }
 
 describe("recordLisaLoopSettled — Vend-owned filesystem crossing", () => {
@@ -51,12 +60,13 @@ describe("recordLisaLoopSettled — Vend-owned filesystem crossing", () => {
       expect(Object.hasOwn(parsed.marker, "durationSecs")).toBe(false);
       expect(await readdir(root)).toEqual([".vend"]);
       expect(await pathExists(join(root, ".lisa"))).toBe(false);
+      expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("ignored and malformed events write nothing", async () => {
+  test("an ignored event writes neither marker nor failure trace", async () => {
     const root = await tempRoot();
     try {
       expect((await recordLisaLoopSettled({
@@ -65,13 +75,128 @@ describe("recordLisaLoopSettled — Vend-owned filesystem crossing", () => {
         ticketsDone: undefined,
         durationSecs: undefined,
       })).kind).toBe("ignored");
-      expect((await recordLisaLoopSettled({
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("relative-project and nonnumeric-ticket refusals append exactly one trace line each", async () => {
+    const root = await tempRoot();
+    try {
+      const relativeProject = await recordLisaLoopSettled({
+        event: "complete",
+        projectRoot: "vend",
+        ticketsDone: "3",
+        durationSecs: "90",
+      }, { root, now: () => FIRST_FAILURE_AT });
+      expect(relativeProject).toEqual({
+        kind: "refused",
+        reason: "LISA_PROJECT must be an absolute project root",
+      });
+      if (relativeProject.kind !== "refused") throw new Error("relative project was not refused");
+      expect(await readFailureLines(root)).toEqual([{
+        timestamp: FIRST_FAILURE_AT.toISOString(),
+        reason: relativeProject.reason,
+      }]);
+
+      const nonnumericTickets = await recordLisaLoopSettled({
         event: "complete",
         projectRoot: root,
         ticketsDone: "three",
         durationSecs: "90",
-      })).kind).toBe("refused");
-      expect(await readdir(root)).toEqual([]);
+      }, { root: join(root, "unused-fallback"), now: () => SECOND_FAILURE_AT });
+      expect(nonnumericTickets).toEqual({
+        kind: "refused",
+        reason: "LISA_TICKETS_DONE must be a non-negative safe integer",
+      });
+      if (nonnumericTickets.kind !== "refused") throw new Error("nonnumeric tickets were not refused");
+      expect(await readFailureLines(root)).toEqual([
+        {
+          timestamp: FIRST_FAILURE_AT.toISOString(),
+          reason: relativeProject.reason,
+        },
+        {
+          timestamp: SECOND_FAILURE_AT.toISOString(),
+          reason: nonnumericTickets.reason,
+        },
+      ]);
+      expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a forced marker-write failure appends one trace line and resolves without throwing", async () => {
+    const root = await tempRoot();
+    const markerPath = join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH);
+    try {
+      await mkdir(markerPath, { recursive: true });
+
+      const result = await recordLisaLoopSettled({
+        event: "complete",
+        projectRoot: root,
+        ticketsDone: "3",
+        durationSecs: undefined,
+      }, { now: () => FIRST_FAILURE_AT });
+
+      expect(result.kind).toBe("failed");
+      if (result.kind !== "failed") throw new Error("forced marker failure was not contained");
+      expect(result.reason).toStartWith("marker write failed: ");
+      expect(await readFailureLines(root)).toEqual([{
+        timestamp: FIRST_FAILURE_AT.toISOString(),
+        reason: result.reason,
+      }]);
+      expect((await readdir(join(root, ".vend"))).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the local failure trace is ignored by Git", () => {
+    const repositoryRoot = join(import.meta.dir, "..", "..");
+    const result = Bun.spawnSync(
+      ["git", "check-ignore", DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH],
+      { cwd: repositoryRoot },
+    );
+
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(result.stdout.toString().trim()).toBe(DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH);
+  });
+
+  test("the standalone recorder contains refusal as exit status instead of an uncaught throw", async () => {
+    const root = await tempRoot();
+    const repositoryRoot = join(import.meta.dir, "..", "..");
+    try {
+      const proc = Bun.spawn({
+        cmd: [process.execPath, join(repositoryRoot, "src", "seam", "lisa-loop-settled.ts")],
+        cwd: root,
+        env: {
+          ...process.env,
+          LISA_EVENT: "complete",
+          LISA_PROJECT: "vend",
+          LISA_TICKETS_DONE: "3",
+          LISA_DURATION_SECS: undefined,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+
+      expect(exitCode).toBe(1);
+      expect(stdout).toBe("");
+      expect(stderr).toBe(
+        "lisa loop-settled marker refused: LISA_PROJECT must be an absolute project root\n",
+      );
+      const lines = await readFailureLines(root);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.reason).toBe("LISA_PROJECT must be an absolute project root");
+      expect(new Date(lines[0]!.timestamp).toISOString()).toBe(lines[0]!.timestamp);
+      expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

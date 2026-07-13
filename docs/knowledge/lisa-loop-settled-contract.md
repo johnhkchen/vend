@@ -22,7 +22,8 @@ Lisa supplies these documented environment values on that event:
 The project-owned `.lisa/hooks/on-notify` is the producer entry. It invokes Vend's seam recorder
 before the hook resolves its optional ntfy topic. Marker delivery is therefore local and does not
 depend on a topic, network access, curl, or a successful push notification. Recorder failure is
-contained by the hook and cannot block lisa's loop.
+reported to the hook as an unsuccessful recorder process, so settle does not run without a marker;
+the hook contains that status and cannot block lisa's loop.
 
 `.lisa/completion-journal.jsonl` is not the selected source. Its rows reconcile individual ticket
 completion transactions (`requested`, `command-in-flight`, `confirmed`); they do not identify the
@@ -67,15 +68,56 @@ recorder does not mint a new clock fact that could be mistaken for lisa provenan
 1. Lisa finishes the whole loop and invokes the existing `on-notify complete` event.
 2. `.lisa/hooks/on-notify` invokes `src/seam/lisa-loop-settled.ts` with the documented environment.
 3. The pure seam core classifies and validates every field before any filesystem effect.
-4. A non-complete event is ignored; malformed complete facts are refused and create no marker.
-5. The recorder creates the Vend-owned `.vend/` directory when needed.
-6. It writes the complete serialized marker to a unique sibling temporary file.
-7. It atomically renames that file onto `.vend/loop-settled.json`.
-8. The hook continues its pre-existing optional ntfy behavior unchanged.
+4. A non-complete event is ignored and creates no state.
+5. A malformed complete fact is refused, creates no marker, and appends one failure-trace record.
+6. The recorder creates the Vend-owned `.vend/` directory when needed.
+7. It writes the complete serialized marker to a unique sibling temporary file.
+8. It atomically renames that file onto `.vend/loop-settled.json`.
+9. A marker publication failure removes the temporary sibling best-effort and appends one
+   failure-trace record.
+10. An ignored or successfully recorded event appends no failure-trace record.
+11. The hook continues its pre-existing optional ntfy behavior unchanged.
 
 A new complete event replaces an older pending singleton atomically. The marker represents the
 latest unconsumed loop completion for the project, not an append-only history. Incomplete temporary
 bytes are never published at the stable marker name.
+
+## Local failure trace
+
+Recorder refusals and marker publication failures append to this project-relative path:
+
+```text
+.vend/lisa-loop-settled-failures.jsonl
+```
+
+Each failure is exactly one JSON Lines record with two fields in this order:
+
+```json
+{"timestamp":"2026-07-13T20:00:00.000Z","reason":"LISA_PROJECT must be an absolute project root"}
+```
+
+`timestamp` is a canonical ISO-8601 UTC timestamp minted by Vend when the recorder observes the
+failure. `reason` preserves the pure classifier's exact refusal text, or carries `marker write
+failed: <detail>` for a filesystem publication error. JSON escaping keeps embedded control
+characters inside one physical record while allowing a later reader to recover the reason
+verbatim.
+
+If the supplied `LISA_PROJECT` is absolute, the recorder places the trace beneath that root even
+when another event field is refused. When the supplied project itself is missing or relative, it is
+not trusted as a filesystem destination; the recorder falls back to the project working root
+(`process.cwd()` in production). Marker publication failures already have a classified absolute
+project root and always use it.
+
+The file is append-only local runtime evidence and is covered by the repository's `.vend/*` ignore
+rule. A refusal or ordinary marker publication failure resolves from the recorder as typed failure
+data after one append attempt rather than throwing. The standalone recorder process still exits
+unsuccessfully for that result so the unchanged hook does not invoke settle without a marker; the
+hook contains the status and Lisa continues.
+
+This trace narrows the silent window; it is not a retry or delivery queue. A recorder process that
+never starts, or a filesystem that rejects both marker and trace writes, cannot leave durable local
+evidence. The dependent settle slice owns reading the trace, deciding freshness relative to a
+successful claim, and rendering the cord warning.
 
 ## Consumer and consume-on-settle lifecycle
 
@@ -99,6 +141,7 @@ All state written by this crossing is Vend-owned:
 
 - stable marker: `.vend/loop-settled.json`;
 - transient producer file: a sibling below `.vend/`.
+- append-only failure trace: `.vend/lisa-loop-settled-failures.jsonl`.
 
 Vend writes no `.lisa/` file, signal, journal row, hook configuration, ticket frontmatter, or shared
 work artifact while recording or consuming the marker. Lisa owns emission; the user-owned notify
@@ -116,8 +159,10 @@ new version.
 The executable contract is pinned by:
 
 - `src/seam/fixtures/lisa-loop-settled.valid.json`;
-- `src/seam/lisa-loop-settled-core.test.ts` for valid and malformed schema cases;
-- `src/seam/lisa-loop-settled.test.ts` for the Vend-only filesystem crossing and real hook path.
+- `src/seam/lisa-loop-settled-core.test.ts` for valid/malformed marker cases and deterministic
+  failure-line serialization;
+- `src/seam/lisa-loop-settled.test.ts` for the Vend-only filesystem crossing, refusal/failure
+  append behavior, Git ignore contract, and real hook path.
 
 ## Explicit exclusions
 
@@ -126,5 +171,6 @@ The executable contract is pinned by:
 - No change to ntfy title, body, priority, tags, or topic handling.
 - No public producer command or configuration gesture.
 - No watcher, daemon, or babysitting dashboard.
+- No retry, queue, replay, rotation, or guaranteed delivery for recorder failures.
 - No automatic signal promotion or next pull.
 - No settle rendering or marker consumption in this contract slice.

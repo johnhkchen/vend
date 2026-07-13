@@ -8,6 +8,8 @@ import { basename, isAbsolute } from "node:path";
 export const LISA_LOOP_SETTLED_SCHEMA_VERSION = 1 as const;
 export const LISA_LOOP_SETTLED_KIND = "lisa-loop-settled" as const;
 export const DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH = ".vend/loop-settled.json" as const;
+export const DEFAULT_LISA_LOOP_SETTLED_FAILURE_LOG_PATH =
+  ".vend/lisa-loop-settled-failures.jsonl" as const;
 
 const REQUIRED_MARKER_KEYS = Object.freeze(["v", "kind", "project", "ticketsDone"] as const);
 const MARKER_KEYS = Object.freeze([...REQUIRED_MARKER_KEYS, "durationSecs"] as const);
@@ -24,6 +26,11 @@ export interface LisaLoopSettledMarker {
   readonly project: string;
   readonly ticketsDone: number;
   readonly durationSecs?: number;
+}
+
+export interface LisaLoopSettledFailure {
+  readonly timestamp: string;
+  readonly reason: string;
 }
 
 export interface LisaCompleteEventInput {
@@ -52,6 +59,12 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
 function hasExactMarkerKeys(value: Record<string, unknown>): boolean {
@@ -160,4 +173,16 @@ export function classifyLisaCompleteEvent(input: LisaCompleteEventInput): Classi
 /** Deterministic field order and a final newline make fixture and disk bytes directly comparable. */
 export function serializeLisaLoopSettledMarker(marker: LisaLoopSettledMarker): string {
   return `${JSON.stringify(buildLisaLoopSettledMarker(marker))}\n`;
+}
+
+/** One physical JSONL record whose escaping preserves the exact failure reason for later display. */
+export function serializeLisaLoopSettledFailure(failure: LisaLoopSettledFailure): string {
+  if (!isCanonicalIsoTimestamp(failure.timestamp)) {
+    throw new TypeError("lisa loop-settled failure timestamp must be a canonical ISO timestamp");
+  }
+  if (!isNonEmptyString(failure.reason)) {
+    throw new TypeError("lisa loop-settled failure reason must be a non-empty string");
+  }
+
+  return `${JSON.stringify({ timestamp: failure.timestamp, reason: failure.reason })}\n`;
 }
