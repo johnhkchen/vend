@@ -153,6 +153,35 @@ describe("renderSettleResult — one-screen terminal contract", () => {
     expect(rendered.endsWith("\n")).toBe(true);
   });
 
+  test("prints an untracked-duration loop without fabricating a seconds figure", () => {
+    const base = completeVerdict();
+    if (base.kind !== "verdict") throw new Error("fixture must be a verdict");
+    const rendered = renderSettleResult({
+      ...base,
+      loop: {
+        v: 1,
+        kind: "lisa-loop-settled",
+        project: "vend",
+        ticketsDone: 1,
+      },
+    }, { color: false });
+
+    expect(rendered.split("\n")).toContain("loop: vend — 1 ticket done");
+    expect(rendered).not.toContain("undefineds");
+    expect(rendered).not.toMatch(/^loop: .* in [0-9]+s$/m);
+  });
+
+  test("keeps a measured zero duration distinct from untracked duration", () => {
+    const base = completeVerdict();
+    if (base.kind !== "verdict") throw new Error("fixture must be a verdict");
+    const rendered = renderSettleResult({
+      ...base,
+      loop: { ...base.loop!, durationSecs: 0 },
+    }, { color: false });
+
+    expect(rendered).toContain("loop: vend — 1 ticket done in 0s");
+  });
+
   test("an immediate repeat prints an empty delta and explicit empty concern/exception lines", () => {
     const base = completeVerdict();
     if (base.kind !== "verdict") throw new Error("fixture must be a verdict");

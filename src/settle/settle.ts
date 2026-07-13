@@ -324,9 +324,11 @@ export function renderSettleResult(
 
   const lines = ["settle"];
   if (result.loop !== null) {
+    const loopLine = `loop: ${result.loop.project} — ${countNoun(result.loop.ticketsDone, "ticket")} done`;
     lines.push(
-      `loop: ${result.loop.project} — ${countNoun(result.loop.ticketsDone, "ticket")} done in ` +
-        `${result.loop.durationSecs}s`,
+      result.loop.durationSecs === undefined
+        ? loopLine
+        : `${loopLine} in ${result.loop.durationSecs}s`,
     );
   } else {
     lines.push("loop: none pending");

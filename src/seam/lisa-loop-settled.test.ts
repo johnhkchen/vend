@@ -150,7 +150,7 @@ describe("project-owned on-notify crossing", () => {
           LISA_EVENT: "complete",
           LISA_PROJECT: root,
           LISA_TICKETS_DONE: "5",
-          LISA_DURATION_SECS: "120",
+          LISA_DURATION_SECS: undefined,
           LISA_NTFY_TOPIC: "",
         },
         stdout: "pipe",
@@ -164,7 +164,9 @@ describe("project-owned on-notify crossing", () => {
       ]);
       expect(exitCode).toBe(0);
       expect(stderr).toBe("");
-      expect(stdout).toContain(`loop: ${basename(root)} — 5 tickets done in 120s`);
+      expect(stdout.split("\n")).toContain(`loop: ${basename(root)} — 5 tickets done`);
+      expect(stdout).not.toContain("undefineds");
+      expect(stdout).not.toMatch(/^loop: .* in [0-9]+s$/m);
       expect(stdout.match(/^loop: /gm)).toHaveLength(1);
       expect(await pathExists(join(root, DEFAULT_LISA_LOOP_SETTLED_MARKER_PATH))).toBe(false);
 
