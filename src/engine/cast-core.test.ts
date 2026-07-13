@@ -19,6 +19,7 @@ import {
   resolveLoggedModel,
   resolveMaxTurns,
   resolveSeatOfExecution,
+  settleCrossReview,
   resolveTools,
   resolveTurnsUsed,
   toolFlags,
@@ -96,6 +97,45 @@ describe("classify — terminal outcome + materialize decision (play-generic)", 
       { gate: "bounds", passed: true },
       { gate: "structural", passed: true },
     ]);
+  });
+});
+
+describe("settleCrossReview — post-effect complement gate", () => {
+  const base = classify({ timedOut: false, budgetOutcome: okBudget, gateVerdict: clearedNamed });
+
+  test("an absent verdict is inert for a single-seat/no-diff cast", () => {
+    expect(settleCrossReview(base, undefined)).toBe(base);
+  });
+
+  test("PASS preserves the clear and appends passed verdict evidence", () => {
+    const settled = settleCrossReview(base, {
+      authoringSeat: "claude",
+      reviewingSeat: "codex",
+      verdict: "pass",
+    });
+
+    expect(settled.outcome).toBe("success");
+    expect(settled.materialize).toBe(true);
+    expect(settled.gateLog.at(-1)).toEqual({ gate: "cross-vendor-review", passed: true });
+    expect(settled.gateLog.slice(0, -1)).toEqual([...base.gateLog]);
+  });
+
+  test("FAIL blocks clear as gate-failed while preserving the honest landed-effect fact", () => {
+    const settled = settleCrossReview(base, {
+      authoringSeat: "claude",
+      reviewingSeat: "codex",
+      verdict: "fail",
+      detail: "ticket acceptance is not proven",
+    });
+
+    expect(settled.outcome).toBe("gate-failed");
+    expect(settled.materialize).toBe(true);
+    expect(settled.gateLog.at(-1)).toEqual({
+      gate: "cross-vendor-review",
+      passed: false,
+      detail: "ticket acceptance is not proven",
+    });
+    expect(settled.gateLog.slice(0, -1)).toEqual([...base.gateLog]);
   });
 });
 

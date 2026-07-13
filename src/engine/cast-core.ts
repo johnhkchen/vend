@@ -24,7 +24,7 @@ import type { StreamMessage } from "../executor/claude.ts";
 import { countTokens, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import type { AgentSeat } from "../play/agent-seat.ts";
 import type { GateVerdict, PlayTools } from "./play.ts";
-import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
+import type { CrossVendorVerdict, GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
 
 /**
  * Logged when no real model id was observed on the stream and the caller pinned none
@@ -232,6 +232,36 @@ export interface Verdict {
   readonly gateLog: readonly LogGate[];
   /** Present only when a token-exhausted cast explicitly cleared its gates and may materialize. */
   readonly overEnvelope?: true;
+}
+
+/** Stable ledger gate name for the autonomous complement-seat review. */
+export const CROSS_VENDOR_REVIEW_GATE = "cross-vendor-review";
+
+/**
+ * Apply an optional post-effect cross-vendor judgment to a cast's terminal settlement.
+ *
+ * Diff review necessarily happens after a successful effect has reported artifacts, so this is
+ * deliberately separate from {@link classify}: `classify.materialize` authorizes the effect;
+ * this function decides whether the already-observed run may settle as cleared. A refusal keeps
+ * `materialize` honest (the effect did land) while changing the terminal outcome to
+ * `gate-failed`. Absence is the inert single-seat/no-diff path and returns the base value itself.
+ */
+export function settleCrossReview(base: Verdict, review: CrossVendorVerdict | undefined): Verdict {
+  if (review === undefined) return base;
+
+  const reviewRow: LogGate = review.verdict === "pass"
+    ? { gate: CROSS_VENDOR_REVIEW_GATE, passed: true }
+    : {
+        gate: CROSS_VENDOR_REVIEW_GATE,
+        passed: false,
+        ...(review.detail !== undefined ? { detail: review.detail } : {}),
+      };
+
+  return {
+    ...base,
+    outcome: review.verdict === "fail" ? "gate-failed" : base.outcome,
+    gateLog: [...base.gateLog, reviewRow],
+  };
 }
 
 /**

@@ -23,6 +23,7 @@ import type { Budget } from "../budget/budget.ts";
 import { ExecutorTimeoutError, type DispenseOptions, type Executor, type ResultMessage, type StreamMessage } from "../executor/executor.ts";
 import { decomposeEffect } from "../play/decompose-effect.ts";
 import type { DecomposeInputs } from "../play/project-context.ts";
+import type { ExecutorRegistry } from "../executor/select.ts";
 
 // Integration proof for the executor seam (T-035-01, AC#3): a STUB executor injected through
 // `castPlay` casts a play end to end — onMessage fires, a ResultMessage flows back, and the
@@ -111,6 +112,27 @@ function stubExecutor(seen: StreamMessage[], resultText = "hello from stub", id 
         model: "stub-model-1",
       } as ResultMessage;
     },
+  };
+}
+
+/** A configured two-seat registry whose complement is a recording, primed reviewer. */
+function crossReviewRegistry(resultText: string, calls: DispenseOptions[]): ExecutorRegistry {
+  return {
+    claude: () => stubExecutor([], "unused author factory", "claude"),
+    "openai-compat": () => ({
+      id: "openai-compat",
+      async dispense(opts: DispenseOptions): Promise<ResultMessage> {
+        calls.push(opts);
+        return {
+          type: "result",
+          subtype: "success",
+          result: resultText,
+          usage: {},
+          total_cost_usd: 0,
+          model: "review-stub",
+        } as ResultMessage;
+      },
+    }),
   };
 }
 
@@ -324,6 +346,114 @@ test("castPlay: a file-writing effect captures a routable Git diff reference on 
   const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
   expect(raw.capturedDiff).toBe(summary.capturedDiff);
   expect(reviveRecord(raw)?.capturedDiff).toBe(summary.capturedDiff);
+});
+
+test("castPlay: a refusing complement verdict blocks clear as gate-failed and stays attached", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const calls: DispenseOptions[] = [];
+  const plan: BoardPlanFixture = {
+    story: { id: "S-073-97", title: "refused cross review" },
+    ticket: { id: "T-073-97-01", story: "S-073-97", title: "missing required proof" },
+  };
+
+  const summary = await castPlay(boardPlanPlay(), { epic: "E-073" }, BIG_BUDGET, {
+    subject: "T-073-02-01-fail",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId: "cross-review-fail",
+    executor: stubExecutor([], JSON.stringify(plan), "claude"),
+    crossReviewRegistry: crossReviewRegistry(
+      '{"verdict":"fail","reason":"acceptance proof is missing"}',
+      calls,
+    ),
+  });
+
+  expect(summary.outcome).toBe("gate-failed");
+  expect(summary.outcome).not.toBe("success");
+  // Review happens over the captured landed patch, so materialized remains an honest effect fact.
+  expect(summary.materialized).toBe(true);
+  expect(summary.capturedDiff).toBe(join(".vend", "artifacts", "cross-review-fail.diff"));
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.prompt).toContain("docs/active/tickets/T-073-97-01.md");
+  expect(calls[0]!.prompt).toContain("Authored purpose: materialize a canned story and ticket");
+  expect(calls[0]!.maxTurns).toBe(1);
+
+  const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(raw.outcome).toBe("gate-failed");
+  expect(raw.crossVendorVerdict).toEqual({
+    authoringSeat: "claude",
+    reviewingSeat: "codex",
+    verdict: "fail",
+    detail: "acceptance proof is missing",
+  });
+  expect(raw.gateResults).toEqual([
+    { gate: "fixture-contract", passed: true },
+    { gate: "cross-vendor-review", passed: false, detail: "acceptance proof is missing" },
+  ]);
+  expect(reviveRecord(raw)?.crossVendorVerdict).toEqual(raw.crossVendorVerdict);
+});
+
+test("castPlay: a passing complement verdict clears with verdict and gate evidence attached", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const calls: DispenseOptions[] = [];
+  const plan: BoardPlanFixture = {
+    story: { id: "S-073-96", title: "passing cross review" },
+    ticket: { id: "T-073-96-01", story: "S-073-96", title: "proven patch" },
+  };
+
+  const summary = await castPlay(boardPlanPlay(), { epic: "E-073" }, BIG_BUDGET, {
+    subject: "T-073-02-01-pass",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId: "cross-review-pass",
+    executor: stubExecutor([], JSON.stringify(plan), "claude"),
+    crossReviewRegistry: crossReviewRegistry('{"verdict":"pass"}', calls),
+  });
+
+  expect(summary.outcome).toBe("success");
+  expect(summary.materialized).toBe(true);
+  expect(calls).toHaveLength(1);
+  const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(raw.outcome).toBe("success");
+  expect(raw.crossVendorVerdict).toEqual({
+    authoringSeat: "claude",
+    reviewingSeat: "codex",
+    verdict: "pass",
+  });
+  expect(raw.gateResults.at(-1)).toEqual({ gate: "cross-vendor-review", passed: true });
+});
+
+test("castPlay: a single configured seat clears unchanged with cross-review inert", async () => {
+  const root = await tmp();
+  await initGitRepo(root);
+  const runLogPath = join(root, "runs.jsonl");
+  const plan: BoardPlanFixture = {
+    story: { id: "S-073-95", title: "single seat" },
+    ticket: { id: "T-073-95-01", story: "S-073-95", title: "ordinary clear" },
+  };
+
+  const summary = await castPlay(boardPlanPlay(), { epic: "E-073" }, BIG_BUDGET, {
+    subject: "T-073-02-01-single-seat",
+    projectRoot: root,
+    transcriptDir: root,
+    runLogPath,
+    runId: "cross-review-inert",
+    executor: stubExecutor([], JSON.stringify(plan), "claude"),
+    crossReviewRegistry: { claude: () => stubExecutor([], "unused", "claude") },
+  });
+
+  expect(summary.outcome).toBe("success");
+  expect(summary.materialized).toBe(true);
+  const raw = JSON.parse((await readFile(runLogPath, "utf8")).trim());
+  expect(raw.outcome).toBe("success");
+  expect(raw.gateResults).toEqual([{ gate: "fixture-contract", passed: true }]);
+  expect("crossVendorVerdict" in raw).toBe(false);
 });
 
 test("castPlay: a no-op effect omits captured diff evidence (T-073-01-01 AC)", async () => {

@@ -19,14 +19,16 @@
 // log), and calls the play's own impure `effect`; it is the single UNTESTED verb (its logic
 // lives in the pure core), proven live in T-007-03 when a real play is registered and cast.
 
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { type ResultMessage } from "../executor/claude.ts";
 import { ExecutorTimeoutError } from "../executor/executor.ts";
 import type { Executor } from "../executor/executor.ts";
-import { executorFor } from "../executor/select.ts";
+import { executorFor, type ExecutorRegistry } from "../executor/select.ts";
 import { check, timeoutMsFor, type Budget, type BudgetOutcome, type Usage } from "../budget/budget.ts";
-import { appendRunLog, type RunOutcome } from "../log/run-log.ts";
+import { appendRunLog, type CrossVendorVerdict, type GateResult as LogGate, type RunOutcome } from "../log/run-log.ts";
+import { resolveComplementExecutor } from "../cross-review/resolve-complement.ts";
+import { dispenseReviewVerdict } from "../cross-review/review.ts";
 import type { CastContext, EffectResult, GateVerdict, Play, SeatDefaulted, SeatInferred } from "./play.ts";
 import {
   accumulateCastProgress,
@@ -40,6 +42,7 @@ import {
   resolveSeatOfExecution,
   resolveTools,
   resolveTurnsUsed,
+  settleCrossReview,
   toolFlags,
 } from "./cast-core.ts";
 import { readProjectMcpServers } from "./mcp-registry.ts";
@@ -100,6 +103,9 @@ export interface CastOptions {
    * `VEND_EXECUTOR` ⇒ Claude (so no opt and no env ⇒ Claude ⇒ byte-identical to today).
    */
   readonly executorId?: string;
+  /** Optional complement-executor registry injection for hermetic cross-review tests or a
+   *  restricted configured capability set. Omitted uses the built-in executor registry. */
+  readonly crossReviewRegistry?: ExecutorRegistry;
   /**
    * Millisecond clock for the live progress line. Omitted ⇒ {@link Date.now}. Injected by the
    * stub-executor harness so elapsed refreshes are deterministic; durable run-log timestamps keep
@@ -306,6 +312,7 @@ export async function castPlay<I, O>(
   let capturedDiff: string | undefined;
   let seatDefaulted: SeatDefaulted | undefined;
   let seatInferred: SeatInferred | undefined;
+  let crossVendorVerdict: CrossVendorVerdict | undefined;
   let outcome: RunOutcome = verdict.outcome;
   if (verdict.materialize && output !== null) {
     const reported = await play.effect(output, ctx);
@@ -329,8 +336,42 @@ export async function castPlay<I, O>(
     capturedDiff = eff.capturedDiff;
     if (eff.outcome) outcome = eff.outcome;
     process.stdout.write(`· effect ${eff.ok ? "✓" : "✗"}${eff.detail ? ` ${eff.detail}` : ""}\n`);
+
+    // A complement can review only concrete landed patch bytes. Resolution is deliberately inert
+    // for a lane-less author, one-seat registry, or ambiguous registry; those paths remain exactly
+    // the pre-cross-review clear. A valid refusal is a gate outcome, not a human approval step.
+    if (!opts.skipGates && eff.ok && capturedDiff !== undefined && seatOfExecution !== undefined) {
+      const reviewer = opts.crossReviewRegistry === undefined
+        ? resolveComplementExecutor(seatOfExecution)
+        : resolveComplementExecutor(seatOfExecution, opts.crossReviewRegistry);
+      if (reviewer !== null) {
+        const patch = await readFile(join(root, capturedDiff), "utf8");
+        const elapsedMs = Math.max(0, Date.now() - Date.parse(startedAt));
+        const review = await dispenseReviewVerdict({
+          reviewer,
+          capturedDiff: patch,
+          rubricContext: crossReviewRubric(play.name, play.summary, verdict.gateLog),
+          timeoutMs: Math.max(1, timeoutMsFor(budget) - elapsedMs),
+        });
+        crossVendorVerdict = {
+          authoringSeat: seatOfExecution,
+          reviewingSeat: review.reviewingSeat,
+          verdict: review.verdict,
+          ...(review.verdict === "fail" ? { detail: review.reason } : {}),
+        };
+      }
+    }
   } else if (verdict.outcome !== "success") {
     process.stdout.write(`· andon: ${verdict.outcome}${stopReason(gateVerdict, budgetOutcome)}\n`);
+  }
+
+  // The initial verdict authorized the effect; cross-review decides whether that landed run may
+  // SETTLE as cleared. Preserve an effect's outcome relabel in the base, then autonomously turn a
+  // complement refusal into gate-failed while retaining the physical `materialized` fact.
+  const settledVerdict = settleCrossReview({ ...verdict, outcome }, crossVendorVerdict);
+  outcome = settledVerdict.outcome;
+  if (crossVendorVerdict?.verdict === "fail") {
+    process.stdout.write(`· andon: gate-failed — cross-vendor review: ${crossVendorVerdict.detail ?? "refused"}\n`);
   }
 
   // The honest seat-default signal (T-070-01-03): an unknown requested routing seat did not
@@ -345,7 +386,7 @@ export async function castPlay<I, O>(
 
   // The live Settle warning (T-068-02-03): presence comes ONLY from the pure classifier; the
   // exhausted outcome contributes factual meter detail, not a second warning decision.
-  if (verdict.overEnvelope && budgetOutcome?.status === "exhausted") {
+  if (settledVerdict.outcome === "success" && settledVerdict.overEnvelope && budgetOutcome?.status === "exhausted") {
     process.stdout.write(
       `· settle warning: over-envelope — spent ${budgetOutcome.spent}/${budgetOutcome.ceiling} tokens ` +
         `(over by ${budgetOutcome.overage}); gates cleared, output retained\n`,
@@ -417,17 +458,20 @@ export async function castPlay<I, O>(
       ...(reducedGrounding ? { reducedGrounding: true } : {}),
       // One authoritative warning fact (T-068-02-03): forward the classifier marker rather than
       // re-deriving it from meter/gate state. Unmarked casts omit the key (one-way record contract).
-      ...(verdict.overEnvelope ? { overEnvelope: true } : {}),
+      ...(settledVerdict.overEnvelope ? { overEnvelope: true } : {}),
       // The effect's authoritative routing disposition (T-070-01-03). Forward the exact report;
       // absence omits the key so ordinary and historical records retain their existing shape.
       ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
       // The effect is the sole inference-policy boundary. Preserve its chosen seat and evidence
       // verbatim; an explicit or ambiguous/unrouted cast omits the one-way marker.
       ...(seatInferred !== undefined ? { seatInferred } : {}),
+      // Attached gate provenance: absent for the inert no-complement/no-diff path; present for
+      // both pass and fail so the final outcome is auditable from the same ledger line.
+      ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
       outcome,
       usage: (result?.usage ?? {}) as Usage,
       costUsd: typeof result?.total_cost_usd === "number" ? result.total_cost_usd : 0,
-      gateResults: verdict.gateLog,
+      gateResults: settledVerdict.gateLog,
       startedAt,
       endedAt,
     },
@@ -444,11 +488,20 @@ export async function castPlay<I, O>(
     runId,
     outcome,
     materialized,
-    ...(verdict.overEnvelope ? { overEnvelope: true } : {}),
+    ...(settledVerdict.overEnvelope ? { overEnvelope: true } : {}),
     produced,
     capturedDiff,
     actuals: { usage, wallMs },
   };
+}
+
+/** Render the authored judgment available to the generic engine without inventing a new
+ * per-playbook rubric surface (explicitly deferred by S-073-02). */
+function crossReviewRubric(play: string, summary: string, gates: readonly LogGate[]): string {
+  const gateLines = gates.length === 0
+    ? ["- no named play-gate rows were reported"]
+    : gates.map((gate) => `- ${gate.gate}: ${gate.passed ? "PASS" : "FAIL"}${gate.detail ? ` — ${gate.detail}` : ""}`);
+  return [`Play: ${play}`, `Authored purpose: ${summary}`, "Play gate evidence:", ...gateLines].join("\n");
 }
 
 /** A short andon suffix for stdout — names the gate/budget reason when there is one. Pure;
