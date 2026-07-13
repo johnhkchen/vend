@@ -19,6 +19,12 @@ import {
   BareCodeError,
   IdCollisionError,
 } from "./materialize.ts";
+import type { DegradeDisposition } from "./degrade-disposition.ts";
+
+/** Concrete decompose effect data made available to the later run-record join. */
+export interface DecomposeEffectResult extends EffectResult {
+  readonly degrades?: readonly DegradeDisposition[];
+}
 
 /** The result of spawning `lisa validate` (the final structural poka-yoke). */
 export interface ValidateResult {
@@ -58,7 +64,7 @@ export async function decomposeEffect(
   plan: WorkPlan,
   ctx: CastContext<DecomposeInputs>,
   validate: LisaValidator = lisaValidate,
-): Promise<EffectResult> {
+): Promise<DecomposeEffectResult> {
   const root = ctx.projectRoot;
 
   // Canonicalize ids, then PROVE the board before writing (E-061 retro #8). The model emits ids
@@ -113,7 +119,7 @@ export async function decomposeEffect(
     // per cut so every written body carries its codes' cut-time text. The optional routing seat
     // is resolved by materialize: known seats stamp; unknown seats omit the key and report the
     // safe default disposition rather than discarding the cleared board.
-    const { storyFiles, ticketFiles, seatDefaulted } = await materialize(
+    const { storyFiles, ticketFiles, degrades, seatDefaulted } = await materialize(
       finalPlan,
       {
         storiesDir: join(root, "docs", "active", "stories"),
@@ -127,6 +133,7 @@ export async function decomposeEffect(
       ok: validated.ok,
       detail: validated.ok ? "lisa validate ✓" : `lisa validate ✗\n${validated.output}`,
       artifacts: [...storyFiles, ...ticketFiles],
+      ...(degrades.length > 0 ? { degrades } : {}),
       ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
       ...(seatInferred !== null ? { seatInferred } : {}),
     };

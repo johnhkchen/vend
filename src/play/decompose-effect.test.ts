@@ -64,6 +64,14 @@ const PLAN: WorkPlan = {
   }],
 };
 
+const INLINE_DEGRADE_PLAN: WorkPlan = {
+  ...PLAN,
+  tickets: PLAN.tickets.map((ticket) => ({
+    ...ticket,
+    purpose: "Stamp routing metadata while honoring N4 — Not an executor.",
+  })),
+};
+
 describe("decomposeEffect — agent routing seat", () => {
   test("RunOptions-shaped agent codex reaches inputs and every materialized ticket", async () => {
     const { root, epicPath } = await tempProject();
@@ -143,5 +151,37 @@ describe("decomposeEffect — agent routing seat", () => {
     expect(degradedTicket).toBe(
       await readFile(join(baseline.root, "docs", "active", "tickets", "T-901-01-01.md"), "utf8"),
     );
+  });
+
+  test("unresolved inline charter prose materializes and is forwarded as a concrete effect degradation", async () => {
+    const { root, epicPath } = await tempProject();
+    const inputs = await assembleInputs(contextSourcesForRun({ epicPath, projectRoot: root }));
+    let validationCalls = 0;
+
+    const result = await decomposeEffect(
+      INLINE_DEGRADE_PLAN,
+      { inputs, projectRoot: root },
+      async () => {
+        validationCalls += 1;
+        return { ok: true, output: "" };
+      },
+    );
+
+    expect(result.ok).toBeTrue();
+    expect(result.outcome).toBeUndefined();
+    expect(result.degrades).toEqual([
+      { code: "N4", location: "T-901-01-01.md#purpose", action: "annotate" },
+    ]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(validationCalls).toBe(1);
+
+    const ticket = await readFile(
+      join(root, "docs", "active", "tickets", "T-901-01-01.md"),
+      "utf8",
+    );
+    expect(ticket).toContain(
+      "Stamp routing metadata while honoring [unresolved charter cite] Not an executor.",
+    );
+    expect(ticket).not.toContain("N4");
   });
 });

@@ -31,23 +31,18 @@
 // T-067-01-02: cut artifacts carry their charter grounding. Both renderers take a
 // `CharterSnapshot` (code → one-line text, T-067-01-01) and render every cited code as
 // `code — carried text` — the `_Advances:_` line from the array, prose citations (purpose /
-// doneSignal, the five story sections) via a snapshot-GATED rewrite that leaves non-charter
-// tokens and already-glossed codes untouched. `materialize` gains the charter parameter and
-// resolves it exactly ONCE per cut (snapshot-at-cut, E-067). A code the snapshot misses
-// degrades to the bare code — never a fabricated gloss; refusing that cut is the write
-// guard's job (T-067-01-03), not the renderer's.
+// doneSignal, the five story sections) via a snapshot-gated rewrite that leaves non-charter
+// tokens untouched. `materialize` gains the charter parameter and resolves it exactly ONCE per
+// cut (snapshot-at-cut, E-067). An `advances` code the snapshot misses remains bare for the
+// downstream guard; T-077-02-02 makes the inline-prose miss behavior an honest annotation.
 //
-// T-067-01-03: that write guard. "Cut artifacts carry no bare codes" is now a WRITE-SIDE
-// contract, judged on the RENDERED bytes (the renderers stay total; the verb refuses):
-// `materialize` renders every file into memory first, runs the pure `findBareCodes` over
-// the would-be bodies, and throws a typed `BareCodeError` on any bare (unglossed) code in
-// a POLICED prefix family — {P, N} always (the AC's grep bar), plus any prefix family the
-// charter itself defines codes for (a `**K1 — …**` kitchen charter polices K; the resolver
-// is prefix-generic and the guard matches its stance). Foreign prefixes (`E1` in
-// "forward-E1", `A3`) stay unpoliced — the -02 passthrough behavior is unchanged. The
-// throw precedes every mkdir/write (the IdCollisionError bar), so a refused cut leaves
-// zero partial output — the honey-kitchen #1 complaint (strip N-codes) has nothing left
-// to strip, structurally (P3).
+// T-067-01-03 added the rendered-byte bare-code write guard. T-077-02-02 narrows its
+// disposition for INLINE PROSE: a charter-family code missing from the cut-time snapshot is
+// replaced by an honest annotation and returned as a structured degradation instead of
+// refusing the whole cut. The guard remains after that transform as the final backstop for
+// unhandled surfaces (notably `advances`, owned by T-077-02-03): any surviving bare code in a
+// POLICED prefix family still throws before every mkdir/write. Foreign prefixes (`E1` in
+// "forward-E1", `A3`) remain unpoliced passthrough.
 //
 // T-069-01-02 added the seat write guard; T-070-01-02 flips its unknown-seat disposition.
 // A supplied Lisa executor-routing seat is checked once against the canonical pure oracle.
@@ -61,6 +56,12 @@ import type { StoryDraft, TicketDraft, WorkPlan } from "../../baml_client/index.
 import type { SeatDefaulted } from "../engine/play.ts";
 import { findUnknownSeat, type AgentSeat } from "./agent-seat.ts";
 import { snapshotCharterCodes, type CharterSnapshot } from "./charter-snapshot.ts";
+import {
+  classifyCharterCite,
+  materializationDisposition,
+  type CharterCiteClassification,
+  type DegradeDisposition,
+} from "./degrade-disposition.ts";
 import { detectCollisions } from "./id-guard.ts";
 import { listIdsIn } from "./project-context.ts";
 
@@ -110,6 +111,8 @@ export interface MaterializeTargets {
 export interface MaterializeResult {
   readonly storyFiles: string[];
   readonly ticketFiles: string[];
+  /** Ordered occurrence-level evidence for inline charter cites annotated during this cut. */
+  readonly degrades: readonly DegradeDisposition[];
   readonly seatDefaulted?: SeatDefaulted;
 }
 
@@ -140,6 +143,12 @@ export class IdCollisionError extends Error {
 export interface RenderedFile {
   readonly name: string;
   readonly body: string;
+}
+
+/** Internal rendering result: public bytes plus occurrence-level cite judgments. */
+interface DetailedRender {
+  readonly file: RenderedFile;
+  readonly classifications: readonly CharterCiteClassification[];
 }
 
 /** One file's bare (unglossed, policed-prefix) codes: `codes` deduped, in body order.
@@ -187,30 +196,67 @@ function flowArray(items: readonly string[]): string {
   return `[${items.join(", ")}]`;
 }
 
-/** The code shape charter-snapshot parses (`[A-Z]{1,3}\d+`), met here in RUNNING PROSE. The
- *  `(?! —)` lookahead skips a code already carrying a gloss — the model's own `P4 — <its
- *  words>` is not bare — and the rewrite's own output starts `code — `, so the transform is
- *  idempotent. */
-const PROSE_CODE = /\b([A-Z]{1,3}\d+)\b(?! —)/g;
+/** The code shape charter-snapshot parses (`[A-Z]{1,3}\d+`), met here in RUNNING PROSE.
+ *  The optional second capture observes an authored gloss delimiter: a resolvable authored
+ *  gloss stays byte-identical, while an unresolved cite loses both its code and delimiter so
+ *  the retained prose reads naturally after the honest marker. */
+const PROSE_CODE = /\b([A-Z]{1,3}\d+)\b( — )?/g;
 
-/** The write guard's shape: {@link PROSE_CODE} with the prefix captured separately and the
- *  SAME gloss-skip lookahead — the two share the definition of "glossed" (a code followed
- *  by ` — ` is explained, whether by the charter's carried text or the model's own words;
- *  anything else is bare). One deliberate widening: the trailing boundary is
+/** Artifact-visible honesty without reintroducing a code-shaped token the write guard rejects. */
+const UNRESOLVED_CHARTER_CITE = "[unresolved charter cite]";
+
+/** The write guard's independent bare-code shape, with the prefix captured separately. Its
+ *  gloss-skip lookahead treats a code followed by ` — ` as explained, whether by the charter's
+ *  carried text or the model's own words; anything else is bare. One deliberate widening: the
+ *  trailing boundary is
  *  `(?![0-9A-Za-z])` rather than `\b`, because the advances line wraps in italic
  *  underscores (`_Advances: P1_`) and `_` is a word character — a bare code closing that
  *  line must still be caught. The widening only ever FLAGS more, never writes more. */
 const BARE_CODE = /\b([A-Z]{1,3})\d+(?![0-9A-Za-z])(?! —)/g;
 
-/** Rewrite each cited code in prose to `code — carried text`, GATED on the snapshot: only a
- *  code the charter actually defines is expanded; anything else (`E1` in "forward-E1", a
- *  K-code cited against the vend charter) passes through verbatim, so the transform can
- *  never corrupt prose it does not understand. */
-function resolveCodesInProse(text: string, snapshot: CharterSnapshot): string {
-  return text.replace(PROSE_CODE, (bare, code: string) => {
-    const title = snapshot.get(code);
-    return title === undefined ? bare : `${code} — ${title}`;
-  });
+interface ResolvedProse {
+  readonly text: string;
+  readonly classifications: readonly CharterCiteClassification[];
+}
+
+/**
+ * Resolve or honestly annotate charter citations in one located prose field. Snapshot-known
+ * codes carry their title; snapshot-missing P/N or charter-defined-prefix codes become the
+ * annotation marker and one ordered degradation record. Unknown foreign-prefix tokens remain
+ * verbatim. PURE — the caller supplies both snapshot and stable artifact-field location.
+ */
+function resolveCodesInProse(
+  text: string,
+  snapshot: CharterSnapshot,
+  location: string,
+): ResolvedProse {
+  const classifications: CharterCiteClassification[] = [];
+  const prefixes = policedPrefixes(snapshot);
+  const resolved = text.replace(
+    PROSE_CODE,
+    (matched, code: string, authoredGloss: string | undefined) => {
+      const title = snapshot.get(code);
+      const prefix = code.match(/^[A-Z]+/)?.[0];
+      if (title === undefined && (prefix === undefined || !prefixes.has(prefix))) return matched;
+
+      const classification = classifyCharterCite(
+        { code, location, action: "annotate" },
+        snapshot,
+      );
+      classifications.push(classification);
+
+      if (classification.classification === "resolvable") {
+        return authoredGloss === undefined ? `${classification.code} — ${classification.title}` : matched;
+      }
+      if (classification.classification === "degradable") {
+        return authoredGloss === undefined ? UNRESOLVED_CHARTER_CITE : `${UNRESOLVED_CHARTER_CITE} `;
+      }
+      throw new RangeError(
+        `materialize: inline charter cite classifier invariant failed at ${location}: ${classification.reason}`,
+      );
+    },
+  );
+  return { text: resolved, classifications };
 }
 
 /** The `_Advances:_` line — the single owner of that format. Each code renders as
@@ -273,15 +319,17 @@ export function findBareCodes(
  * the value triplet — `purpose` becomes the Context, `doneSignal` the single
  * Acceptance Criterion, `advances` a noted line (so the materialized file is honest
  * about why the unit exists, not just structurally valid). Every cited charter code
- * in the body carries its cut-time one-liner via `snapshot` (T-067-01-02); the
- * frontmatter is code-free. A supplied `agent` renders immediately after `priority:`;
- * absence contributes zero bytes and retains the pre-seat full-file shape.
+ * in prose either carries its cut-time one-liner or becomes the unresolved-cite marker;
+ * `advances` retains its separate renderer/guard path. The frontmatter is code-free. A
+ * supplied `agent` renders immediately after `priority:`; absence contributes zero bytes
+ * and retains the pre-seat full-file shape.
  */
-export function renderTicketFile(
+function renderTicketFileDetailed(
   t: TicketDraft,
   snapshot: CharterSnapshot,
   agent?: string,
-): RenderedFile {
+): DetailedRender {
+  const name = `${t.id}.md`;
   const fm = [
     "---",
     `id: ${t.id}`,
@@ -295,20 +343,33 @@ export function renderTicketFile(
     `depends_on: ${flowArray(t.depends_on)}`,
     "---",
   ].join("\n");
+  const purpose = resolveCodesInProse(t.purpose, snapshot, `${name}#purpose`);
+  const doneSignal = resolveCodesInProse(t.doneSignal, snapshot, `${name}#doneSignal`);
   const body = [
     "",
     "## Context",
     "",
-    resolveCodesInProse(t.purpose, snapshot),
+    purpose.text,
     "",
     advancesLine(t.advances, snapshot),
     "",
     "## Acceptance Criteria",
     "",
-    `- [ ] ${resolveCodesInProse(t.doneSignal, snapshot)}`,
+    `- [ ] ${doneSignal.text}`,
     "",
   ].join("\n");
-  return { name: `${t.id}.md`, body: `${fm}\n${body}` };
+  return {
+    file: { name, body: `${fm}\n${body}` },
+    classifications: [...purpose.classifications, ...doneSignal.classifications],
+  };
+}
+
+export function renderTicketFile(
+  t: TicketDraft,
+  snapshot: CharterSnapshot,
+  agent?: string,
+): RenderedFile {
+  return renderTicketFileDetailed(t, snapshot, agent).file;
 }
 
 // ── story contract body (T-066-01-03) ──────────────────────────────────────────────────────────
@@ -350,16 +411,17 @@ function dagBlock(s: StoryDraft, storyTickets: readonly TicketDraft[]): string {
  * (an absent field renders nothing — the completeness gate owns refusal), the derived
  * {@link dagBlock}, and the provenance footer — the play that cut it, the ticket count,
  * and `cutDate` (`YYYY-MM-DD`, supplied by the impure caller so this stays clock-free).
- * Section prose resolves its cited charter codes through `snapshot` exactly as the
- * ticket body does (T-067-01-02); the DAG block and footer carry no codes by
- * construction and are untouched.
+ * Section prose resolves or annotates its cited charter codes through `snapshot` exactly as
+ * the ticket body does; the DAG block and footer carry no codes by construction and are
+ * untouched.
  */
-export function renderStoryFile(
+function renderStoryFileDetailed(
   s: StoryDraft,
   storyTickets: readonly TicketDraft[],
   cutDate: string,
   snapshot: CharterSnapshot,
-): RenderedFile {
+): DetailedRender {
+  const name = `${s.id}.md`;
   const fm = [
     "---",
     `id: ${s.id}`,
@@ -372,19 +434,48 @@ export function renderStoryFile(
   ].join("\n");
 
   const chunks: string[] = [];
+  const classifications: CharterCiteClassification[] = [];
   for (const [field, label] of PRE_DAG_SECTIONS) {
     const value = s[field];
-    if (value != null) chunks.push(`**${label}:** ${resolveCodesInProse(value, snapshot)}`);
+    if (value != null) {
+      const prose = resolveCodesInProse(value, snapshot, `${name}#${field}`);
+      chunks.push(`**${label}:** ${prose.text}`);
+      classifications.push(...prose.classifications);
+    }
   }
   let dag = `## DAG\n\n${dagBlock(s, storyTickets)}`;
-  if (s.waveRationale != null) dag += `\n\nWave rationale: ${resolveCodesInProse(s.waveRationale, snapshot)}`;
+  if (s.waveRationale != null) {
+    const waveRationale = resolveCodesInProse(
+      s.waveRationale,
+      snapshot,
+      `${name}#waveRationale`,
+    );
+    dag += `\n\nWave rationale: ${waveRationale.text}`;
+    classifications.push(...waveRationale.classifications);
+  }
   chunks.push(dag);
-  if (s.outOfSlice != null) chunks.push(`**Out of this slice:** ${resolveCodesInProse(s.outOfSlice, snapshot)}`);
+  if (s.outOfSlice != null) {
+    const outOfSlice = resolveCodesInProse(s.outOfSlice, snapshot, `${name}#outOfSlice`);
+    chunks.push(`**Out of this slice:** ${outOfSlice.text}`);
+    classifications.push(...outOfSlice.classifications);
+  }
   chunks.push(
     `---\n_Materialized by Vend's \`decompose-epic\` play — ${s.tickets.length} ticket(s), ${cutDate}._`,
   );
 
-  return { name: `${s.id}.md`, body: `${fm}\n\n${chunks.join("\n\n")}\n` };
+  return {
+    file: { name, body: `${fm}\n\n${chunks.join("\n\n")}\n` },
+    classifications,
+  };
+}
+
+export function renderStoryFile(
+  s: StoryDraft,
+  storyTickets: readonly TicketDraft[],
+  cutDate: string,
+  snapshot: CharterSnapshot,
+): RenderedFile {
+  return renderStoryFileDetailed(s, storyTickets, cutDate, snapshot).file;
 }
 
 /**
@@ -393,9 +484,10 @@ export function renderStoryFile(
  * pure rendering judgments remain pinned separately. Only called on a CLEAR verdict;
  * the runner never reaches here on a STOP.
  *
- * TWO pre-write refusal guards, identity before content, both refusing BEFORE the first
- * `mkdir`/`writeFile` so a refused plan materializes nothing — "no partial
- * materialization" (P7) is structural, not a cleanup:
+ * Pre-write identity and rendered-content guards run BEFORE the first `mkdir`/`writeFile`,
+ * so a structurally refused plan materializes nothing — "no partial materialization" (P7)
+ * is structural, not a cleanup. Inline editorial cites are applied before the content guard:
+ * they annotate and return ordered degradation records rather than refusing the cut.
  *
  * Before those guards, seat disposition (T-070-01-02) checks supplied routing metadata
  * against the canonical seat contract. Unknown metadata is omitted from rendered tickets,
@@ -404,9 +496,9 @@ export function renderStoryFile(
  *  1. Cross-board collision guard (T-004-02): gather the ids already living under the
  *     target dirs, run the pure `detectCollisions`; a re-minted id refuses with
  *     {@link IdCollisionError}.
- *  2. Bare-code write guard (T-067-01-03): render EVERY file into memory, run the pure
- *     {@link findBareCodes} over the would-be bodies; a bare policed code refuses with
- *     {@link BareCodeError}. Rendering precedes writing entirely, so the guard judges
+ *  2. Bare-code write guard (T-067-01-03): after inline application, run the pure
+ *     {@link findBareCodes} over every would-be body; a surviving bare policed code refuses
+ *     with {@link BareCodeError}. Rendering precedes writing entirely, so the guard judges
  *     the exact bytes that would land.
  *
  * `charter` is the SAME string the runner feeds the gates' `ClearContext` — resolved here
@@ -447,11 +539,23 @@ export async function materialize(
   const cutDate = new Date().toISOString().slice(0, 10);
   const snapshot = snapshotCharterCodes(charter);
 
-  const stories = plan.stories.map((s) => {
+  const storyRenders = plan.stories.map((s) => {
     const storyTickets = plan.tickets.filter((t) => s.tickets.includes(t.id));
-    return renderStoryFile(s, storyTickets, cutDate, snapshot);
+    return renderStoryFileDetailed(s, storyTickets, cutDate, snapshot);
   });
-  const tickets = plan.tickets.map((t) => renderTicketFile(t, snapshot, effectiveAgent));
+  const ticketRenders = plan.tickets.map((t) => renderTicketFileDetailed(t, snapshot, effectiveAgent));
+  const stories = storyRenders.map((render) => render.file);
+  const tickets = ticketRenders.map((render) => render.file);
+
+  const disposition = materializationDisposition([
+    ...storyRenders.flatMap((render) => render.classifications),
+    ...ticketRenders.flatMap((render) => render.classifications),
+  ]);
+  if (disposition.status === "structural-refusal") {
+    throw new RangeError(
+      `materialize: inline charter cite classifier invariant failed at ${disposition.finding.location}: ${disposition.finding.reason}`,
+    );
+  }
 
   const bare = findBareCodes([...stories, ...tickets], snapshot);
   if (bare.length > 0) throw new BareCodeError(bare);
@@ -476,6 +580,7 @@ export async function materialize(
   return {
     storyFiles,
     ticketFiles,
+    degrades: disposition.degrades,
     ...(seatDefaulted !== undefined ? { seatDefaulted } : {}),
   };
 }

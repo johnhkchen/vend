@@ -13,7 +13,6 @@ import type {
 } from "../../baml_client/index.ts";
 import { snapshotCharterCodes } from "./charter-snapshot.ts";
 import {
-  BareCodeError,
   findBareCodes,
   IdCollisionError,
   materialize,
@@ -342,6 +341,24 @@ describe("code-carrying bodies (T-067-01-02)", () => {
     expect(body).not.toContain("P4 — Autonomy by default, not supervision — the author's own gloss stands");
   });
 
+  test("an unresolved inline code becomes an honest annotation, not a bare-code guard input", () => {
+    const { body } = renderTicketFile(
+      ticket({ purpose: "Vend orchestrates instead of acting as N4." }),
+      SNAPSHOT,
+    );
+    expect(body).toContain("Vend orchestrates instead of acting as [unresolved charter cite].");
+    expect(body).not.toContain("N4");
+  });
+
+  test("an unresolved authored gloss keeps its readable prose after the cite is annotated", () => {
+    const { body } = renderTicketFile(
+      ticket({ doneSignal: "The design honors N2 — Not a babysitting dashboard." }),
+      SNAPSHOT,
+    );
+    expect(body).toContain("The design honors [unresolved charter cite] Not a babysitting dashboard.");
+    expect(body).not.toContain("N2");
+  });
+
   test("empty snapshot ⇒ the pre-T-067-01-02 bytes exactly (degrade, not crash)", () => {
     // The old T-066-01-03-era full-file golden, verbatim: with nothing to resolve, a cut
     // body is byte-identical to what the renderer wrote before this ticket landed.
@@ -515,6 +532,7 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     expect((await readdir(ticketsDir)).sort()).toEqual(["T-009-01.md"]);
     expect(result.storyFiles).toHaveLength(1);
     expect(result.ticketFiles).toHaveLength(1);
+    expect(result.degrades).toEqual([]);
     // The written ticket cleared the bare-code guard the observable way: its citation
     // carries the cut-time gloss.
     expect(await readFile(join(ticketsDir, "T-009-01.md"), "utf8")).toContain(
@@ -574,40 +592,44 @@ describe("materialize — cross-board collision guard (T-004-02)", () => {
     }
   });
 
-  // T-067-01-03 write guard, impure half: the refusal is proven ON DISK — a plan whose
-  // rendered body would carry a bare policed code throws BareCodeError before mkdir, so
-  // not even an empty directory exists after the refused cut (the collision tests' bar).
+  // T-077-02-02 inline application, impure half: prose cites annotate before the retained
+  // rendered-byte guard, land on disk, and return one exact disposition per occurrence.
 
-  test("bare-code refusal: a prose-cited code the charter cannot resolve → BareCodeError, NOTHING on disk", async () => {
+  test("inline prose misses annotate, materialize, and return ordered degradation records", async () => {
     const { storiesDir, ticketsDir } = await targets();
-    // advances resolve (P1 is defined) — the bare code arrives through PROSE, the surface
-    // the bounds gate never sees; the guard judges the rendered bytes and catches it.
+    // Advances resolve (P1 is defined); only prose carries the editorial misses.
     const plan = {
       stories: [story({ id: "S-009", tickets: [] })],
-      tickets: [ticket({ purpose: "aligns the cut with P9 end to end" })],
+      tickets: [ticket({
+        purpose: "Vend is N4 — Not an executor and N2 remains out of bounds.",
+      })],
     } as unknown as WorkPlan;
 
-    let caught: unknown;
-    await materialize(plan, { storiesDir, ticketsDir }, CHARTER).catch((e) => {
-      caught = e;
-    });
-    expect(caught).toBeInstanceOf(BareCodeError);
-    expect((caught as BareCodeError).hits).toEqual([{ file: "T-009-01.md", codes: ["P9"] }]);
-    expect((caught as BareCodeError).message).toContain("T-009-01.md: P9");
+    const result = await materialize(plan, { storiesDir, ticketsDir }, CHARTER);
+    expect(result.degrades).toEqual([
+      { code: "N4", location: "T-009-01.md#purpose", action: "annotate" },
+      { code: "N2", location: "T-009-01.md#purpose", action: "annotate" },
+    ]);
+    expect(await readdir(storiesDir)).toEqual(["S-009.md"]);
+    expect(await readdir(ticketsDir)).toEqual(["T-009-01.md"]);
 
-    // Zero partial output: the throw preceded every mkdir — neither target dir exists.
-    expect(await readdir(storiesDir).catch(() => "ENOENT")).toBe("ENOENT");
-    expect(await readdir(ticketsDir).catch(() => "ENOENT")).toBe("ENOENT");
+    const body = await readFile(join(ticketsDir, "T-009-01.md"), "utf8");
+    expect(body).toContain(
+      "Vend is [unresolved charter cite] Not an executor and [unresolved charter cite] remains out of bounds.",
+    );
+    expect(body).not.toContain("N4");
+    expect(body).not.toContain("N2");
+    expect(findBareCodes([{ name: "T-009-01.md", body }], SNAPSHOT)).toEqual([]);
   });
 
-  test("guard order: a plan that BOTH collides and carries a bare code refuses as id-collision (identity before content)", async () => {
+  test("guard order: a plan that BOTH collides and has a bare advances code refuses as id-collision", async () => {
     const { storiesDir, ticketsDir } = await targets();
     await mkdir(ticketsDir, { recursive: true });
     await writeFile(join(ticketsDir, "T-001-01.md"), "hand-authored\n", "utf8");
 
     const plan = {
       stories: [],
-      tickets: [ticket({ id: "T-001-01", purpose: "aligns the cut with P9 end to end" })],
+      tickets: [ticket({ id: "T-001-01", advances: ["P9"] })],
     } as unknown as WorkPlan;
 
     let caught: unknown;
