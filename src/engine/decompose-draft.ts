@@ -37,6 +37,12 @@ export interface DecomposeDraftRecordInput<T extends object> {
   readonly createdAt: string;
 }
 
+export interface DecomposeDraftSettlementRecordInput {
+  readonly runId: string;
+  readonly epic: string;
+  readonly settledAt: string;
+}
+
 export interface DecomposeDraftRecord<T extends object = Record<string, unknown>> {
   readonly v: typeof DECOMPOSE_DRAFT_SCHEMA_VERSION;
   readonly runId: string;
@@ -45,6 +51,14 @@ export interface DecomposeDraftRecord<T extends object = Record<string, unknown>
   readonly gateFindings: DecomposeGateFindings;
   readonly nextRepairAction: DecomposeNextRepairAction;
   readonly createdAt: string;
+}
+
+export interface DecomposeDraftSettlementRecord {
+  readonly v: typeof DECOMPOSE_DRAFT_SCHEMA_VERSION;
+  readonly kind: "settled";
+  readonly runId: string;
+  readonly epic: string;
+  readonly settledAt: string;
 }
 
 export interface ReadDecomposeDraftsResult {
@@ -162,7 +176,34 @@ export function buildDecomposeDraftRecord<T extends object>(
   });
 }
 
+/** Strict write boundary for an epic-scoped successful-settlement marker. */
+export function buildDecomposeDraftSettlementRecord(
+  input: DecomposeDraftSettlementRecordInput,
+): DecomposeDraftSettlementRecord {
+  if (!isNonEmptyString(input.runId)) {
+    throw new TypeError("decompose draft settlement runId must be a non-empty string");
+  }
+  if (!isNonEmptyString(input.epic)) {
+    throw new TypeError("decompose draft settlement epic must be a non-empty string");
+  }
+  if (!isNonEmptyString(input.settledAt)) {
+    throw new TypeError("decompose draft settlement settledAt must be a non-empty string");
+  }
+
+  return Object.freeze({
+    v: DECOMPOSE_DRAFT_SCHEMA_VERSION,
+    kind: "settled",
+    runId: input.runId,
+    epic: input.epic,
+    settledAt: input.settledAt,
+  });
+}
+
 export function serializeDecomposeDraftRecord<T extends object>(record: DecomposeDraftRecord<T>): string {
+  return `${JSON.stringify(record)}\n`;
+}
+
+export function serializeDecomposeDraftSettlementRecord(record: DecomposeDraftSettlementRecord): string {
   return `${JSON.stringify(record)}\n`;
 }
 
@@ -188,9 +229,33 @@ export function reviveDecomposeDraftRecord(value: unknown): DecomposeDraftRecord
   });
 }
 
-/** Parse a JSONL store without letting one torn or future-version row hide earlier checkpoints. */
+/** Tolerant read boundary for one successful-settlement marker. */
+export function reviveDecomposeDraftSettlementRecord(value: unknown): DecomposeDraftSettlementRecord | null {
+  if (
+    !isRecord(value) ||
+    value.v !== DECOMPOSE_DRAFT_SCHEMA_VERSION ||
+    value.kind !== "settled" ||
+    !isNonEmptyString(value.runId) ||
+    !isNonEmptyString(value.epic) ||
+    !isNonEmptyString(value.settledAt)
+  ) {
+    return null;
+  }
+
+  return Object.freeze({
+    v: DECOMPOSE_DRAFT_SCHEMA_VERSION,
+    kind: "settled",
+    runId: value.runId,
+    epic: value.epic,
+    settledAt: value.settledAt,
+  });
+}
+
+/** Parse a JSONL store into active recovery state without letting one torn or future-version row
+ * hide earlier checkpoints. Settlement rows clear only earlier records for their epic; a later
+ * failed checkpoint for that epic becomes active again by ordinary append order. */
 export function readDecomposeDrafts(jsonl: string): ReadDecomposeDraftsResult {
-  const records: DecomposeDraftRecord[] = [];
+  let records: DecomposeDraftRecord[] = [];
   let skipped = 0;
   for (const line of jsonl.split("\n")) {
     if (line.trim().length === 0) continue;
@@ -202,8 +267,16 @@ export function readDecomposeDrafts(jsonl: string): ReadDecomposeDraftsResult {
       continue;
     }
     const record = reviveDecomposeDraftRecord(parsed);
-    if (record === null) skipped += 1;
-    else records.push(record);
+    if (record !== null) {
+      records.push(record);
+      continue;
+    }
+    const settlement = reviveDecomposeDraftSettlementRecord(parsed);
+    if (settlement !== null) {
+      records = records.filter(({ epic }) => epic !== settlement.epic);
+      continue;
+    }
+    skipped += 1;
   }
   return Object.freeze({ records: Object.freeze(records), skipped });
 }
@@ -227,6 +300,17 @@ export async function appendDecomposeDraft<T extends object>(
 ): Promise<void> {
   const path = opts.path ?? DEFAULT_DECOMPOSE_DRAFT_PATH;
   const line = serializeDecomposeDraftRecord(buildDecomposeDraftRecord(input));
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, line, "utf8");
+}
+
+/** Thin append-only shell. The public reader reconciles this marker into active recovery state. */
+export async function settleDecomposeDraft(
+  input: DecomposeDraftSettlementRecordInput,
+  opts: DecomposeDraftStoreOptions = {},
+): Promise<void> {
+  const path = opts.path ?? DEFAULT_DECOMPOSE_DRAFT_PATH;
+  const line = serializeDecomposeDraftSettlementRecord(buildDecomposeDraftSettlementRecord(input));
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, line, "utf8");
 }
