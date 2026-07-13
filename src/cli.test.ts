@@ -729,6 +729,33 @@ describe("parseArgs — settle (S-079-01 free verdict gesture)", () => {
   });
 });
 
+describe("parseArgs — sweep (S-079-02 one-keystroke closeout)", () => {
+  test("bare `sweep` parses to the no-arg free command", () => {
+    expect(parseArgs(["sweep"])).toEqual({ cmd: "sweep" });
+  });
+  test("sweep rejects positionals, flags, and especially a budget", () => {
+    expect(parseArgs(["sweep", "junk"])).toEqual({
+      cmd: "usage",
+      error: "unexpected sweep argument: junk",
+    });
+    expect(parseArgs(["sweep", "--json"])).toEqual({
+      cmd: "usage",
+      error: "unexpected sweep argument: --json",
+    });
+    expect(parseArgs(["sweep", "--budget", "1,2"])).toEqual({
+      cmd: "usage",
+      error: "unexpected sweep argument: --budget",
+    });
+  });
+  test("USAGE lists sweep in the free command group", () => {
+    const freeSection = USAGE.slice(
+      USAGE.indexOf("free (no tokens):"),
+      USAGE.indexOf("metered (uses tokens):"),
+    );
+    expect(freeSection).toContain("vend sweep");
+  });
+});
+
 describe("vend settle — fixture repository acceptance (T-079-01-02)", () => {
   test("prints one free verdict, advances its marker, and immediately reports an empty delta", async () => {
     const root = await mkdtemp(join(tmpdir(), "vend-cli-settle-"));
@@ -870,6 +897,206 @@ describe("vend settle — fixture repository acceptance (T-079-01-02)", () => {
   });
 });
 
+interface SweepFixture {
+  readonly root: string;
+  readonly doneEpicPath: string;
+  readonly partialEpicPath: string;
+  readonly partialTicketPath: string;
+  git(...args: string[]): string;
+  invoke(input?: string): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+}
+
+async function createSweepFixture(): Promise<SweepFixture> {
+  const root = await mkdtemp(join(tmpdir(), "vend-cli-sweep-"));
+  const cliPath = join(process.cwd(), "src", "cli.ts");
+  const doneEpicPath = join(root, "docs", "active", "epic", "E-900.md");
+  const partialEpicPath = join(root, "docs", "active", "epic", "E-901.md");
+  const partialTicketPath = join(root, "docs", "active", "tickets", "T-901-02.md");
+
+  await Promise.all([
+    mkdir(join(root, "docs", "active", "epic"), { recursive: true }),
+    mkdir(join(root, "docs", "active", "stories"), { recursive: true }),
+    mkdir(join(root, "docs", "active", "tickets"), { recursive: true }),
+  ]);
+
+  const epic = (id: string, title: string) => [
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "status: open",
+    "advances: [P2, P4]",
+    "serves: fixture closeout",
+    "---",
+    "",
+    `# ${title}`,
+    "",
+  ].join("\n");
+  const story = (id: string, title: string, tickets: readonly string[]) => [
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: story",
+    "status: open",
+    "priority: high",
+    `tickets: [${tickets.join(", ")}]`,
+    "---",
+    "",
+  ].join("\n");
+  const ticket = (
+    id: string,
+    storyId: string,
+    title: string,
+    phase: string,
+    dependsOn: readonly string[],
+  ) => [
+    "---",
+    `id: ${id}`,
+    `story: ${storyId}`,
+    `title: ${title}`,
+    "type: task",
+    `status: ${phase === "done" ? "done" : "in-progress"}`,
+    "priority: high",
+    `phase: ${phase}`,
+    `depends_on: [${dependsOn.join(", ")}]`,
+    "---",
+    "",
+  ].join("\n");
+
+  await Promise.all([
+    writeFile(doneEpicPath, epic("E-900", "fully cleared")),
+    writeFile(partialEpicPath, epic("E-901", "partly cleared")),
+    writeFile(
+      join(root, "docs", "active", "stories", "S-900-01.md"),
+      story("S-900-01", "done story", ["T-900-01", "T-900-02"]),
+    ),
+    writeFile(
+      join(root, "docs", "active", "stories", "S-901-01.md"),
+      story("S-901-01", "partial story", ["T-901-01", "T-901-02"]),
+    ),
+    writeFile(
+      join(root, "docs", "active", "tickets", "T-900-01.md"),
+      ticket("T-900-01", "S-900-01", "done one", "done", []),
+    ),
+    writeFile(
+      join(root, "docs", "active", "tickets", "T-900-02.md"),
+      ticket("T-900-02", "S-900-01", "done two", "done", ["T-900-01"]),
+    ),
+    writeFile(
+      join(root, "docs", "active", "tickets", "T-901-01.md"),
+      ticket("T-901-01", "S-901-01", "partial done", "done", []),
+    ),
+    writeFile(
+      partialTicketPath,
+      ticket("T-901-02", "S-901-01", "partial active", "implement", ["T-901-01"]),
+    ),
+  ]);
+
+  const git = (...args: string[]): string => {
+    const result = Bun.spawnSync(["git", ...args], { cwd: root });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    return result.stdout.toString().trim();
+  };
+  git("init", "-q");
+  git("config", "user.email", "fixture@example.test");
+  git("config", "user.name", "Vend Fixture");
+  git("add", ".");
+  git("commit", "-qm", "fixture baseline");
+
+  const invoke = async (input?: string) => {
+    const child = Bun.spawn([process.execPath, cliPath, "sweep"], {
+      cwd: root,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    child.stdin.write(input ?? "");
+    await child.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { stdout, stderr, exitCode };
+  };
+
+  return { root, doneEpicPath, partialEpicPath, partialTicketPath, git, invoke };
+}
+
+describe("vend sweep — fixture repository acceptance (T-079-02-02)", () => {
+  test("declining after presentation leaves HEAD, cards, index, and tree untouched", async () => {
+    const fixture = await createSweepFixture();
+    try {
+      const beforeHead = fixture.git("rev-parse", "HEAD");
+      const beforeDoneEpic = await Bun.file(fixture.doneEpicPath).text();
+      const beforePartialEpic = await Bun.file(fixture.partialEpicPath).text();
+
+      const result = await fixture.invoke("n");
+
+      expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(result.stdout).toContain("files:\n  docs/active/epic/E-900.md");
+      expect(result.stdout).toContain(
+        "sweep: close E-900\n\nE-900 cleared by T-900-01, T-900-02",
+      );
+      expect(result.stdout).toContain("commit? [y/N]");
+      expect(result.stdout).toContain("sweep declined — no files changed");
+      expect(fixture.git("rev-parse", "HEAD")).toBe(beforeHead);
+      expect(fixture.git("status", "--porcelain")).toBe("");
+      expect(await Bun.file(fixture.doneEpicPath).text()).toBe(beforeDoneEpic);
+      expect(await Bun.file(fixture.partialEpicPath).text()).toBe(beforePartialEpic);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("one y keystroke lands only the assembled epic path with exact provenance", async () => {
+    const fixture = await createSweepFixture();
+    try {
+      const beforeHead = fixture.git("rev-parse", "HEAD");
+      const beforePartialEpic = await Bun.file(fixture.partialEpicPath).text();
+
+      const result = await fixture.invoke("y");
+
+      expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(result.stdout).toContain("files:\n  docs/active/epic/E-900.md");
+      expect(result.stdout).toContain("commit? [y/N]");
+      expect(result.stdout).toMatch(/sweep committed [0-9a-f]{40}/);
+      expect(fixture.git("rev-parse", "HEAD")).not.toBe(beforeHead);
+      expect(fixture.git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")).toBe(
+        "docs/active/epic/E-900.md",
+      );
+      expect(fixture.git("log", "-1", "--format=%B")).toBe(
+        "sweep: close E-900\n\nE-900 cleared by T-900-01, T-900-02",
+      );
+      expect(await Bun.file(fixture.doneEpicPath).text()).toContain("\nstatus: done\n");
+      expect(await Bun.file(fixture.partialEpicPath).text()).toBe(beforePartialEpic);
+      expect(fixture.git("status", "--porcelain")).toBe("");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("presweep offenders produce a named nonzero andon and no commit", async () => {
+    const fixture = await createSweepFixture();
+    try {
+      const beforeHead = fixture.git("rev-parse", "HEAD");
+      await writeFile(fixture.partialTicketPath, `${await Bun.file(fixture.partialTicketPath).text()}dirty\n`);
+
+      const result = await fixture.invoke();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("sweep refusal [presweep-offenders]");
+      expect(result.stderr).toContain("docs/active/tickets/T-901-02.md");
+      expect(result.stderr).toContain("next: Commit or restore");
+      expect(result.stderr).not.toContain("commit? [y/N]");
+      expect(fixture.git("rev-parse", "HEAD")).toBe(beforeHead);
+      expect(fixture.git("log", "--oneline").split("\n")).toHaveLength(1);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("parseArgs — user-guide (T-066 fresh-repo orientation)", () => {
   test("all three spellings parse to the same no-arg command", () => {
     expect(parseArgs(["user-guide"])).toEqual({ cmd: "user-guide" });
@@ -893,6 +1120,7 @@ describe("help command and grouped usage (T-072-01-01)", () => {
       "vend shelf",
       "vend doctor",
       "vend settle",
+      "vend sweep",
       "vend user-guide",
       "vend --version",
       "vend envelope",
@@ -933,7 +1161,7 @@ describe("help command and grouped usage (T-072-01-01)", () => {
 
     const completeInventory = [...freeCommands, ...meteredCommands];
     expect(new Set(completeInventory).size).toBe(completeInventory.length);
-    expect(completeInventory).toHaveLength(18);
+    expect(completeInventory).toHaveLength(19);
   });
 
   test("USAGE presents the exact resume gesture as free while cold run remains metered", () => {

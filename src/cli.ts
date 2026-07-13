@@ -29,6 +29,7 @@ export const USAGE =
   "  vend shelf\n" +
   "  vend doctor\n" +
   "  vend settle\n" +
+  "  vend sweep\n" +
   "  vend user-guide\n" +
   "  vend --version\n" +
   "  vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
@@ -122,6 +123,7 @@ export type ParsedCommand =
     }
   | { readonly cmd: "doctor" }
   | { readonly cmd: "settle" }
+  | { readonly cmd: "sweep" }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -162,6 +164,7 @@ const COMMAND_VERBS = [
   "init",
   "doctor",
   "settle",
+  "sweep",
   "user-guide",
   "envelope",
   "audit",
@@ -329,6 +332,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "init") return parseInitArgs(argv);
   if (argv[0] === "doctor") return parseDoctorArgs(argv);
   if (argv[0] === "settle") return parseSettleArgs(argv);
+  if (argv[0] === "sweep") return parseSweepArgs(argv);
   // `user-guide` — the fresh-repo orientation print. Aliased to `guide` and `setup-guide` so an
   // agent who just learned `lisa setup-guide` finds vend's by the same reflex (discoverability is
   // the whole point — the reported friction is agents not knowing how vend + lisa fit together).
@@ -426,6 +430,16 @@ function parseDoctorArgs(argv: readonly string[]): ParsedCommand {
 function parseSettleArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length > 1) return { cmd: "usage", error: `unexpected settle argument: ${argv[1]}` };
   return { cmd: "settle" };
+}
+
+/**
+ * Parse the free `sweep` closeout gesture (S-079-02). The current repository is its implicit
+ * subject; machine assembly plus one human keystroke owns all runtime input, so no positional,
+ * flag, or budget argument is accepted.
+ */
+function parseSweepArgs(argv: readonly string[]): ParsedCommand {
+  if (argv.length > 1) return { cmd: "usage", error: `unexpected sweep argument: ${argv[1]}` };
+  return { cmd: "sweep" };
 }
 
 /**
@@ -1125,6 +1139,44 @@ if (import.meta.main) {
     } catch (error) {
       process.stderr.write(
         `settle: could not observe repository — ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exit(1);
+    }
+  }
+
+  if (parsed.cmd === "sweep") {
+    // The closeout gesture (S-079-02): presweep + pure assembly happen before any mutation; the
+    // complete pathspec/provenance is presented; only y/Y applies and commits those exact epic
+    // cards. This remains FREE and independent of plays, executors, budgets, and the run ledger.
+    const {
+      commitSweep,
+      prepareSweep,
+      readSweepConfirmation,
+      renderSweepPlan,
+      renderSweepRefusal,
+    } = await import("./sweep/sweep.ts");
+    try {
+      const result = await prepareSweep();
+      if (result.kind === "refusal") {
+        process.stderr.write(renderSweepRefusal(result));
+        process.exit(1);
+      }
+
+      process.stdout.write(renderSweepPlan(result));
+      process.stdout.write("commit? [y/N] ");
+      const confirmed = await readSweepConfirmation();
+      process.stdout.write("\n");
+      if (!confirmed) {
+        process.stdout.write("sweep declined — no files changed\n");
+        process.exit(0);
+      }
+
+      const commit = await commitSweep(result);
+      process.stdout.write(`sweep committed ${commit}\n`);
+      process.exit(0);
+    } catch (error) {
+      process.stderr.write(
+        `sweep: could not complete — ${error instanceof Error ? error.message : String(error)}\n`,
       );
       process.exit(1);
     }
