@@ -3,3 +3,4 @@ claude/
 codex/
 hooks/ntfy-topic
 attempts/
+completion-journal.jsonl
