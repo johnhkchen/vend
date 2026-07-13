@@ -166,7 +166,7 @@ VEND=$PWD/src/cli.ts                 # or: a brew-installed `vend` (E-061)
 # confirm the clear + the budget bound + the honest degrade:
 ( cd "$SANDBOX" && bun run dev )    # eyeball: one mobile-first card per dish at /, matching the example
 ( cd "$SANDBOX" && bun run build )  # green astro build in the cleared workspace
-jq -c 'select(.outcome=="success") | {play,outcome,env:.envelope,usage,turnsUsed}' "$SANDBOX/.vend/runs.jsonl"
+jq -c 'select(.outcome=="success") | {play,outcome,env:.envelope,usage,turnsUsed,executorReportedTurns}' "$SANDBOX/.vend/runs.jsonl"
 grep '"reducedGrounding":true' "$SANDBOX/.vend/runs.jsonl"                       # decompose's honest degrade marker
 grep -E '"outcome":"(budget-exhausted|timed-out|missing-capability)"' "$SANDBOX/.vend/runs.jsonl"  # MUST be empty
 ```
