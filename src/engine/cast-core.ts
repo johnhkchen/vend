@@ -21,7 +21,7 @@
 // dependency direction (play → engine).
 
 import type { StreamMessage } from "../executor/claude.ts";
-import type { BudgetOutcome } from "../budget/budget.ts";
+import { countTokens, type BudgetOutcome, type Usage } from "../budget/budget.ts";
 import type { AgentSeat } from "../play/agent-seat.ts";
 import type { GateVerdict, PlayTools } from "./play.ts";
 import type { GateResult as LogGate, RunOutcome } from "../log/run-log.ts";
@@ -269,6 +269,96 @@ export function classify(i: ClassifyInput): Verdict {
     return { outcome: "budget-exhausted", materialize: false, gateLog };
   }
   return { outcome: "success", materialize: true, gateLog };
+}
+
+/**
+ * The immutable live-progress fold over executor messages (T-072-02-01). `weightedTokens`
+ * uses budget.ts's price-true numeraire; `turns` counts distinct assistant message ids, not
+ * stream events (one Claude turn is repeated for its thinking/text/tool-use blocks).
+ * `seenMessageIds` is transport bookkeeping that makes those repeats idempotent.
+ */
+export interface CastProgress {
+  readonly weightedTokens: number;
+  readonly turns: number;
+  readonly seenMessageIds: readonly string[];
+}
+
+/** Reusable zero value for {@link accumulateCastProgress}; frozen so casts cannot alias-mutate it. */
+export const EMPTY_CAST_PROGRESS: CastProgress = Object.freeze({
+  weightedTokens: 0,
+  turns: 0,
+  seenMessageIds: Object.freeze([]) as readonly string[],
+});
+
+/** Inputs the impure cast shell supplies when rendering one progress state. */
+export interface CastProgressFormat {
+  /** Elapsed wall time from the shell's injected clock. */
+  readonly elapsedMs: number;
+  /** The funded token ceiling (`Budget.tokens`) in the same numeraire as weighted spend. */
+  readonly tokenEnvelope: number;
+  /** Effective agentic turn cap; absent means the cast has no named turn cap. */
+  readonly maxTurns?: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Extract one identifiable assistant turn from the open external JSON record. A message without
+ * both its transport id and usage cannot be counted safely: the id is what prevents the repeated
+ * content-block events in a single turn from charging more than once.
+ */
+function assistantTurn(msg: StreamMessage): { readonly id: string; readonly usage: Usage } | null {
+  if (msg.type !== "assistant" || !isRecord(msg.message)) return null;
+  const { id, usage } = msg.message;
+  if (typeof id !== "string" || id.length === 0 || !isRecord(usage)) return null;
+  return { id, usage: usage as Usage };
+}
+
+/**
+ * Fold one streamed executor message into live progress. PURE, immutable, and total over the open
+ * transport shape: usage-less/malformed/unknown messages are no-ops; terminal `result.usage` is
+ * deliberately ignored because it is the authoritative cumulative result, not another turn.
+ * Only the first event for each nested assistant `message.id` is charged, via the canonical
+ * price-true {@link countTokens} definition.
+ */
+export function accumulateCastProgress(state: CastProgress, msg: StreamMessage): CastProgress {
+  const turn = assistantTurn(msg);
+  if (turn === null || state.seenMessageIds.includes(turn.id)) return state;
+  return Object.freeze({
+    weightedTokens: state.weightedTokens + countTokens(turn.usage),
+    turns: state.turns + 1,
+    seenMessageIds: Object.freeze([...state.seenMessageIds, turn.id]),
+  });
+}
+
+/** Mirror menu.ts's humane token idiom: rounded whole thousands above 1k, integer below. */
+function humanProgressTokens(value: number): string {
+  const normalized = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  return normalized >= 1000 ? `${Math.round(normalized / 1000)}k` : `${normalized}`;
+}
+
+/** Render elapsed time as compact compound units, keeping the seconds hand visibly moving. */
+function humanElapsed(elapsedMs: number): string {
+  const seconds = Number.isFinite(elapsedMs) ? Math.max(0, Math.floor(elapsedMs / 1000)) : 0;
+  if (seconds < 60) return `${seconds}s`;
+  const s = seconds % 60;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m${s.toString().padStart(2, "0")}s`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h${m.toString().padStart(2, "0")}m${s.toString().padStart(2, "0")}s`;
+}
+
+/**
+ * Render one humane progress line from explicit plain values. PURE: the caller owns the clock,
+ * funding envelope, and effective turn cap. An uncapped cast omits the denominator rather than
+ * inventing one.
+ */
+export function formatCastProgress(state: CastProgress, opts: CastProgressFormat): string {
+  const turn = opts.maxTurns === undefined ? `${state.turns}` : `${state.turns}/${opts.maxTurns}`;
+  return `elapsed ${humanElapsed(opts.elapsedMs)} · ${humanProgressTokens(state.weightedTokens)}/${humanProgressTokens(opts.tokenEnvelope)} · turn ${turn}`;
 }
 
 /**

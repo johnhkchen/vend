@@ -7,9 +7,12 @@ import type { PlayTools } from "./play.ts";
 import { DECOMPOSE_TOOLS } from "../play/decompose-epic-core.ts";
 import { AUTONOMOUS_DENY } from "../play/autonomous-deny.ts";
 import {
+  accumulateCastProgress,
   castGateRows,
   classify,
   DEFAULT_MODEL,
+  EMPTY_CAST_PROGRESS,
+  formatCastProgress,
   formatMessage,
   makeStreamSink,
   resolveLoggedModel,
@@ -121,6 +124,84 @@ describe("formatMessage — total, never throws", () => {
     expect(formatMessage({ type: "result", subtype: "success" })).toBe("· result (success)");
     expect(formatMessage({ type: "system", subtype: "init" })).toBe("· system (init)");
     expect(formatMessage({} as StreamMessage)).toBe("· ?");
+  });
+});
+
+describe("cast progress — per-turn weighted spend + humane line (T-072-02-01)", () => {
+  const perTurnUsage = { input_tokens: 10_000, output_tokens: 4_000 }; // 10k + 4k·5 = 30k
+  const assistant = (id: string): StreamMessage => ({
+    type: "assistant",
+    message: { id, usage: perTurnUsage, content: [{ type: "text", text: id }] },
+  });
+
+  test("fixture accumulates each assistant turn once and renders the acceptance line", () => {
+    const fixture: StreamMessage[] = [
+      { type: "system", subtype: "init" },
+      assistant("turn-1"),
+      // Claude repeats one nested message id for thinking/text/tool-use blocks. This must not
+      // charge a second 30k or advance the turn count.
+      assistant("turn-1"),
+      { type: "user", message: { role: "user", content: "tool result" } },
+      assistant("turn-2"),
+      { type: "system", subtype: "thinking_tokens" },
+      assistant("turn-3"),
+      assistant("turn-4"),
+      { type: "rate_limit_event" },
+      assistant("turn-5"),
+      assistant("turn-6"),
+      assistant("turn-7"),
+      // Terminal usage is cumulative/authoritative and is not an eighth incremental turn.
+      { type: "result", subtype: "success", usage: { input_tokens: 210_000 } },
+      // A future/unknown event cannot opt itself into assistant accounting with lookalike fields.
+      { type: "future_event", message: { id: "turn-8", usage: perTurnUsage } },
+    ];
+
+    const progress = fixture.reduce(accumulateCastProgress, EMPTY_CAST_PROGRESS);
+
+    expect(progress.weightedTokens).toBe(210_000);
+    expect(progress.turns).toBe(7);
+    expect(progress.seenMessageIds).toEqual([
+      "turn-1",
+      "turn-2",
+      "turn-3",
+      "turn-4",
+      "turn-5",
+      "turn-6",
+      "turn-7",
+    ]);
+    expect(formatCastProgress(progress, { elapsedMs: 252_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
+      "elapsed 4m12s · 210k/500k · turn 7/15",
+    );
+  });
+
+  test("usage-less, malformed, unknown, and duplicate messages are total no-ops", () => {
+    const first = accumulateCastProgress(EMPTY_CAST_PROGRESS, assistant("only-turn"));
+    const noops: StreamMessage[] = [
+      {} as StreamMessage,
+      { type: "assistant" },
+      { type: "assistant", message: null },
+      { type: "assistant", message: [] },
+      { type: "assistant", message: { usage: perTurnUsage } },
+      { type: "assistant", message: { id: "no-usage" } },
+      { type: "assistant", message: { id: "array-usage", usage: [] } },
+      { type: "unknown", message: { id: "looks-valid", usage: perTurnUsage } },
+      { type: "result", usage: perTurnUsage },
+      assistant("only-turn"),
+    ];
+
+    const after = noops.reduce(accumulateCastProgress, first);
+    expect(after).toBe(first);
+    expect(after.weightedTokens).toBe(30_000);
+    expect(after.turns).toBe(1);
+  });
+
+  test("formatter handles seconds, hours, small units, and an absent turn cap", () => {
+    expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 12_999, tokenEnvelope: 999 })).toBe(
+      "elapsed 12s · 0/999 · turn 0",
+    );
+    expect(formatCastProgress(EMPTY_CAST_PROGRESS, { elapsedMs: 3_723_000, tokenEnvelope: 500_000, maxTurns: 15 })).toBe(
+      "elapsed 1h02m03s · 0/500k · turn 0/15",
+    );
   });
 });
 
