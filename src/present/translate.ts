@@ -39,8 +39,12 @@ import type { PresentationSpec } from "./spec.ts";
 export const JARGON_CLASSES = {
   /** Charter codes: P5, PE-1, IA-7, R1/R3 (principle/invariant/requirement ids). */
   charterCode: /\b(?:PE-\d+|IA-\d+|P\d+|R\d+)\b/g,
-  /** BAML / SAP — the authoring + parse internals. */
-  bamlSap: /\b(?:BAML|SAP)\b/g,
+  /** BAML / SAP — the authoring + parse internals (case-insensitive for humanized titles). */
+  bamlSap: /\b(?:BAML|SAP)\b/gi,
+  /** CI — the standalone acronym, not ordinary words beginning with `ci` (for example `cites`). */
+  ci: /\bCI\b/gi,
+  /** Claude p… — humanized `claude-p...` title fragments such as `Claude p` / `Claude prompt`. */
+  claudeP: /\bClaude\s+p\w*\b/gi,
   /** File cites: any `*.ts` path, or a `baml_src/…` path (play names live here too). */
   filePath: /\b[\w./-]*\.ts\b|\bbaml_src\/[\w./-]*/g,
   /** Raw phase tokens: `phase:done`, `phase: research` (the §1a "no phase:done raw" rule). */

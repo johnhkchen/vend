@@ -84,6 +84,33 @@ describe("jargonTokens / scrubFace — the classifier (one policy, two uses)", (
     expect(scrubFace("a (PE-1) b")).toBe("a b");
     expect(scrubFace("   ")).toBe("");
   });
+
+  test("catches the mixed-case BAML, standalone CI, and Claude-p face families", () => {
+    const cases = [
+      { input: "Baml plans stay", tokens: ["Baml"], clean: "plans stay" },
+      { input: "Open model baml client", tokens: ["baml"], clean: "Open model client" },
+      { input: "Ci module boots", tokens: ["Ci"], clean: "module boots" },
+      { input: "Release ci tarball", tokens: ["ci"], clean: "Release tarball" },
+      { input: "Claude p dispense seam", tokens: ["Claude p"], clean: "dispense seam" },
+      {
+        input: "Keep Claude prompt bridge local",
+        tokens: ["Claude prompt"],
+        clean: "Keep bridge local",
+      },
+    ];
+
+    for (const { input, tokens, clean } of cases) {
+      expect(jargonTokens(input)).toEqual(tokens);
+      expect(scrubFace(input)).toBe(clean);
+      expect(jargonTokens(clean)).toEqual([]);
+    }
+  });
+
+  test("standalone CI matching does not consume ordinary ci-prefixed words", () => {
+    const plain = "Cites circular decisions";
+    expect(jargonTokens(plain)).toEqual([]);
+    expect(scrubFace(plain)).toBe(plain);
+  });
 });
 
 describe("translateCode — §1b translate-or-hide table", () => {

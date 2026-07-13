@@ -8,6 +8,7 @@ import { loadWorkGraph } from "../graph/load.ts";
 import { DESIGNER_PRESET } from "./spec.ts";
 import { projectGraph } from "./project.ts";
 import { projectionToSvg } from "./projection-svg.ts";
+import { faceJargon } from "./translate.ts";
 import { classifyAuthorityViolations } from "./authority-guard.ts";
 import {
   boardSvgPath,
@@ -274,6 +275,18 @@ describe("writeBoardSvg — the seam writes the staged artifact, never docs/acti
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  test("the live board cast through DESIGNER_PRESET has no card-face jargon", async () => {
+    const projection = projectGraph(await loadWorkGraph(), DESIGNER_PRESET);
+    const leaks = projection.groups.flatMap((group) =>
+      group.cards.flatMap(({ card }) => {
+        const jargon = faceJargon(card);
+        return jargon.length ? [{ id: card.id, jargon }] : [];
+      }),
+    );
+
+    expect(leaks).toEqual([]);
   });
 
   test("static reflex: the seam's own source is authority-guard clean (writes .vend, never names docs/active in code)", async () => {
