@@ -702,6 +702,174 @@ describe("parseArgs — doctor (T-042-03 preflight command)", () => {
   });
 });
 
+describe("parseArgs — settle (S-079-01 free verdict gesture)", () => {
+  test("bare `settle` parses to the no-arg free command", () => {
+    expect(parseArgs(["settle"])).toEqual({ cmd: "settle" });
+  });
+  test("settle rejects positionals, flags, and especially a budget", () => {
+    expect(parseArgs(["settle", "junk"])).toEqual({
+      cmd: "usage",
+      error: "unexpected settle argument: junk",
+    });
+    expect(parseArgs(["settle", "--json"])).toEqual({
+      cmd: "usage",
+      error: "unexpected settle argument: --json",
+    });
+    expect(parseArgs(["settle", "--budget", "1,2"])).toEqual({
+      cmd: "usage",
+      error: "unexpected settle argument: --budget",
+    });
+  });
+  test("USAGE lists settle in the free command group", () => {
+    const freeSection = USAGE.slice(
+      USAGE.indexOf("free (no tokens):"),
+      USAGE.indexOf("metered (uses tokens):"),
+    );
+    expect(freeSection).toContain("vend settle");
+  });
+});
+
+describe("vend settle — fixture repository acceptance (T-079-01-02)", () => {
+  test("prints one free verdict, advances its marker, and immediately reports an empty delta", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vend-cli-settle-"));
+    const cliPath = join(process.cwd(), "src", "cli.ts");
+    const executorSentinel = join(root, "executor-invoked");
+    const executorScript = join(root, "executor-sentinel.sh");
+    const runLogPath = join(root, ".vend", "runs.jsonl");
+    const markerPath = join(root, ".vend", "last-settle.json");
+    const runLogSentinel = "RUN-LEDGER-SENTINEL\n";
+
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(["git", ...args], { cwd: root });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+    };
+
+    try {
+      await Promise.all([
+        mkdir(join(root, "docs", "active", "epic"), { recursive: true }),
+        mkdir(join(root, "docs", "active", "stories"), { recursive: true }),
+        mkdir(join(root, "docs", "active", "tickets"), { recursive: true }),
+        mkdir(join(root, "docs", "active", "work", "T-900-01"), { recursive: true }),
+        mkdir(join(root, ".vend"), { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(join(root, "docs", "active", "epic", "E-900.md"), [
+          "---",
+          "id: E-900",
+          "title: fixture-settle",
+          "status: open",
+          "advances: [P3]",
+          "serves: fixture",
+          "---",
+          "",
+        ].join("\n")),
+        writeFile(join(root, "docs", "active", "stories", "S-900-01.md"), [
+          "---",
+          "id: S-900-01",
+          "title: fixture-story",
+          "type: story",
+          "status: open",
+          "priority: high",
+          "tickets: [T-900-01, T-900-02]",
+          "---",
+          "",
+        ].join("\n")),
+        writeFile(join(root, "docs", "active", "tickets", "T-900-01.md"), [
+          "---",
+          "id: T-900-01",
+          "story: S-900-01",
+          "title: fixture-done",
+          "type: task",
+          "status: done",
+          "priority: high",
+          "phase: done",
+          "depends_on: []",
+          "---",
+          "",
+        ].join("\n")),
+        writeFile(join(root, "docs", "active", "tickets", "T-900-02.md"), [
+          "---",
+          "id: T-900-02",
+          "story: S-900-01",
+          "title: fixture-active",
+          "type: task",
+          "status: in-progress",
+          "priority: high",
+          "phase: implement",
+          "depends_on: [T-900-01]",
+          "---",
+          "",
+        ].join("\n")),
+        writeFile(
+          join(root, "docs", "active", "work", "T-900-01", "review-disposition.json"),
+          '{"disposition":"block","reason":"missing release proof"}\n',
+        ),
+        writeFile(
+          join(root, "package.json"),
+          '{"name":"settle-fixture","private":true,"scripts":{"check":"bun run fixture-check.ts"}}\n',
+        ),
+        writeFile(join(root, "fixture-check.ts"), 'console.log("7 pass");\n'),
+        writeFile(runLogPath, runLogSentinel),
+        writeFile(executorScript, '#!/bin/sh\nprintf invoked > "$VEND_EXECUTOR_MARKER"\nexit 99\n'),
+      ]);
+      await chmod(executorScript, 0o755);
+
+      git("init", "-q");
+      git("config", "user.email", "fixture@example.test");
+      git("config", "user.name", "Vend Fixture");
+      git("add", ".");
+      git("commit", "-qm", "fixture baseline");
+
+      const invoke = async () => {
+        const proc = Bun.spawn([process.execPath, cliPath, "settle"], {
+          cwd: root,
+          env: {
+            ...process.env,
+            CLAUDE_CLI: executorScript,
+            VEND_EXECUTOR: "claude",
+            VEND_EXECUTOR_MARKER: executorSentinel,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        return { stdout, stderr, exitCode };
+      };
+
+      const first = await invoke();
+      expect(first.exitCode).toBe(0);
+      expect(first.stderr).toBe("");
+      expect(first.stdout).toContain("delta: first settle — T-900-01");
+      expect(first.stdout).toContain("epic: E-900 — 1/2 cleared");
+      expect(first.stdout).toContain("gate: green — repository gate: 7 tests");
+      expect(first.stdout).toContain("presweep: green — 1 done ticket, source + board committed");
+      expect(first.stdout).toContain("review concern: T-900-01 — missing release proof");
+      expect(first.stdout).toContain(
+        "\x1b[31mexception [review] T-900-01: missing release proof — next: " +
+          "Resolve missing release proof for T-900-01, then record a passing disposition in " +
+          "docs/active/work/T-900-01/review-disposition.json.\x1b[0m",
+      );
+      expect(await Bun.file(markerPath).text()).toBe(
+        '{"version":1,"doneTicketIds":["T-900-01"]}\n',
+      );
+      expect(await Bun.file(runLogPath).text()).toBe(runLogSentinel);
+      expect(await Bun.file(executorSentinel).exists()).toBe(false);
+
+      const second = await invoke();
+      expect(second).toMatchObject({ stderr: "", exitCode: 0 });
+      expect(second.stdout).toContain("delta: none since last settle");
+      expect(await Bun.file(runLogPath).text()).toBe(runLogSentinel);
+      expect(await Bun.file(executorSentinel).exists()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("parseArgs — user-guide (T-066 fresh-repo orientation)", () => {
   test("all three spellings parse to the same no-arg command", () => {
     expect(parseArgs(["user-guide"])).toEqual({ cmd: "user-guide" });
@@ -724,6 +892,7 @@ describe("help command and grouped usage (T-072-01-01)", () => {
       "vend help | vend --help",
       "vend shelf",
       "vend doctor",
+      "vend settle",
       "vend user-guide",
       "vend --version",
       "vend envelope",
@@ -764,7 +933,7 @@ describe("help command and grouped usage (T-072-01-01)", () => {
 
     const completeInventory = [...freeCommands, ...meteredCommands];
     expect(new Set(completeInventory).size).toBe(completeInventory.length);
-    expect(completeInventory).toHaveLength(17);
+    expect(completeInventory).toHaveLength(18);
   });
 
   test("USAGE presents the exact resume gesture as free while cold run remains metered", () => {

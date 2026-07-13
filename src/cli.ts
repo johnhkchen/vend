@@ -28,6 +28,7 @@ export const USAGE =
   "  vend help | vend --help\n" +
   "  vend shelf\n" +
   "  vend doctor\n" +
+  "  vend settle\n" +
   "  vend user-guide\n" +
   "  vend --version\n" +
   "  vend envelope <play> [--tier <keystone|high|standard|leaf>] [--estimate <ms>,<tokens>] [--project <id>]\n" +
@@ -120,6 +121,7 @@ export type ParsedCommand =
       readonly template?: string;
     }
   | { readonly cmd: "doctor" }
+  | { readonly cmd: "settle" }
   | { readonly cmd: "browse"; readonly all: boolean }
   | { readonly cmd: "select"; readonly selection: string; readonly all: boolean; readonly budget?: Budget }
   | {
@@ -159,6 +161,7 @@ const COMMAND_VERBS = [
   "shelf",
   "init",
   "doctor",
+  "settle",
   "user-guide",
   "envelope",
   "audit",
@@ -325,6 +328,7 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
   if (argv[0] === "shelf") return parseShelfArgs(argv);
   if (argv[0] === "init") return parseInitArgs(argv);
   if (argv[0] === "doctor") return parseDoctorArgs(argv);
+  if (argv[0] === "settle") return parseSettleArgs(argv);
   // `user-guide` — the fresh-repo orientation print. Aliased to `guide` and `setup-guide` so an
   // agent who just learned `lisa setup-guide` finds vend's by the same reflex (discoverability is
   // the whole point — the reported friction is agents not knowing how vend + lisa fit together).
@@ -412,6 +416,16 @@ function parseInitArgs(argv: readonly string[]): ParsedCommand {
 function parseDoctorArgs(argv: readonly string[]): ParsedCommand {
   if (argv.length > 1) return { cmd: "usage", error: `unexpected doctor argument: ${argv[1]}` };
   return { cmd: "doctor" };
+}
+
+/**
+ * Parse the free `settle` verdict gesture (S-079-01). The current repository is its implicit
+ * subject and no executor is cast, so it accepts no positional arguments or flags — especially no
+ * `--budget`. Observation, rendering, and marker advancement live in the lazy dispatch shell.
+ */
+function parseSettleArgs(argv: readonly string[]): ParsedCommand {
+  if (argv.length > 1) return { cmd: "usage", error: `unexpected settle argument: ${argv[1]}` };
+  return { cmd: "settle" };
 }
 
 /**
@@ -1091,6 +1105,29 @@ if (import.meta.main) {
     const report = renderDoctorReport(checks);
     process.stdout.write(`${report.report}\n`);
     process.exit(report.exitCode);
+  }
+
+  if (parsed.cmd === "settle") {
+    // The after-loop verdict gesture (S-079-01): observe current board/gate/presweep/structured
+    // review facts, print one screen, and advance only `.vend/last-settle.json`. It is FREE — no
+    // budget, play registry, executor, or run ledger. A typed marker refusal is a clean red andon;
+    // an observed verdict exits 0 even when it contains exceptions because inspection succeeded.
+    const { renderSettleResult, runSettle } = await import("./settle/settle.ts");
+    try {
+      const result = await runSettle();
+      const output = renderSettleResult(result);
+      if (result.kind === "verdict") {
+        process.stdout.write(output);
+        process.exit(0);
+      }
+      process.stderr.write(output);
+      process.exit(1);
+    } catch (error) {
+      process.stderr.write(
+        `settle: could not observe repository — ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exit(1);
+    }
   }
 
   if (parsed.cmd === "envelope") {
