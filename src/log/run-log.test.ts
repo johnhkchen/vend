@@ -852,6 +852,86 @@ describe("seatOfExecution — raw round-trip, byte compatibility, malformed, leg
   });
 });
 
+describe("capWindowExhausted — atomic round-trip and historical byte compatibility (T-082-01-01 AC)", () => {
+  const marker = {
+    signal: "http-429",
+    reason: "provider reset-window capacity exhausted",
+  } as const;
+
+  const historicalLine =
+    '{"v":1,"runId":"cw2","play":"decompose-epic","epic":"E-001","model":"claude-opus-4-8",' +
+    '"outcome":"success","usage":{"input_tokens":1200,"output_tokens":800,' +
+    '"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"costUsd":0.42,' +
+    '"gateResults":[{"gate":"typecheck","passed":true}],' +
+    '"startedAt":"2026-06-18T12:00:00.000Z","endedAt":"2026-06-18T12:05:00.000Z"}\n';
+
+  test("a complete signal and reason survive build → serialize → revive byte-stably", () => {
+    const built = buildRunRecord(baseInput({ runId: "cw1", capWindowExhausted: marker }));
+    expect(built.capWindowExhausted).toEqual(marker);
+
+    const line = serializeRunRecord(built);
+    const revived = reviveRecord(JSON.parse(line));
+    expect(revived).not.toBeNull();
+    expect(revived!.capWindowExhausted).toEqual(marker);
+    expect(serializeRunRecord(revived!)).toBe(line);
+  });
+
+  test("an absent marker emits byte-identical pre-feature bytes", () => {
+    const rec = buildRunRecord(baseInput({ runId: "cw2" }));
+    expect("capWindowExhausted" in rec).toBe(false);
+    expect(serializeRunRecord(rec)).toBe(historicalLine);
+  });
+
+  test("a historical marker-less line revives and serializes byte-identically", () => {
+    const { records, skipped } = readRuns(historicalLine);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect("capWindowExhausted" in records[0]!).toBe(false);
+    expect(serializeRunRecord(records[0]!)).toBe(historicalLine);
+  });
+
+  test("a partial build marker is omitted atomically and byte-identically to absence", () => {
+    const rec = buildRunRecord(
+      baseInput({
+        runId: "cw2",
+        capWindowExhausted: { signal: "http-429" },
+      } as never),
+    );
+    expect("capWindowExhausted" in rec).toBe(false);
+    expect(serializeRunRecord(rec)).toBe(historicalLine);
+  });
+
+  test("a valid marker is canonically copied without extra nested fields", () => {
+    const rec = buildRunRecord(
+      baseInput({
+        runId: "cw3",
+        capWindowExhausted: { ...marker, diagnostic: "do-not-persist" },
+      } as never),
+    );
+    expect(rec.capWindowExhausted).toEqual(marker);
+  });
+
+  test("malformed marker metadata is dropped on revive without losing the record", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "cw4" })))),
+      capWindowExhausted: { signal: "http-429", reason: 42 },
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.runId).toBe("cw4");
+    expect("capWindowExhausted" in rec!).toBe(false);
+  });
+
+  test("non-object marker metadata is dropped on revive without losing the record", () => {
+    const rec = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "cw5" })))),
+      capWindowExhausted: "http-429",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.runId).toBe("cw5");
+    expect("capWindowExhausted" in rec!).toBe(false);
+  });
+});
+
 describe("capturedDiff — artifact-reference round-trip and omission (T-073-01-01)", () => {
   test("a non-empty reference round-trips through build, serialize, and revive", () => {
     const reference = ".vend/artifacts/run-diff.diff";

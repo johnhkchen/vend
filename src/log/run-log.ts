@@ -136,6 +136,17 @@ export interface SeatInferred {
   readonly reason: string;
 }
 
+/** Durable evidence that a provider's reset-window capacity was exhausted (T-082-01-01).
+ *  Declared locally so the append-only ledger preserves the settlement classifier's signal and
+ *  explanation without importing executor errors or provider policy. The lane, burn, and event
+ *  time remain single-sourced by the containing record's seat, usage, and settlement timestamp. */
+export interface CapWindowExhausted {
+  /** Stable category of the provider-cap evidence observed at settlement. */
+  readonly signal: string;
+  /** Stable explanation for classifying that signal as reset-window exhaustion. */
+  readonly reason: string;
+}
+
 /** Durable explanation for a relevant cross-review that could not bind a complement reviewer
  *  (T-076-01-02). Declared locally so the ledger records the resolver disposition without
  *  importing executor capability or cross-review policy. Both the reason and the capability
@@ -249,6 +260,12 @@ export interface RunRecordInput {
    *  entirely. The log preserves a supplied non-empty string verbatim and deliberately does
    *  not police it against the routing layer's known-seat registry. */
   readonly seatOfExecution?: string;
+  /** One-way provider-cap marker (T-082-01-01): present only when settlement classified complete
+   *  evidence that the execution lane exhausted its provider reset window. Signal and reason are
+   *  atomic; lane, burn, and event time live on the containing record. Absent or malformed data is
+   *  omitted entirely so marker-less and historical records remain byte-identical. The ledger
+   *  preserves this fact but does not classify executor failures. */
+  readonly capWindowExhausted?: CapWindowExhausted;
   /** Optional relevant-but-inert cross-review disposition (T-076-01-02). Both why resolution was
    *  inert and what capability condition would bind it are required. Absent means no relevant
    *  skipped-resolution event was recorded / historical unknown. Malformed values are omitted so
@@ -333,6 +350,10 @@ export interface RunRecord {
    *  (T-071-01-01). Absence remains unknown rather than being defaulted to a lane.
    *  {@link reviveRecord} preserves the raw string without applying routing policy. */
   readonly seatOfExecution?: string;
+  /** Present ONLY as a complete provider reset-window exhaustion marker (T-082-01-01). Absence is
+   *  the one-way negative state / historical unknown. {@link reviveRecord} preserves complete
+   *  signal and reason details while dropping malformed optional metadata without losing the row. */
+  readonly capWindowExhausted?: CapWindowExhausted;
   /** Present ONLY as a complete marker (T-076-01-02) when review was relevant but complement
    *  resolution was inert. Absence preserves irrelevant, reviewed, and historical record shape.
    *  {@link reviveRecord} retains valid reason/binding details and drops malformed optional
@@ -516,6 +537,22 @@ function normalizeSeatOfExecution(value: unknown): string | undefined {
   return isNonEmptyString(value) ? value : undefined;
 }
 
+/** Normalize provider cap-window evidence (T-082-01-01): signal and reason are atomic. A partial
+ *  or malformed optional marker is omitted rather than admitted or allowed to invalidate the run.
+ *  Rebuilding selects only the durable fields in deterministic order. Values remain verbatim: the
+ *  ledger preserves settlement evidence and does not apply executor or provider policy. */
+function normalizeCapWindowExhausted(
+  value: CapWindowExhausted | undefined,
+): CapWindowExhausted | undefined {
+  if (!value || !isNonEmptyString(value.signal) || !isNonEmptyString(value.reason)) {
+    return undefined;
+  }
+  return {
+    signal: value.signal,
+    reason: value.reason,
+  };
+}
+
 /** Normalize the skipped cross-review marker (T-076-01-02): the reason and binding condition are
  *  atomic. Rebuilding selects only schema fields in deterministic order. A partial or malformed
  *  optional marker is omitted rather than invalidating the otherwise useful run. */
@@ -611,6 +648,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
   const seatInferred = normalizeSeatInferred(input.seatInferred);
   const seatOfExecution = normalizeSeatOfExecution(input.seatOfExecution);
+  const capWindowExhausted = normalizeCapWindowExhausted(input.capWindowExhausted);
   const crossReviewSkipped = normalizeCrossReviewSkipped(input.crossReviewSkipped);
   const crossVendorVerdict = normalizeCrossVendorVerdict(input.crossVendorVerdict);
   const capturedDiff = normalizeCapturedDiff(input.capturedDiff);
@@ -638,6 +676,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+    ...(capWindowExhausted ? { capWindowExhausted } : {}),
     ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
     ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
     ...(capturedDiff !== undefined ? { capturedDiff } : {}),
@@ -787,6 +826,16 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // historical absence or malformed optional metadata is omitted without losing the record.
   const seatOfExecution = normalizeSeatOfExecution(r.seatOfExecution);
 
+  // Provider cap-window evidence (T-082-01-01) is optional but atomic: only a non-null object with
+  // both non-empty strings survives. Historical absence and malformed metadata are omitted without
+  // losing the otherwise useful run. The read boundary does not re-run settlement classification.
+  const rawCapWindowExhausted = r.capWindowExhausted;
+  const capWindowExhausted = normalizeCapWindowExhausted(
+    typeof rawCapWindowExhausted === "object" && rawCapWindowExhausted !== null
+      ? (rawCapWindowExhausted as CapWindowExhausted)
+      : undefined,
+  );
+
   // A skipped cross-review marker (T-076-01-02) is optional but atomic. Preserve only a complete
   // reason and binding condition; historical absence or malformed metadata is omitted without
   // losing the otherwise useful run. The read boundary does not re-run resolution policy.
@@ -829,6 +878,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
     ...(seatOfExecution !== undefined ? { seatOfExecution } : {}),
+    ...(capWindowExhausted ? { capWindowExhausted } : {}),
     ...(crossReviewSkipped !== undefined ? { crossReviewSkipped } : {}),
     ...(crossVendorVerdict !== undefined ? { crossVendorVerdict } : {}),
     ...(capturedDiff !== undefined ? { capturedDiff } : {}),
