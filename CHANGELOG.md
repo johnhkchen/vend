@@ -3,6 +3,14 @@
 What each vend release means for you, in plain terms. Newest first; upgrade with
 `brew update && brew upgrade vend`. Every release adds an entry.
 
+## 0.4.0-rc.3 — 2026-07-12
+
+- `vend help` (and `--help`) finally answers — every command listed, grouped free vs metered, with a pointer to `vend user-guide` for newcomers; a typo'd command now suggests the nearest real one (`sterr` → "did you mean steer?").
+- A running cast shows its work: one live line of elapsed time, spend against the funded envelope, and turn count — instead of a silent stream of event names.
+- Budgets speak human: `--budget 40m,350k` parses (hours/minutes and k/m token amounts), the raw millisecond form still works, and vend echoes back what it understood (`funding ~40m/350k`).
+- Run summaries no longer look over-cap when they aren't: agent turns are shown against the real cap, with the executor's larger conversation-event count labeled separately.
+- Leave `--agent` off and vend picks the cooler seat for you: when recent ledger burn shows one lane clearly hotter (≥2×), new tickets route to the other seat, with the evidence recorded on the run; explicit `--agent` always wins.
+
 ## 0.4.0-rc.2 — 2026-07-11
 
 - Route work to a seat at mint time: `vend chain "<signal>" --agent codex` (also on `vend run decompose-epic`) stamps `agent: codex` into every ticket the cast writes — no more hand-editing frontmatter to allocate usage across agents.
