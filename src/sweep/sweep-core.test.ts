@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildGraph, type RawNode, type WorkGraph } from "../graph/model.ts";
-import { computeSweep } from "./sweep-core.ts";
+import { computeSweep, SWEEP_PROVENANCE_PATH } from "./sweep-core.ts";
 
 function node(file: string, data: Record<string, unknown>): RawNode {
   return { file, data, body: `fixture body for ${String(data.id)}` };
@@ -137,6 +137,7 @@ describe("computeSweep — assembled flip set", () => {
     expect(computeSweep({
       graph: fixtureGraph(),
       presweep: { ok: true, doneIds, offenders: [] },
+      provenanceDirty: false,
     })).toEqual({
       kind: "flip-set",
       flips: [
@@ -149,7 +150,23 @@ describe("computeSweep — assembled flip set", () => {
           clearedTicketIds: ["T-100-01", "T-100-02"],
         },
       ],
+      provenancePath: null,
       pathspec: ["docs/active/epic/E-100.md"],
+      message: "sweep: close E-100\n\nE-100 cleared by T-100-01, T-100-02",
+    });
+  });
+
+  test("dirty Lisa provenance is explicit cargo after the exact epic paths", () => {
+    const result = computeSweep({
+      graph: fixtureGraph(),
+      presweep: { ok: true, doneIds, offenders: [] },
+      provenanceDirty: true,
+    });
+
+    expect(result).toMatchObject({
+      kind: "flip-set",
+      provenancePath: SWEEP_PROVENANCE_PATH,
+      pathspec: ["docs/active/epic/E-100.md", SWEEP_PROVENANCE_PATH],
       message: "sweep: close E-100\n\nE-100 cleared by T-100-01, T-100-02",
     });
   });
@@ -164,6 +181,7 @@ describe("computeSweep — named refusals", () => {
         doneIds,
         offenders: ["src/z.ts", "docs/active/tickets/T-100-02.md", "src/z.ts"],
       },
+      provenanceDirty: true,
     });
 
     expect(result).toEqual({
@@ -181,6 +199,7 @@ describe("computeSweep — named refusals", () => {
     expect(computeSweep({
       graph: partialOnlyGraph(),
       presweep: { ok: true, doneIds: ["T-200-01"], offenders: [] },
+      provenanceDirty: false,
     })).toEqual({
       kind: "refusal",
       code: "no-epics-ready",
@@ -193,6 +212,7 @@ describe("computeSweep — named refusals", () => {
     expect(computeSweep({
       graph: fixtureGraph("done"),
       presweep: { ok: true, doneIds, offenders: [] },
+      provenanceDirty: false,
     })).toMatchObject({ kind: "refusal", code: "no-epics-ready" });
   });
 
@@ -200,6 +220,7 @@ describe("computeSweep — named refusals", () => {
     expect(computeSweep({
       graph: fixtureGraph(),
       presweep: { ok: true, doneIds: ["T-100-01"], offenders: [] },
+      provenanceDirty: false,
     })).toEqual({
       kind: "refusal",
       code: "stale-presweep",
@@ -216,10 +237,12 @@ describe("computeSweep — contract invariants", () => {
     expect(() => computeSweep({
       graph: fixtureGraph(),
       presweep: { ok: true, doneIds, offenders: ["src/x.ts"] },
+      provenanceDirty: false,
     })).toThrow(TypeError);
     expect(() => computeSweep({
       graph: fixtureGraph(),
       presweep: { ok: false, doneIds, offenders: [] },
+      provenanceDirty: false,
     })).toThrow(TypeError);
   });
 
@@ -231,6 +254,7 @@ describe("computeSweep — contract invariants", () => {
     expect(computeSweep({
       graph: fixtureGraph(),
       presweep: { ok: true, doneIds: callerDoneIds, offenders: callerOffenders },
+      provenanceDirty: false,
     }).kind).toBe("flip-set");
     expect(callerDoneIds).toEqual(beforeDoneIds);
     expect(callerOffenders).toEqual([]);

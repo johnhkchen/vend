@@ -5,11 +5,13 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parsePorcelainLine } from "../ci/committed-core.ts";
 import { classifySweep, donePhaseIds } from "../ci/presweep-core.ts";
 import { loadWorkGraph } from "../graph/load.ts";
 import { parseFrontmatter } from "../graph/model.ts";
 import {
   computeSweep,
+  SWEEP_PROVENANCE_PATH,
   type EpicFrontmatterFlip,
   type SweepFlipSet,
   type SweepRefusal,
@@ -102,6 +104,10 @@ export interface PrepareSweepOptions {
   readonly root?: string;
 }
 
+function porcelainHasPath(porcelain: string, expectedPath: string): boolean {
+  return porcelain.split("\n").some((line) => parsePorcelainLine(line) === expectedPath);
+}
+
 /** Observe the board and presweep facts and return the authoritative pure assembly. No writes. */
 export async function prepareSweep(options: PrepareSweepOptions = {}): Promise<SweepResult> {
   const root = options.root ?? process.cwd();
@@ -111,7 +117,11 @@ export async function prepareSweep(options: PrepareSweepOptions = {}): Promise<S
     doneIds: donePhaseIds(graph.tickets),
     porcelain: status.stdout,
   });
-  return computeSweep({ graph, presweep });
+  return computeSweep({
+    graph,
+    presweep,
+    provenanceDirty: porcelainHasPath(status.stdout, SWEEP_PROVENANCE_PATH),
+  });
 }
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
@@ -153,8 +163,15 @@ export async function commitSweep(
 ): Promise<string> {
   const root = options.root ?? process.cwd();
   const flipPaths = plan.flips.map((flip) => flip.path);
-  if (plan.flips.length === 0 || !sameStrings(plan.pathspec, flipPaths)) {
-    throw new SweepApplyError("<plan>", "pathspec must exactly equal the non-empty ordered flip paths");
+  const declaredPaths = [
+    ...flipPaths,
+    ...(plan.provenancePath === null ? [] : [plan.provenancePath]),
+  ];
+  if (plan.flips.length === 0 || !sameStrings(plan.pathspec, declaredPaths)) {
+    throw new SweepApplyError(
+      "<plan>",
+      "pathspec must exactly equal the non-empty ordered declared plan paths",
+    );
   }
 
   // Validate and render every selected card before the first write. A malformed/stale later card

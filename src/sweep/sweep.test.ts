@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { EpicFrontmatterFlip, SweepFlipSet, SweepRefusal } from "./sweep-core.ts";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  SWEEP_PROVENANCE_PATH,
+  type EpicFrontmatterFlip,
+  type SweepFlipSet,
+  type SweepRefusal,
+} from "./sweep-core.ts";
+import {
+  commitSweep,
+  prepareSweep,
   renderEpicStatusFlip,
   renderSweepPlan,
   renderSweepRefusal,
@@ -80,6 +90,7 @@ describe("renderEpicStatusFlip — narrow checked frontmatter transition", () =>
 const plan: SweepFlipSet = {
   kind: "flip-set",
   flips: [flip],
+  provenancePath: null,
   pathspec: [flip.path],
   message: "sweep: close E-100\n\nE-100 cleared by T-100-01, T-100-02",
 };
@@ -128,3 +139,152 @@ describe("sweep terminal rendering", () => {
   });
 });
 
+interface SweepCommitFixture {
+  readonly root: string;
+  readonly epicPath: string;
+  readonly provenancePath: string;
+  git(...args: string[]): string;
+}
+
+async function createSweepCommitFixture(): Promise<SweepCommitFixture> {
+  const root = await mkdtemp(join(tmpdir(), "vend-sweep-provenance-"));
+  const epicPath = join(root, "docs", "active", "epic", "E-100.md");
+  const provenancePath = join(root, SWEEP_PROVENANCE_PATH);
+
+  await Promise.all([
+    mkdir(join(root, "docs", "active", "epic"), { recursive: true }),
+    mkdir(join(root, "docs", "active", "stories"), { recursive: true }),
+    mkdir(join(root, "docs", "active", "tickets"), { recursive: true }),
+    mkdir(join(root, ".lisa"), { recursive: true }),
+  ]);
+  await Promise.all([
+    writeFile(epicPath, [
+      "---",
+      "id: E-100",
+      "title: cleared fixture",
+      "status: open",
+      "advances: [P3, P4]",
+      "serves: fixture",
+      "---",
+      "",
+    ].join("\n")),
+    writeFile(join(root, "docs", "active", "stories", "S-100-01.md"), [
+      "---",
+      "id: S-100-01",
+      "title: cleared story",
+      "type: story",
+      "status: open",
+      "priority: high",
+      "tickets: [T-100-01]",
+      "---",
+      "",
+    ].join("\n")),
+    writeFile(join(root, "docs", "active", "tickets", "T-100-01.md"), [
+      "---",
+      "id: T-100-01",
+      "story: S-100-01",
+      "title: cleared ticket",
+      "type: task",
+      "status: done",
+      "priority: high",
+      "phase: done",
+      "depends_on: []",
+      "---",
+      "",
+    ].join("\n")),
+    writeFile(provenancePath, '{"ticket":"baseline"}\n'),
+  ]);
+
+  const git = (...args: string[]): string => {
+    const result = Bun.spawnSync(["git", ...args], { cwd: root });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    return result.stdout.toString().trim();
+  };
+  git("init", "-q");
+  git("config", "user.email", "fixture@example.test");
+  git("config", "user.name", "Vend Fixture");
+  git("add", ".");
+  git("commit", "-qm", "fixture baseline");
+
+  return { root, epicPath, provenancePath, git };
+}
+
+describe("sweep provenance commit boundary (T-080-02-01)", () => {
+  test("dirty tracked provenance is presented and lands with the epic flip in one commit", async () => {
+    const fixture = await createSweepCommitFixture();
+    try {
+      await writeFile(
+        fixture.provenancePath,
+        `${await readFile(fixture.provenancePath, "utf8")}{"ticket":"T-100-01"}\n`,
+      );
+
+      const result = await prepareSweep({ root: fixture.root });
+      expect(result.kind).toBe("flip-set");
+      if (result.kind !== "flip-set") throw new Error(`unexpected ${result.code}`);
+
+      expect(result.provenancePath).toBe(SWEEP_PROVENANCE_PATH);
+      expect(result.pathspec).toEqual([
+        "docs/active/epic/E-100.md",
+        SWEEP_PROVENANCE_PATH,
+      ]);
+      expect(renderSweepPlan(result)).toContain(
+        `files:\n  docs/active/epic/E-100.md\n  ${SWEEP_PROVENANCE_PATH}\n`,
+      );
+
+      const commit = await commitSweep(result, { root: fixture.root });
+
+      expect(fixture.git("rev-parse", "HEAD")).toBe(commit);
+      const stat = fixture.git("show", "--stat", "--oneline", "HEAD");
+      expect(stat).toContain("docs/active/epic/E-100.md");
+      expect(stat).toContain(SWEEP_PROVENANCE_PATH);
+      expect(
+        fixture.git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+          .split("\n")
+          .sort(),
+      ).toEqual([SWEEP_PROVENANCE_PATH, "docs/active/epic/E-100.md"].sort());
+      expect(await readFile(fixture.epicPath, "utf8")).toContain("\nstatus: done\n");
+      expect(fixture.git("status", "--porcelain")).toBe("");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("clean provenance keeps the prepared and presented pathspec cards-only", async () => {
+    const fixture = await createSweepCommitFixture();
+    try {
+      const result = await prepareSweep({ root: fixture.root });
+      expect(result.kind).toBe("flip-set");
+      if (result.kind !== "flip-set") throw new Error(`unexpected ${result.code}`);
+
+      expect(result.provenancePath).toBeNull();
+      expect(result.pathspec).toEqual(["docs/active/epic/E-100.md"]);
+      expect(renderSweepPlan(result)).not.toContain(SWEEP_PROVENANCE_PATH);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("commitSweep refuses a pathspec that does not equal the plan's declared paths", async () => {
+    const fixture = await createSweepCommitFixture();
+    try {
+      const result = await prepareSweep({ root: fixture.root });
+      expect(result.kind).toBe("flip-set");
+      if (result.kind !== "flip-set") throw new Error(`unexpected ${result.code}`);
+      const beforeHead = fixture.git("rev-parse", "HEAD");
+      const beforeEpic = await readFile(fixture.epicPath, "utf8");
+      const mismatched: SweepFlipSet = {
+        ...result,
+        pathspec: [...result.pathspec, SWEEP_PROVENANCE_PATH],
+      };
+
+      await expect(commitSweep(mismatched, { root: fixture.root })).rejects.toThrow(
+        /pathspec must exactly equal the non-empty ordered declared plan paths/,
+      );
+      expect(fixture.git("rev-parse", "HEAD")).toBe(beforeHead);
+      expect(await readFile(fixture.epicPath, "utf8")).toBe(beforeEpic);
+      expect(fixture.git("status", "--porcelain")).toBe("");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+});

@@ -1,7 +1,7 @@
 // The PURE sweep assembly core (S-079-02): turn one current board snapshot plus its matching
-// presweep verdict into exact epic frontmatter flips, a pathspec restricted to those cards, and a
-// provenance commit message. Markdown writes, Git staging/commit, confirmation, and CLI rendering
-// belong to the impure sweep shell.
+// presweep verdict into exact epic frontmatter flips, an optional dirty Lisa provenance ledger, and
+// the complete pathspec + provenance commit message. Markdown writes, Git staging/commit,
+// confirmation, and CLI rendering belong to the impure sweep shell.
 
 import { SWEEP_PREFIXES, type SweepVerdict } from "../ci/presweep-core.ts";
 import type { WorkGraph } from "../graph/model.ts";
@@ -18,6 +18,9 @@ function sweepBoardPrefix(): "docs/active/" {
 /** Exact card directory under the board member of the shared presweep scope. */
 export const SWEEP_EPIC_PREFIX = `${sweepBoardPrefix()}epic/` as const;
 
+/** The only Lisa-owned runtime file sweep may carry alongside its card flips. */
+export const SWEEP_PROVENANCE_PATH = ".lisa/provenance.jsonl" as const;
+
 /** One checked frontmatter-field transition for the future effect shell to apply. */
 export interface EpicFrontmatterFlip {
   readonly epicId: string;
@@ -32,7 +35,9 @@ export interface EpicFrontmatterFlip {
 export interface SweepFlipSet {
   readonly kind: "flip-set";
   readonly flips: readonly EpicFrontmatterFlip[];
-  /** Exact repository-relative card files; never a broad board/source prefix. */
+  /** Exact optional non-card cargo observed while this plan was prepared. */
+  readonly provenancePath: typeof SWEEP_PROVENANCE_PATH | null;
+  /** Ordered card files plus declared provenance cargo; never a broad board/source/Lisa prefix. */
   readonly pathspec: readonly string[];
   readonly message: string;
 }
@@ -71,6 +76,7 @@ export type SweepResult = SweepFlipSet | SweepRefusal;
 export interface ComputeSweepInput {
   readonly graph: WorkGraph;
   readonly presweep: SweepVerdict;
+  readonly provenanceDirty: boolean;
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -161,10 +167,15 @@ export function computeSweep(input: ComputeSweepInput): SweepResult {
     };
   }
 
+  const provenancePath = input.provenanceDirty ? SWEEP_PROVENANCE_PATH : null;
   return {
     kind: "flip-set",
     flips,
-    pathspec: flips.map((flip) => flip.path),
+    provenancePath,
+    pathspec: [
+      ...flips.map((flip) => flip.path),
+      ...(provenancePath === null ? [] : [provenancePath]),
+    ],
     message: provenanceMessage(flips),
   };
 }
