@@ -31,6 +31,7 @@ import {
   type ArtifactDiscrepancy,
   type CrossReviewSkipped,
   type CrossVendorVerdict,
+  type DegradeDisposition,
   type GateResult as LogGate,
   type RunOutcome,
 } from "../log/run-log.ts";
@@ -143,6 +144,9 @@ export interface RunSummary {
   /** One-way settlement warning: present only when a token-exhausted cast explicitly cleared
    *  its gates and was therefore allowed to materialize (T-068-02-03). */
   readonly overEnvelope?: true;
+  /** Ordered editorial charter-cite dispositions reported by the landed effect. Omitted for a
+   *  clean cast; the CLI derives its honest degraded count from this same occurrence list. */
+  readonly degrades?: readonly DegradeDisposition[];
   /**
    * The artifact reference this cast produced (lifted off `EffectResult.produced`), surfaced so
    * a chain (T-011-01) can thread it into the next play's input. Present ONLY on a materialized
@@ -373,6 +377,7 @@ export async function castPlay<I, O>(
   let produced: string | undefined;
   let capturedDiff: string | undefined;
   let artifactDiscrepancy: ArtifactDiscrepancy | undefined;
+  let degrades: readonly DegradeDisposition[] | undefined;
   let seatDefaulted: SeatDefaulted | undefined;
   let seatInferred: SeatInferred | undefined;
   let crossReviewSkipped: CrossReviewSkipped | undefined;
@@ -389,6 +394,9 @@ export async function castPlay<I, O>(
       // Preserve authoritative effect facts before diff capture: a capture error happens after the
       // effect landed and must not erase its outcome/routing disposition from the terminal row.
       materialized = reported.ok;
+      degrades = reported.ok && reported.degrades !== undefined && reported.degrades.length > 0
+        ? reported.degrades
+        : undefined;
       seatDefaulted = reported.seatDefaulted;
       seatInferred = reported.seatInferred;
       produced = reported.ok ? reported.produced : undefined;
@@ -533,6 +541,9 @@ export async function castPlay<I, O>(
         // degraded (an optional MCP was absent) so a fully-grounded cast (and every pre-T-060-01-02
         // record) leaves the field off, byte-identical. Makes a degraded clear countable in the ledger.
         ...(reducedGrounding ? { reducedGrounding: true } : {}),
+        // Exact occurrence-level editorial cite evidence from the successful effect. Empty/absent
+        // reports omit the field so clean and historical records retain their existing shape.
+        ...(degrades !== undefined ? { degrades } : {}),
         // One authoritative warning fact (T-068-02-03): forward the classifier marker rather than
         // re-deriving it from meter/gate state. Unmarked casts omit the key (one-way record contract).
         ...(settledVerdict.overEnvelope ? { overEnvelope: true } : {}),
@@ -569,6 +580,7 @@ export async function castPlay<I, O>(
     outcome,
     materialized,
     ...(settledVerdict.overEnvelope ? { overEnvelope: true } : {}),
+    ...(degrades !== undefined ? { degrades } : {}),
     produced,
     capturedDiff,
     actuals: { usage, wallMs },

@@ -103,6 +103,17 @@ export interface GateResult {
   readonly detail?: string;
 }
 
+/** Editorial charter-cite actions a successful effect may apply without discarding its board. */
+export const DEGRADE_ACTIONS = ["strip", "annotate"] as const;
+export type DegradeAction = (typeof DEGRADE_ACTIONS)[number];
+
+/** Durable occurrence-level evidence for one editorial charter-cite degradation. */
+export interface DegradeDisposition {
+  readonly code: string;
+  readonly location: string;
+  readonly action: DegradeAction;
+}
+
 /** Durable details for a routing-seat request that degraded to the default seat (T-070-01-01).
  *  Declared locally so the append-only ledger records the caller's disposition without importing
  *  executor policy or the known-seat registry. */
@@ -207,6 +218,10 @@ export interface RunRecordInput {
    *  signal that makes a degraded clear COUNTABLE (a degraded run = a record carrying this marker)
    *  rather than invisible. */
   readonly reducedGrounding?: boolean;
+  /** Ordered occurrence-level charter-cite degradations reported by a successful effect. Absent
+   *  or empty means no cite degradation was recorded. The ledger preserves facts only; concrete
+   *  play policy owns why a cite was stripped or annotated. */
+  readonly degrades?: readonly DegradeDisposition[];
   /** One-way warning marker (T-068-02-01): `true` ⇒ this cast cleared its gates but spent over
    *  its token envelope. Absent ⇒ no over-envelope warning was recorded. Only `true` is meaningful,
    *  so `false`/absent are identical and `false` is never written — keeping an unmarked record
@@ -289,6 +304,9 @@ export interface RunRecord {
    *  {@link reviveRecord} preserves it across the read boundary, so a degraded clear stays
    *  countable after a ledger round-trip. */
   readonly reducedGrounding?: true;
+  /** Present only as a non-empty, atomically valid list of editorial cite dispositions. Historical
+   *  and clean records omit the field; {@link reviveRecord} preserves valid occurrence order. */
+  readonly degrades?: readonly DegradeDisposition[];
   /** Present ONLY when `true` (T-068-02-01) — this cleared cast spent over its token envelope.
    *  A ONE-WAY warning like {@link RunRecord.reducedGrounding}: `false` is never written, so an
    *  unmarked record stays byte-identical to a pre-E-068 one. {@link reviveRecord} preserves it
@@ -425,6 +443,31 @@ function normalizeOverEnvelope(v: boolean | undefined): true | undefined {
   return v === true ? true : undefined;
 }
 
+/** Normalize cite degradation evidence atomically. A count must never silently shrink, so one
+ * malformed entry omits the whole optional marker while preserving the otherwise useful run.
+ * Canonical copies select only the three durable fields and retain occurrence order. */
+function normalizeDegrades(value: unknown): readonly DegradeDisposition[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const normalized: DegradeDisposition[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const candidate = entry as Record<string, unknown>;
+    if (
+      !isNonEmptyString(candidate.code) ||
+      !isNonEmptyString(candidate.location) ||
+      !(DEGRADE_ACTIONS as readonly unknown[]).includes(candidate.action)
+    ) {
+      return undefined;
+    }
+    normalized.push({
+      code: candidate.code,
+      location: candidate.location,
+      action: candidate.action as DegradeAction,
+    });
+  }
+  return normalized;
+}
+
 /** Normalize the seat-defaulted marker (T-070-01-01): all three strings are atomic. A partial or
  *  malformed optional marker is omitted rather than admitted or allowed to invalidate the record.
  *  Rebuilding the object selects only schema fields and gives marked JSON deterministic key order.
@@ -555,6 +598,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   const intervenedAttested = normalizeIntervenedAttested(input.intervenedAttested);
   const turnsUsed = normalizeTurnsUsed(input.turnsUsed);
   const reducedGrounding = normalizeReducedGrounding(input.reducedGrounding);
+  const degrades = normalizeDegrades(input.degrades);
   const overEnvelope = normalizeOverEnvelope(input.overEnvelope);
   const seatDefaulted = normalizeSeatDefaulted(input.seatDefaulted);
   const seatInferred = normalizeSeatInferred(input.seatInferred);
@@ -580,6 +624,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
+    ...(degrades !== undefined ? { degrades } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),
@@ -695,6 +740,11 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
   // the read boundary preserves a degraded clear's countability across the ledger round-trip.
   const reducedGrounding = normalizeReducedGrounding(typeof r.reducedGrounding === "boolean" ? r.reducedGrounding : undefined);
 
+  // Cite degradations are optional but atomic: preserve only a complete non-empty array in exact
+  // occurrence order. A malformed newer field cannot make an otherwise useful historical row
+  // unreadable, and cannot be partially retained as a dishonest smaller count.
+  const degrades = normalizeDegrades(r.degrades);
+
   // The over-envelope warning (T-068-02-01) follows the same one-way read contract: only literal
   // `true` survives. False, absence (all pre-E-068 records), and malformed values are omitted, so
   // an optional warning can never make an otherwise useful historical record unreadable.
@@ -761,6 +811,7 @@ export function reviveRecord(parsed: unknown): RunRecord | null {
     ...(intervenedAttested ? { intervenedAttested } : {}),
     ...(turnsUsed !== undefined ? { turnsUsed } : {}),
     ...(reducedGrounding ? { reducedGrounding } : {}),
+    ...(degrades !== undefined ? { degrades } : {}),
     ...(overEnvelope ? { overEnvelope } : {}),
     ...(seatDefaulted ? { seatDefaulted } : {}),
     ...(seatInferred ? { seatInferred } : {}),

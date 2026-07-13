@@ -1149,3 +1149,64 @@ describe("cost reweight flows through recalibrate — cost-denominated p90, no h
     expect(result.envelope.tokens).toBeLessThan(parity); // 525,180
   });
 });
+
+describe("degrades — ordered atomic cite dispositions survive the local ledger", () => {
+  const degrades = [
+    { code: "P9", location: "T-077-01.advances[1]", action: "strip" },
+    { code: "N4", location: "T-077-01.md#purpose", action: "annotate" },
+  ] as const;
+
+  test("a non-empty list round-trips through serialize and readRuns byte-stably", () => {
+    const built = buildRunRecord(baseInput({ runId: "dg1", degrades }));
+    expect(built.degrades).toEqual(degrades);
+
+    const line = serializeRunRecord(built);
+    const { records, skipped } = readRuns(line);
+    expect(skipped).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.degrades).toEqual(degrades);
+    expect(serializeRunRecord(records[0]!)).toBe(line);
+  });
+
+  test("absent and empty lists are the same byte-compatible clean record", () => {
+    const absent = buildRunRecord(baseInput({ runId: "dg2" }));
+    const empty = buildRunRecord(baseInput({ runId: "dg2", degrades: [] }));
+    expect("degrades" in absent).toBe(false);
+    expect("degrades" in empty).toBe(false);
+    expect(serializeRunRecord(empty)).toBe(serializeRunRecord(absent));
+  });
+
+  test("canonical copies preserve only code, location, and action", () => {
+    const built = buildRunRecord(baseInput({
+      runId: "dg3",
+      degrades: [{ ...degrades[0], diagnostic: "do-not-persist" }],
+    } as never));
+    expect(built.degrades).toEqual([degrades[0]]);
+  });
+
+  test("one malformed entry omits the whole list rather than shrinking its honest count", () => {
+    const built = buildRunRecord(baseInput({
+      runId: "dg4",
+      degrades: [degrades[0], { code: "N4", location: "", action: "annotate" }],
+    }));
+    expect("degrades" in built).toBe(false);
+
+    const revived = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "dg5" })))),
+      degrades: [degrades[0], { code: "N4", location: "x", action: "rewrite" }],
+    });
+    expect(revived).not.toBeNull();
+    expect(revived!.runId).toBe("dg5");
+    expect("degrades" in revived!).toBe(false);
+  });
+
+  test("a malformed non-array marker is dropped without losing the historical row", () => {
+    const revived = reviveRecord({
+      ...JSON.parse(serializeRunRecord(buildRunRecord(baseInput({ runId: "dg6" })))),
+      degrades: { code: "N4", location: "x", action: "annotate" },
+    });
+    expect(revived).not.toBeNull();
+    expect(revived!.runId).toBe("dg6");
+    expect(revived!.degrades).toBeUndefined();
+  });
+});

@@ -19,7 +19,7 @@
 // gate names — gates.ts's `GateResult` is structurally assignable to it (see below).
 
 import type { Budget } from "../budget/budget.ts";
-import type { RunOutcome } from "../log/run-log.ts";
+import type { DegradeDisposition, RunOutcome } from "../log/run-log.ts";
 
 // ── Card metadata (card-model.md) ───────────────────────────────────────────────────
 
@@ -130,6 +130,9 @@ export interface EffectResult {
   readonly seatDefaulted?: SeatDefaulted;
   /** Automatic routing provenance, absent when the caller chose a seat or evidence was ambiguous. */
   readonly seatInferred?: SeatInferred;
+  /** Ordered editorial cite dispositions applied by a successful effect. Concrete play policy
+   *  decides the transformations; the generic engine only carries this plain settlement data. */
+  readonly degrades?: readonly DegradeDisposition[];
   /**
    * The single canonical reference a downstream play threads on — the chain primitive
    * (T-011-01). DISTINCT from `artifacts` (ALL files written, for provenance): `produced` is
