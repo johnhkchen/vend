@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { buildRunRecord, type RunOutcome, type RunRecord, type RunRecordInput } from "../log/run-log.ts";
 import type { Budget } from "../budget/budget.ts";
 import type { Card, Play, Rarity } from "../engine/play.ts";
-import { RARITY_TIER, renderShelf, type ShelfRow, shelfRows, tierForRarity } from "./shelf-row.ts";
+import {
+  RARITY_TIER,
+  renderShelf,
+  type ShelfConfidence,
+  type ShelfRow,
+  shelfRows,
+  tierForRarity,
+} from "./shelf-row.ts";
 
 // T-030-01 shelf-row core: the PURE worth + warranted-budget composition. No fs/clock/spawn
 // and NO BAML — fixtures build Play STUBS directly (the play.test.ts precedent) and fabricate
@@ -94,12 +101,39 @@ describe("shelfRows — cold-start default never dressed as measured (AC #3b, E-
     expect(row?.envelope).toEqual(budget);
   });
 
-  test("below the cold-start threshold (2 successes) → still default, not measured", () => {
+  test("one success → runs-bearing default, with the authored budget", () => {
+    const budget: Budget = { timeMs: 5000, tokens: 9999 };
+    const [row] = shelfRows([makeStubPlay("beta", { budget })], [recordOf({ play: "beta", tokens: 100 })]);
+    expect(row?.confidence).toEqual({ kind: "default", runs: 1 });
+    expect(row?.envelope).toEqual(budget);
+  });
+
+  test("two successes → runs-bearing default, not measured", () => {
     const budget: Budget = { timeMs: 5000, tokens: 9999 };
     const records = [recordOf({ play: "beta", tokens: 100 }), recordOf({ play: "beta", tokens: 200 })];
     const [row] = shelfRows([makeStubPlay("beta", { budget })], records);
-    expect(row?.confidence).toEqual({ kind: "default" });
+    expect(row?.confidence).toEqual({ kind: "default", runs: 2 });
     expect(row?.envelope).toEqual(budget);
+  });
+
+  test("the union rejects zero as runs-bearing evidence while retaining all three valid states", () => {
+    const empty: ShelfConfidence = { kind: "default" };
+    const thinOne: ShelfConfidence = { kind: "default", runs: 1 };
+    const thinTwo: ShelfConfidence = { kind: "default", runs: 2 };
+    const measured: ShelfConfidence = { kind: "measured", runs: 3 };
+    // @ts-expect-error — zero successful runs cannot back a measured confidence.
+    const measuredZero: ShelfConfidence = { kind: "measured", runs: 0 };
+    // @ts-expect-error — zero belongs to the count-free default arm, never a runs-bearing one.
+    const defaultZero: ShelfConfidence = { kind: "default", runs: 0 };
+
+    expect([empty, thinOne, thinTwo, measured].map((confidence) => confidence.kind)).toEqual([
+      "default",
+      "default",
+      "default",
+      "measured",
+    ]);
+    void measuredZero;
+    void defaultZero;
   });
 });
 
@@ -153,8 +187,13 @@ describe("renderShelf — the supply view (DL-6/9/3)", () => {
     expect(out).not.toContain("~2h/80k");
   });
 
-  test("a one-run measured row reads singular `1 run`", () => {
-    expect(renderShelf([measuredRow({ confidence: { kind: "measured", runs: 1 } })])).toContain("(measured · 1 run)");
+  test("one and two real cold-start runs show progress toward the ledger threshold", () => {
+    expect(renderShelf([defaultRow({ confidence: { kind: "default", runs: 1 } })])).toContain(
+      "(default — 1 run, measured at 3)",
+    );
+    expect(renderShelf([defaultRow({ confidence: { kind: "default", runs: 2 } })])).toContain(
+      "(default — 2 runs, measured at 3)",
+    );
   });
 
   test("a default row flags ~envelope + (default — no runs yet) and never says measured (E-026)", () => {
@@ -182,5 +221,13 @@ describe("renderShelf — the supply view (DL-6/9/3)", () => {
   test("seam: a real cold-start row from shelfRows renders as default", () => {
     const play = makeStubPlay("survey", { summary: "read the project into a ranked demand board" });
     expect(renderShelf(shelfRows([play], []))).toContain("(default — no runs yet)");
+  });
+
+  test("seam: real one- and two-success histories render as thin-but-real defaults", () => {
+    const play = makeStubPlay("survey", { summary: "read the project into a ranked demand board" });
+    const one = [recordOf({ play: "survey" })];
+    const two = [...one, recordOf({ play: "survey" })];
+    expect(renderShelf(shelfRows([play], one))).toContain("(default — 1 run, measured at 3)");
+    expect(renderShelf(shelfRows([play], two))).toContain("(default — 2 runs, measured at 3)");
   });
 });
