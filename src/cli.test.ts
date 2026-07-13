@@ -715,3 +715,34 @@ describe("unknown-verb suggestions (T-072-01-02)", () => {
     }
   });
 });
+
+describe("funding echo (T-072-03-02)", () => {
+  async function invokeWithBudget(budget: string) {
+    const proc = Bun.spawn(
+      [process.execPath, "src/cli.ts", "run", "missing-play", "ignored.md", "--budget", budget],
+      {
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, exitCode };
+  }
+
+  test("echoes one canonical humane line before dispatch for humane and raw input", async () => {
+    const humane = await invokeWithBudget("40m,350k");
+    const raw = await invokeWithBudget("2400000,350000");
+
+    expect(humane).toEqual({
+      stdout: "funding ~40m/350k\n",
+      stderr: 'play "missing-play" is not registered — available: decompose-epic\n',
+      exitCode: 2,
+    });
+    expect(raw).toEqual({ ...humane, stdout: humane.stdout });
+  });
+});

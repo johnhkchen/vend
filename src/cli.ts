@@ -12,6 +12,7 @@
 
 import type { Budget } from "./budget/budget.ts";
 import type { ValueTier } from "./shelf/menu.ts";
+import { formatBudget } from "./shelf/menu.ts";
 import type { Seat } from "./present/presets.ts";
 // The build-embedded semver (T-061-02). A cheap, BAML-free value import — unlike the
 // heavy dispatch deps it does NOT belong behind a lazy `await import`, so `vend
@@ -254,6 +255,11 @@ export function parseBudgetArg(s: string): Budget {
     throw new RangeError(`--budget fields must be integers, got ${JSON.stringify(s)}`);
   }
   return { timeMs, tokens };
+}
+
+/** Confirm one parsed funding envelope in the humane vocabulary the shelf uses. PURE. */
+function formatFundingLine(budget: Budget): string {
+  return `funding ~${formatBudget(budget)}`;
 }
 
 /**
@@ -822,6 +828,7 @@ if (import.meta.main) {
     // dispatch each pick's playbook in order. Lazy import keeps the runner (and its BAML
     // addon) off the pure-parse path, exactly as the browse arm keeps gather lazy.
     const { pressShelf } = await import("./shelf/press.ts");
+    if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const result = await pressShelf({ selection: parsed.selection, all: parsed.all, budget: parsed.budget });
     switch (result.kind) {
       case "no-menu":
@@ -852,6 +859,7 @@ if (import.meta.main) {
     // logged (two run-log records). A ProposeEpic gate STOP halts BEFORE DecomposeEpic — surfaced
     // as `halted`. Lazy import keeps the chain (and its BAML addon) off the pure-parse path.
     const { castProposeDecomposeChain } = await import("./play/chain-propose-decompose.ts");
+    if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const result = await castProposeDecomposeChain({
       signal: parsed.signal,
       budget: parsed.budget,
@@ -873,6 +881,7 @@ if (import.meta.main) {
     // its BAML addon) off the pure-parse path, exactly as the chain/run arms do.
     const { castExpandFragment, expandFragmentPlay } = await import("./play/expand-fragment.ts");
     const budget = parsed.budget ?? expandFragmentPlay.budget;
+    if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const summary = await castExpandFragment({ fragment: parsed.fragment, budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
@@ -906,6 +915,7 @@ if (import.meta.main) {
     // Lazy import keeps the shell (and its BAML addon) off the pure-parse path, exactly as the other arms.
     const { castSurvey, surveyPlay } = await import("./play/survey.ts");
     const budget = parsed.budget ?? surveyPlay.budget;
+    if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const summary = await castSurvey({ budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
@@ -920,6 +930,7 @@ if (import.meta.main) {
     // pure-parse path, exactly as the other arms.
     const { castSteer, steerProjectPlay } = await import("./play/steer.ts");
     const budget = parsed.budget ?? steerProjectPlay.budget;
+    if (parsed.budget !== undefined) process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
     const summary = await castSteer({ budget });
     process.stdout.write(`run ${summary.runId}: ${summary.outcome} (materialized: ${summary.materialized})\n`);
     process.exit(summary.outcome === "success" ? 0 : 1);
@@ -1088,6 +1099,7 @@ if (import.meta.main) {
   // pure-parse path, exactly as the browse/press arms keep their deps lazy. An unknown play
   // is the registry's typed andon → stderr + exit 2.
   const { runPlay } = await import("./play/dispatch.ts");
+  process.stdout.write(`${formatFundingLine(parsed.budget)}\n`);
   const res = await runPlay(parsed.play, {
     epicPath: parsed.epicPath,
     budget: parsed.budget,
