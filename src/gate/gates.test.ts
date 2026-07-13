@@ -9,7 +9,7 @@ import type {
   WorkPlan,
 } from "../../baml_client/index.ts";
 import { stripNonGoalAdvances } from "../play/decompose-epic-core.ts";
-import { type ClearContext, clear, GATE_NAMES, isStop, STORY_CONTRACT_FIELDS } from "./gates.ts";
+import { type ClearContext, clear, GATE_NAMES, isStop, matchIds, STORY_CONTRACT_FIELDS } from "./gates.ts";
 
 // T-002-02 clearing-gates: pure module, fabricated WorkPlan fixtures only — no spawn, no fs, no
 // BAML native call. Every BAML import is TYPE-ONLY (erased at runtime): `clear` judges an
@@ -31,6 +31,10 @@ const DEFINITION_CHARTER = `
 - **P3 — Gates are the contract.** Quality lives inside the work.
 `;
 const DEFINITION_CTX: ClearContext = { ...CTX, charter: DEFINITION_CHARTER };
+const UNLABELED_CHARTER = `
+  Author reusable work once. Keep the run simple. Make quality enforceable through gates.
+`;
+const UNLABELED_CTX: ClearContext = { ...CTX, charter: UNLABELED_CHARTER };
 
 /** A fully-valid ticket; failing cases override exactly one field. */
 function ticket(over: Partial<TicketDraft> = {}): TicketDraft {
@@ -88,6 +92,14 @@ const VALID: WorkPlan = plan([
   }),
 ]);
 
+describe("charter label detector", () => {
+  test("the exported detector finds unique ids by prefix and reports zero P-labels honestly", () => {
+    expect([...matchIds(UNLABELED_CHARTER, "P")]).toEqual([]);
+    expect([...matchIds(`${CHARTER} P3 N2`, "P")]).toEqual(["P1", "P2", "P3", "P4", "P5", "P6", "P7"]);
+    expect([...matchIds(`${CHARTER} P3 N2`, "N")]).toEqual(["N1", "N2", "N3", "N4"]);
+  });
+});
+
 describe("clear — happy path", () => {
   test("a valid plan clears every gate, in value-order", () => {
     const r = clear(VALID, CTX);
@@ -106,7 +118,17 @@ describe("value gate", () => {
   test("a ticket with empty `advances` stops the line", () => {
     const r = clear(plan([ticket({ advances: [] })]), CTX);
     expect(r).toMatchObject({ status: "stop", gate: "value", unit: "T-009-01" });
-    if (isStop(r)) expect(r.reason).toContain("advances");
+    if (isStop(r)) expect(r.reason).toBe("`advances` is empty — must name what it advances (never empty)");
+  });
+
+  test("an unlabeled charter makes the empty-advances refusal name the cause and fix", () => {
+    const r = clear(plan([ticket({ advances: [] })]), UNLABELED_CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "value", unit: "T-009-01" });
+    if (isStop(r)) {
+      expect(r.reason).toBe(
+        "`advances` is empty — must name what it advances (never empty); your charter has no labeled invariants (P1 — Author once, run forever...) — label them or cite none",
+      );
+    }
   });
 
   test("`advances` with a blank entry stops the line", () => {
@@ -228,7 +250,17 @@ describe("bounds gate", () => {
   test("an `advances` ref not in the charter is a dangling claim", () => {
     const r = clear(plan([ticket({ advances: ["P9"] })]), CTX);
     expect(r).toMatchObject({ status: "stop", gate: "bounds", unit: "T-009-01" });
-    if (isStop(r)) expect(r.reason).toContain("P9");
+    if (isStop(r)) expect(r.reason).toBe("advances `P9` — no such invariant in the charter (dangling ref)");
+  });
+
+  test("an unlabeled charter makes the dangling-ref refusal name the cause and fix", () => {
+    const r = clear(plan([ticket({ advances: ["P9"] })]), UNLABELED_CTX);
+    expect(r).toMatchObject({ status: "stop", gate: "bounds", unit: "T-009-01" });
+    if (isStop(r)) {
+      expect(r.reason).toBe(
+        "advances `P9` — no such invariant in the charter (dangling ref); your charter has no labeled invariants (P1 — Author once, run forever...) — label them or cite none",
+      );
+    }
   });
 
   test("advancing a non-goal (N-ref) is incoherent and stops the line", () => {

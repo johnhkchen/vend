@@ -120,12 +120,21 @@ function idSetOf(tickets: readonly TicketDraft[]): { ids: Set<string>; dup?: str
  *  gate derives its valid set from the live charter at call time — so retiring an invariant makes
  *  a dangling `advances` ref a *detectable defect*, exactly as the charter promises, rather than
  *  drifting against a hardcoded list. */
-function matchIds(text: string, prefix: "P" | "N"): Set<string> {
+export function matchIds(text: string, prefix: "P" | "N"): Set<string> {
   const out = new Set<string>();
   for (const m of text.matchAll(new RegExp(`\\b${prefix}\\d+\\b`, "g"))) {
     if (m[0]) out.add(m[0]);
   }
   return out;
+}
+
+const UNLABELED_CHARTER_FIX =
+  "your charter has no labeled invariants (P1 — Author once, run forever...) — label them or cite none";
+
+/** Keep settled refusal bytes for labeled charters; teach the convention only when its absence is
+ *  the shared root cause behind an empty or dangling `advances` claim. */
+function withUnlabeledCharterFix(reason: string, charter: string): string {
+  return matchIds(charter, "P").size === 0 ? `${reason}; ${UNLABELED_CHARTER_FIX}` : reason;
 }
 
 /** Return one ticket id lying on a `depends_on` cycle, or `null` if the graph is acyclic. DFS
@@ -166,7 +175,7 @@ function findCycle(tickets: readonly TicketDraft[]): string | null {
  * settles (overproduction is the worst waste). A zero-ticket plan is MALFORMED — it advances
  * nothing — so it stops here (the empty-degradation case `b.parse` cannot reject).
  */
-function valueGate(plan: WorkPlan): Offense | null {
+function valueGate(plan: WorkPlan, ctx: ClearContext): Offense | null {
   if (plan.tickets.length === 0) {
     return { unit: "<plan>", reason: "plan has no tickets — it advances nothing (malformed/empty)" };
   }
@@ -175,7 +184,13 @@ function valueGate(plan: WorkPlan): Offense | null {
       return { unit: t.id, reason: "no `purpose` — the unit must say the value it delivers" };
     }
     if (!Array.isArray(t.advances) || t.advances.length === 0 || !t.advances.every(nonEmpty)) {
-      return { unit: t.id, reason: "`advances` is empty — must name what it advances (never empty)" };
+      return {
+        unit: t.id,
+        reason: withUnlabeledCharterFix(
+          "`advances` is empty — must name what it advances (never empty)",
+          ctx.charter,
+        ),
+      };
     }
     if (!nonEmpty(t.doneSignal)) {
       return { unit: t.id, reason: "no `doneSignal` — must say how we'll know it landed" };
@@ -290,7 +305,13 @@ function boundsGate(plan: WorkPlan, ctx: ClearContext): Offense | null {
         return { unit: t.id, reason: `advances \`${ref}\` — cannot advance a non-goal` };
       }
       if (/^P\d+$/.test(ref) && !invariants.has(ref)) {
-        return { unit: t.id, reason: `advances \`${ref}\` — no such invariant in the charter (dangling ref)` };
+        return {
+          unit: t.id,
+          reason: withUnlabeledCharterFix(
+            `advances \`${ref}\` — no such invariant in the charter (dangling ref)`,
+            ctx.charter,
+          ),
+        };
       }
     }
   }
@@ -325,7 +346,7 @@ function structuralGate(plan: WorkPlan): Offense | null {
 
 /** The ordered gate table — names match `GATE_NAMES`, so value-ordering is encoded once. */
 const GATES: ReadonlyArray<readonly [GateName, (plan: WorkPlan, ctx: ClearContext) => Offense | null]> = [
-  ["value", (p) => valueGate(p)],
+  ["value", (p, ctx) => valueGate(p, ctx)],
   ["story-completeness", (p) => storyCompletenessGate(p)],
   ["allocation", (p) => allocationGate(p)],
   ["bounds", (p, ctx) => boundsGate(p, ctx)],
