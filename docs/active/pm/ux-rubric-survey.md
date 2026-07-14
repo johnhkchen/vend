@@ -115,3 +115,14 @@ with the already-staged SVG/vocabulary work.
 degradation markers; `chain`'s zero-flag default path; `user-guide`'s prose; the closing
 run-summary lines. The bones are right — the gaps are almost all in the connective copy
 and the live middle of a cast.
+
+---
+
+## Disposition (2026-07-13, one day later — post-v0.4.0)
+
+The ranked list was pulled nearly whole: **#1** self-teaching CLI → E-072+E-078 (help, grouped
+usage, did-you-mean, always-free). **#2** live progress line → E-072 (+E-077 detect-after label,
+E-081 true-spend units). **#3** humane budget units → E-072. **#4** shelf honesty → E-075.
+**#5** jargon pass → E-075. **#6** shelf→guide pointer → E-072 (help foot). Dimensions 2/4/8
+(the three 2-of-5 grades) would all re-grade at 4+ today. Still open from this survey: the SVG
+accessibility items (dimension 9, staged) and the render-and-watch designer probe.

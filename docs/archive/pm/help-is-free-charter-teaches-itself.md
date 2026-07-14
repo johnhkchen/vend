@@ -17,3 +17,6 @@ Grounding: field report quoted in full in the 2026-07-13 session; `--help`-as-si
 at HEAD (cast started, killed, no ledger trace); `grep` confirms no init/doctor/refusal surface
 mentions the labeling convention; value-gate path: src/play/propose-core.ts:121 ("advances
 nothing"), degradation path: E-077 T-077-02-03 (dangling advances cites).
+
+---
+**PULLED 2026-07-13** as E-078 help-is-free-charter-teaches-itself (2 stories / 4 tickets, swept same day; shipped in v0.4.0-rc.8).

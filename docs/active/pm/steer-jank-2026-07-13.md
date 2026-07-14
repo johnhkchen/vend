@@ -50,3 +50,13 @@ real strategic state of the project.
 Disposition: items 2+3 are the sharp ones (measurement records feeding envelopes); item 6 is
 already a priced row on the staged board; 1/4/5 are small polish. Candidate epic: "the steer
 receipt" (1+2+3+4) — one honest counter, one honest line, one honest record.
+
+---
+
+## Disposition (2026-07-13, post-v0.4.0)
+
+Items **2 and 3** (live-line spend undercount; `turnsUsed` recording conversation events) —
+**FIXED by E-081 `one-unit-line-to-ledger`** (swept same day, shipped in v0.4.0). Item **6**
+(snapshot asserts `src: (none)`) — still a staged row on the live steer board. Items **1, 4, 5**
+(pre-cast funding receipt; bare `turn N` without a denominator on uncapped plays; silent board
+succession) — still open, small; fold into the next counter-polish pull.

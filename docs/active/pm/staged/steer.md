@@ -2,6 +2,10 @@
 
 A ranked demand board read off the whole project, highest-leverage first. Un-promoted: review and pull a row.
 
+> **Board maintenance 2026-07-13 (post-v0.4.0):** row 1 (quota denomination) was **PULLED → E-082
+> `learned-lane-quota`, swept same day** — which **UNBLOCKS row 2** (multi-lane parallel casting),
+> now the top available pull. Rows 3–5 remain as staged. The forks below are still open rulings.
+
 | Signal | Value | Budget (envelope) | Status |
 |---|---|---|---|
 | **Add quota-per-reset-window as a budget denomination: wallet/ledger learn per-lane capacity, and lane heat upgrades from relative-burn to quota-fraction (inferred from ledger history + 429s)** — Makes P7 a hard contract in the primary persona's true scarce unit — quota per reset window, not dollars per token — and unblocks the practice ladder's last rung (scheduling across lanes needs known per-lane capacity) | **Keystone** | ~2 blocks (≈4h) | ready (advances [P7, core-feature: allocation in the unit the two-seat operator actually rations] · grounded in vend-two-seat-operator-persona (ratified 2026-07-09): 'lane-denominated budget awareness — quota/reset-window as a budget denomination; infer lane heat from ledger + 429s'; E-071 closeout confirmed the quota convention absent in-repo and shipped heat as relative-burn (src/play/lane-heat.ts)) |
