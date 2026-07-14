@@ -10,7 +10,7 @@ Canonical vision and design principles: `docs/knowledge/vision.md` (read this be
 
 ### Stack
 
-TypeScript on **Bun**. Playbooks are typed code-as-config (a TS module that declares its graph). v1 surface is a terminal **TUI**. Full toolchain record and rationale: `docs/knowledge/stack.md`.
+TypeScript on **Bun**. Playbooks are typed code-as-config (a TS module that declares its graph). v1 surface is the **CLI + SVG desk** (ratified 2026-07-13; a TUI may come later as a `vend interactive` mode). Full toolchain record and rationale: `docs/knowledge/stack.md`.
 
 ```bash
 bun install        # install dependencies

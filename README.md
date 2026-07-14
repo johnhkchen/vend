@@ -11,7 +11,8 @@ Code, behind an interface so open models slot in later.
 
 ## Set up a fresh device
 
-You need [Bun](https://bun.sh) ≥ 1.3.9, [just](https://github.com/casey/just), the
+You need [Bun](https://bun.sh) **1.3.13** (pinned — 1.3.14 segfaults under the BAML native
+addon; see `.github/release-target.env`), [just](https://github.com/casey/just), the
 [Doppler CLI](https://docs.doppler.com/docs/cli), and [Claude Code](https://claude.com/claude-code).
 
 ```bash

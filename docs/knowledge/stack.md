@@ -13,7 +13,7 @@ two is wrong — surface it.
 |---|---|---|
 | **Language / runtime** | **TypeScript on Bun** | Only option that is both strongly typed *and* has a native Claude Agent SDK (best Claude Code integration). Fast local startup, single toolchain (runtime + package manager + test runner), clean path to a TUI. |
 | **Playbook format** | **Typed code-as-config** | A playbook *is* a typed TS module that declares its graph. Types for free; gates are real functions; maximally expressive. Fastest to build; a declarative export layer can come later. |
-| **v1 surface** | **TUI (terminal)** | Closest to the "grab a Coke" shelf feel while staying local-first. Browse the shelf, pick, allocate budget, watch runs — all in the terminal. |
+| **v1 surface** | **CLI + SVG desk** *(ratified 2026-07-13; originally "TUI")* | The line-oriented desk shipped and proved out: bare `vend` renders the shelf, `steer`/`chain`/`settle`/`sweep` drive the loop, `vend svg` is the board picture. 82 epics (and a 14-epic external field drive) ran on it without missing a TUI. A richer interactive surface may come later as a **`vend interactive`** mode — a validated bet after a real non-dev driver tests the visual-surface hypothesis, not a default. |
 | **Executor (first)** | **Claude Code** via Claude Agent SDK (TypeScript) | Vision mandate. Abstracted behind an executor interface so open models slot in later. |
 
 ---
@@ -76,10 +76,9 @@ scaffolded (first epic). Codified here so every ticket targets the same setup.
 
 ```bash
 bun install        # install dependencies
-bun run build      # typecheck + bundle
-bun test           # run tests
-bun run lint       # lint + format check
-vend               # launch the TUI shelf (once built)
+bun run check      # THE gate: BAML codegen + typecheck + full test suite
+bun test           # run tests only
+vend               # the shelf (bare vend renders it; drive verbs: steer · chain · settle · sweep)
 ```
 
 ### Intended source layout
@@ -103,9 +102,9 @@ epics will formalize, not a committed file tree.*
 
 ## Open / to-confirm at scaffold time
 
-- **TUI library** — e.g. Ink (React-for-terminals) or OpenTUI vs. a lower-level
-  lib; and whether zellij is used as a multiplexing substrate for concurrent run
-  panes (as lisa does) or runs are rendered in-process.
+- **TUI library** — *(resolved 2026-07-13: deferred with the surface itself — no TUI in v1;
+  re-open if/when `vend interactive` is funded.)* Was: Ink vs. OpenTUI vs. lower-level; zellij
+  as multiplexing substrate (lisa's pattern) vs. in-process rendering.
 - **Lint/format tool** — Biome vs. ESLint+Prettier.
 - **Persistence** — `bun:sqlite` vs. flat files for run state.
 - **Claude Agent SDK** — exact package + invocation mode (SDK session vs.

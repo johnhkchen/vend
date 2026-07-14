@@ -229,7 +229,9 @@ edges fix is in flight (above); these are the rest the personas sharpened:**
 ### Frontier 5 — The "walk-away" UX (P4) — IA open design threads
 
 - **Detached/notify mechanism** — kick off a run, get notified on settle (the
-  "walk away" made literal at the UI). **Standard** (design pull first).
+  "walk away" made literal at the UI). **✅ SHIPPED 2026-07-13 (E-079/E-080, v0.4.0):**
+  lisa's loop-completion event fires `vend settle` on its own and the verdict reaches ntfy;
+  `vend sweep` closes on a confirmation; cord failures land loud, never silent.
 - **Fleet/DAG andon board** — watch a parallel fleet of casts; surface andons live.
   **Standard** (pairs Frontier 3). Design pull first.
 - **Confirm's budget-adjust gesture** — tune the envelope at the counter before
