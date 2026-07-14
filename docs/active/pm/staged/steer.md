@@ -4,7 +4,9 @@ A ranked demand board read off the whole project, highest-leverage first. Un-pro
 
 > **Board maintenance 2026-07-13 (post-v0.4.0):** row 1 (quota denomination) was **PULLED → E-082
 > `learned-lane-quota`, swept same day** — which **UNBLOCKS row 2** (multi-lane parallel casting),
-> now the top available pull. Rows 3–5 remain as staged. The forks below are still open rulings.
+> now the top available pull. Row 5 (work-core GC) was **done by hand in the same maintenance
+> pass** (commit 966f06b — pure dead-code deletion, gate-verified). Rows 3–4 remain as staged.
+> The forks below are still open rulings.
 
 | Signal | Value | Budget (envelope) | Status |
 |---|---|---|---|
