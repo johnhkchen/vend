@@ -15,7 +15,7 @@ import { VEND_WORKFLOW } from "../init/init-core.ts";
 /** A short "where to go next" footer appended under the workflow body — the command-context the
  *  in-repo file doesn't need (run `--help`, read the deeper docs, set up if you haven't). */
 const FOOTER = `## Next
-- \`vend --help\` — every gesture (steer · chain · doctor · svg · shelf · init · envelope · audit).
+- \`vend --help\` — every gesture (steer · chain · settle · sweep · doctor · svg · shelf · init · envelope · audit).
 - \`docs/knowledge/vend-workflow.md\` — this guide, saved in the repo (laid by \`vend init\`).
 - \`docs/knowledge/rdspi-workflow.md\` — lisa's per-ticket build loop (what lisa runs each ticket through).
 - Not set up yet? Run \`lisa init\`, then \`vend init\`, then \`vend doctor\` (green = ready to drive).

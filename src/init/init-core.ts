@@ -183,8 +183,12 @@ vend writes the board; lisa consumes it. The board is the contract between them.
      its entry tickets are born blocked on that ticket, so a greedy loop can't grab them early.
    - **lisa builds** the \`phase: ready\` tickets into commits (the RDSPI loop). vend clears
      intent; lisa builds it. The board under \`docs/active/\` is the contract between them.
-   - **sweep** — when a loop finishes, verify done⇒committed and mark the cleared epics done,
-     then pull the next signal and \`vend chain\` again. (The deliberate one-signal pull is the
+   - **the loop reports itself** — when a lisa loop finishes, \`vend settle\` fires on its own
+     (the completion hook) and the one-screen verdict reaches you: what cleared, gate, board
+     hygiene, review concerns, exceptions. Run \`vend settle\` yourself any time to re-read it.
+   - \`vend sweep\` — the closeout on a "y": it computes which epics are fully cleared, shows
+     you the commit (card flips + the loop's provenance), and lands it on your confirmation.
+     Then pull the next signal and \`vend chain\` again. (The deliberate one-signal pull is the
      point — vend recommends, you pull; it never auto-drains the board.)
    - \`vend doctor\` (green = sound) · \`vend svg\` (see the board).
 
